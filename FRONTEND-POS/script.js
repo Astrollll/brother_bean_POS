@@ -97,6 +97,14 @@ document.addEventListener("DOMContentLoaded", () => {
   updateCart();
   updateStats();
   updateStorageIndicator();
+  
+  // Close modals when clicking outside
+  document.getElementById('menuModal').addEventListener('click', (e) => {
+    if (e.target.id === 'menuModal') closeMenuModal();
+  });
+  document.getElementById('drawerModal').addEventListener('click', (e) => {
+    if (e.target.id === 'drawerModal') closeDrawerModal();
+  });
 });
 
 // ─── Daily Reset ─────────────────────────────────────────────
@@ -199,10 +207,12 @@ function handleProductClick(productId) {
 
 // ─── Variant / Temp Modal ────────────────────────────────────
 function openVariantModal(product) {
+  window.scrollTo(0, 0);
   pendingItem     = product;
   selectedVariant = null;
   selectedTemp    = null;
 
+  document.body.classList.add('modal-open');
   document.getElementById("variantTitle").textContent = product.name;
   const content     = document.getElementById("variantContent");
   const tempSection = document.getElementById("tempSection");
@@ -286,6 +296,7 @@ function confirmVariant() {
 
 function closeVariantModal() {
   document.getElementById("variantModal").classList.remove("active");
+  document.body.classList.remove('modal-open');
   pendingItem = selectedVariant = selectedTemp = null;
 }
 
@@ -354,6 +365,7 @@ function updateCart() {
   const origTotalEl    = document.getElementById("originalTotal");
 
   if (cart.length === 0) {
+    cartItemsEl.classList.remove("has-items");
     cartItemsEl.innerHTML = `
       <div class="empty-cart">
         <div class="empty-cart-icon">🛒</div>
@@ -364,6 +376,7 @@ function updateCart() {
     discountRow.classList.add("hidden");
     origTotalRow.classList.add("hidden");
   } else {
+    cartItemsEl.classList.add("has-items");
     cartItemsEl.innerHTML = cart.map(item => `
       <div class="cart-item">
         <div class="cart-item-details">
@@ -431,7 +444,9 @@ function clearCart() {
 
 // ─── Payment ─────────────────────────────────────────────────
 function openPaymentModal() {
+  window.scrollTo(0, 0);
   document.getElementById("paymentAmount").textContent = document.getElementById("total").textContent;
+  document.body.classList.add('modal-open');
   document.getElementById("paymentModal").classList.add("active");
   enteredAmount = "";
   updateChangeDisplay();
@@ -440,6 +455,7 @@ function openPaymentModal() {
 
 function closePaymentModal() {
   document.getElementById("paymentModal").classList.remove("active");
+  document.body.classList.remove('modal-open');
   enteredAmount = "";
 }
 
@@ -551,12 +567,14 @@ function completePayment() {
   updateStats();
   closePaymentModal();
 
+  document.body.classList.add('modal-open');
   document.getElementById("receiptModal").classList.add("active");
   showToast("Payment successful! Thank you!", "success");
 }
 
 // ─── Receipt ─────────────────────────────────────────────────
 function generateReceipt(sale) {
+  window.scrollTo(0, 0);
   document.getElementById("receiptContent").innerHTML = `
     <div class="receipt">
       <div class="receipt-header">
@@ -600,6 +618,7 @@ function generateReceipt(sale) {
 
 function closeReceipt() {
   document.getElementById("receiptModal").classList.remove("active");
+  document.body.classList.remove('modal-open');
 }
 
 function printReceipt() {
@@ -637,8 +656,10 @@ function showToast(message, type = "success") {
 
 // ─── Sales Report ────────────────────────────────────────────
 function showSalesReport() {
+  window.scrollTo(0, 0);
   if (!salesHistory.length) { showToast("No sales recorded today", "error"); return; }
 
+  document.body.classList.add('modal-open');
   const content      = document.getElementById("salesReportContent");
   const totalRevenue = salesHistory.reduce((s, sale) => s + sale.total, 0);
   const totalDiscounts = salesHistory.filter(s => s.isPwdSenior).length;
@@ -699,6 +720,7 @@ function showSalesReport() {
 
 function closeSalesReport() {
   document.getElementById("salesReportModal").classList.remove("active");
+  document.body.classList.remove('modal-open');
 }
 
 function exportToCSV() {
@@ -735,22 +757,49 @@ function clearAllData() {
 
 // ─── Utility Modals ──────────────────────────────────────────
 function showMenu() {
+  window.scrollTo(0, 0);
   const categories = {};
   menuItems.forEach(item => {
     if (!categories[item.subcategory]) categories[item.subcategory] = [];
     categories[item.subcategory].push(item);
   });
 
-  let menuText = "📋 Brother Bean Menu\n\n";
+  let menuHTML = '';
   for (const [cat, items] of Object.entries(categories)) {
-    menuText += `\n${cat}:\n`;
-    items.forEach(item => { menuText += `  • ${item.name} — ₱${item.price}\n`; });
+    menuHTML += `<div class="menu-category">
+                  <h4 class="menu-category-title">${cat}</h4>
+                  <div class="menu-items-list">`;
+    items.forEach(item => { 
+      menuHTML += `<div class="menu-item">
+                    <span class="menu-item-name">${item.name}</span>
+                    <span class="menu-item-price">₱${item.price}</span>
+                   </div>`;
+    });
+    menuHTML += `</div></div>`;
   }
-  alert(menuText);
+  
+  document.getElementById('menuContent').innerHTML = menuHTML;
+  document.body.classList.add('modal-open');
+  document.getElementById('menuModal').classList.add('active');
+}
+
+function closeMenuModal() {
+  document.getElementById('menuModal').classList.remove('active');
+  document.body.classList.remove('modal-open');
 }
 
 function openDrawer() {
-  alert(`💰 Cash Drawer Status\n\nCurrent Cash: ₱${dailyStats.totalSales.toFixed(2)}\nToday's Transactions: ${dailyStats.orders}\nTotal Saved Orders: ${salesHistory.length}\n\nDrawer is balanced ✅`);
+  window.scrollTo(0, 0);
+  document.getElementById('drawerCash').textContent = `₱${dailyStats.totalSales.toFixed(2)}`;
+  document.getElementById('drawerTransactions').textContent = dailyStats.orders;
+  document.getElementById('drawerOrders').textContent = salesHistory.length;
+  document.body.classList.add('modal-open');
+  document.getElementById('drawerModal').classList.add('active');
+}
+
+function closeDrawerModal() {
+  document.getElementById('drawerModal').classList.remove('active');
+  document.body.classList.remove('modal-open');
 }
 
 // ─── Keyboard Shortcuts ──────────────────────────────────────
@@ -758,7 +807,9 @@ document.addEventListener("keydown", e => {
   if (e.key === "Escape") {
     closePaymentModal();
     closeReceipt();
-    closeVariantModal();
+    closeMenuModal();
+    closeDrawerModal();
     closeSalesReport();
+    closeVariantModal();
   }
 });

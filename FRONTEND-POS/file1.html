@@ -329,6 +329,55 @@
       </div>
     </div>
 
+    <!-- Cash Drawer Modal -->
+    <div class="modal-overlay" id="drawerModal">
+      <div class="modal" style="max-width: 450px">
+        <div class="modal-header">
+          <span>💰 Cash Drawer Status</span>
+          <button class="close-modal" onclick="closeDrawerModal()">
+            &times;
+          </button>
+        </div>
+        <div class="drawer-content">
+          <div class="drawer-stat">
+            <div class="drawer-stat-label">Current Cash</div>
+            <div class="drawer-stat-value" id="drawerCash">₱0.00</div>
+          </div>
+          <div class="drawer-stat">
+            <div class="drawer-stat-label">Today's Transactions</div>
+            <div class="drawer-stat-value" id="drawerTransactions">0</div>
+          </div>
+          <div class="drawer-stat">
+            <div class="drawer-stat-label">Total Saved Orders</div>
+            <div class="drawer-stat-value" id="drawerOrders">0</div>
+          </div>
+          <div class="drawer-status">
+            <span class="status-icon">✅</span>
+            <span class="status-text">Drawer is balanced</span>
+          </div>
+        </div>
+        <button class="complete-payment-btn" onclick="closeDrawerModal()" style="margin-top: 25px">
+          OK
+        </button>
+      </div>
+    </div>
+
+    <!-- Menu Modal -->
+    <div class="modal-overlay" id="menuModal">
+      <div class="modal" style="max-width: 500px; max-height: 75vh">
+        <div class="modal-header">
+          <span>📋 Brother Bean Menu</span>
+          <button class="close-modal" onclick="closeMenuModal()">
+            &times;
+          </button>
+        </div>
+        <div class="menu-content" id="menuContent"></div>
+        <button class="complete-payment-btn" onclick="closeMenuModal()" style="margin-top: 20px">
+          OK
+        </button>
+      </div>
+    </div>
+
     
     <div class="toast" id="toast">
       <span id="toastIcon">✅</span>
