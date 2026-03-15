@@ -718,6 +718,34 @@ header::before {
   transform: scale(1.15);
 }
 
+.discount-item-btn {
+  color: var(--secondary);
+  cursor: pointer;
+  padding: 8px;
+  border-radius: 6px;
+  transition: all 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  font-size: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 2px solid transparent;
+}
+
+.discount-item-btn:hover {
+  background: rgba(210, 105, 30, 0.15);
+  border-color: var(--secondary);
+  transform: scale(1.15);
+}
+
+.discount-item-btn.active {
+  background: rgba(34, 139, 34, 0.2);
+  border-color: var(--success);
+  color: var(--success);
+  font-weight: 700;
+  transform: scale(1.1);
+}
+
 .empty-cart {
   text-align: center;
   padding: 60px 40px;
@@ -1683,8 +1711,8 @@ header::before {
   box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
 }
 
-.sale-badge.pwd { 
-  background: linear-gradient(135deg, var(--success), #1b5e20);
+.sale-badge.discount { 
+  background: var(--success);
   color: white;
 }
 
