@@ -74,7 +74,7 @@ const menuItems = [
 let cart                = [];
 let currentCategory     = "all";
 let currentPaymentMethod = "cash";
-let isPwdSenior         = false;
+
 let enteredAmount       = "";
 let salesHistory        = [];
 let dailyStats          = { orders: 0, totalSales: 0, discountsApplied: 0 };
@@ -332,27 +332,22 @@ function addToCart(productId) {
       category: product.category,
       variant: null, temperature: "N/A",
       quantity: 1,
+      hasDiscount: false,
     });
     showToast(`${product.name} added to order`, "success");
   }
   updateCart();
 }
 
-function toggleDiscount() {
-  const checkbox = document.getElementById("pwdSeniorCheck");
-  const toggle   = document.getElementById("discountToggle");
-  isPwdSenior    = !isPwdSenior;
-  checkbox.checked = isPwdSenior;
-
-  if (isPwdSenior) {
-    toggle.classList.add("active");
-    if (cart.length > 0) showToast("20% PWD/Senior discount applied!", "success");
-  } else {
-    toggle.classList.remove("active");
-    if (cart.length > 0) showToast("Discount removed", "warning");
+function toggleItemDiscount(itemId) {
+  const item = cart.find(i => i.id === itemId);
+  if (item) {
+    item.hasDiscount = !item.hasDiscount;
+    updateCart();
   }
-  updateCart();
 }
+
+
 
 function updateCart() {
   const cartItemsEl    = document.getElementById("cartItems");
@@ -383,13 +378,14 @@ function updateCart() {
           <div class="cart-item-name">${item.name}</div>
           ${item.variant ? `<div class="cart-item-variant">${item.variant}${item.temperature !== "N/A" ? ` • ${item.temperature}` : ""}</div>` : ""}
           ${!item.variant && item.temperature !== "N/A" ? `<div class="cart-item-variant">${item.temperature}</div>` : ""}
-          <div class="cart-item-price">₱${item.price.toFixed(2)} each</div>
+          <div class="cart-item-price">₱${item.price.toFixed(2)} each ${item.hasDiscount ? '<span style="color:var(--success);font-weight:700;">-20%</span>' : ""}</div>
         </div>
         <div class="quantity-controls">
           <button class="qty-btn" onclick="updateQuantity(${item.id}, -1)">−</button>
           <span class="qty-value">${item.quantity}</span>
           <button class="qty-btn" onclick="updateQuantity(${item.id}, 1)">+</button>
         </div>
+        <button class="discount-item-btn ${item.hasDiscount ? 'active' : ''}" onclick="toggleItemDiscount(${item.id})" title="Apply 20% discount">♿ 20% OFF</button>
         <div class="remove-btn" onclick="removeFromCart(${item.id})">🗑️</div>
       </div>
     `).join("");
@@ -397,12 +393,10 @@ function updateCart() {
   }
 
   const subtotal      = cart.reduce((s, i) => s + i.price * i.quantity, 0);
-  let discountAmount  = 0;
-  let finalTotal      = subtotal;
+  const discountAmount = cart.reduce((s, i) => i.hasDiscount ? s + (i.price * i.quantity * 0.2) : s, 0);
+  const finalTotal     = subtotal - discountAmount;
 
-  if (isPwdSenior && subtotal > 0) {
-    discountAmount = subtotal * 0.2;
-    finalTotal     = subtotal - discountAmount;
+  if (discountAmount > 0) {
     discountRow.classList.remove("hidden");
     origTotalRow.classList.remove("hidden");
     discountAmtEl.textContent = `-₱${discountAmount.toFixed(2)}`;
@@ -435,9 +429,6 @@ function clearCart() {
   if (!cart.length) return;
   if (!confirm("Are you sure you want to clear this order?")) return;
   cart = [];
-  isPwdSenior = false;
-  document.getElementById("pwdSeniorCheck").checked = false;
-  document.getElementById("discountToggle").classList.remove("active");
   updateCart();
   showToast("Order cleared", "success");
 }
@@ -530,9 +521,12 @@ function updateChangeDisplay() {
 function completePayment() {
   const total = parseFloat(document.getElementById("total").textContent.replace("₱", "").replace(",", ""));
 
+  const discountAmount = cart.reduce((s, i) => i.hasDiscount ? s + (i.price * i.quantity * 0.2) : s, 0);
+  const hasDiscount = cart.some(i => i.hasDiscount);
+  
   dailyStats.orders++;
   dailyStats.totalSales += total;
-  if (isPwdSenior) dailyStats.discountsApplied++;
+  if (hasDiscount) dailyStats.discountsApplied++;
 
   const subtotalAmt = cart.reduce((s, i) => s + i.price * i.quantity, 0);
 
@@ -545,13 +539,15 @@ function completePayment() {
       variant:     item.variant,
       temperature: item.temperature,
       subtotal:    item.price * item.quantity,
+      hasDiscount: item.hasDiscount,
+      discountAmount: item.hasDiscount ? item.price * item.quantity * 0.2 : 0,
     })),
     subtotal:       subtotalAmt,
     total:          total,
     paymentMethod:  currentPaymentMethod,
     timestamp:      new Date().toLocaleString(),
-    isPwdSenior:    isPwdSenior,
-    discountAmount: isPwdSenior ? subtotalAmt * 0.2 : 0,
+
+    discountAmount: discountAmount,
   };
   salesHistory.push(sale);
   saveToStorage();
@@ -559,9 +555,6 @@ function completePayment() {
   generateReceipt(sale);
 
   cart = [];
-  isPwdSenior = false;
-  document.getElementById("pwdSeniorCheck").checked = false;
-  document.getElementById("discountToggle").classList.remove("active");
   enteredAmount = "";
   updateCart();
   updateStats();
@@ -584,7 +577,6 @@ function generateReceipt(sale) {
           ${sale.timestamp}<br>
           Order #${sale.id.toString().slice(-6)}<br>
           Payment: ${sale.paymentMethod.toUpperCase()}<br>
-          ${sale.isPwdSenior ? "<strong>♿ PWD/Senior Citizen</strong><br>" : ""}
           Cashier: Staff
         </div>
       </div>
@@ -598,12 +590,18 @@ function generateReceipt(sale) {
             </span>
             <span class="receipt-item-qty">x${item.quantity}</span>
             <span>₱${(item.price * item.quantity).toFixed(2)}</span>
+            ${item.hasDiscount ? `
+              <div style="width: 100%; display: flex; justify-content: space-between; align-items: center; margin-top: 4px; font-size: 0.9em; color: var(--success);">
+                <span>↳ Discount (20%): -₱${item.discountAmount.toFixed(2)}</span>
+                <span style="font-weight: 700; color: var(--text);">₱${((item.price * item.quantity) - item.discountAmount).toFixed(2)}</span>
+              </div>
+            ` : ""}
           </div>
         `).join("")}
       </div>
       <div class="receipt-totals">
         <div class="receipt-row"><span>Subtotal</span><span>₱${sale.subtotal.toFixed(2)}</span></div>
-        ${sale.isPwdSenior ? `<div class="receipt-row discount"><span>PWD/Senior Discount (20%)</span><span>-₱${sale.discountAmount.toFixed(2)}</span></div>` : ""}
+        ${sale.discountAmount > 0 ? `<div class="receipt-row discount"><span>Discount (20%)</span><span>-₱${sale.discountAmount.toFixed(2)}</span></div>` : ""}
         <div class="receipt-row total"><span>TOTAL</span><span>₱${sale.total.toFixed(2)}</span></div>
       </div>
       <div class="receipt-footer">
@@ -662,7 +660,7 @@ function showSalesReport() {
   document.body.classList.add('modal-open');
   const content      = document.getElementById("salesReportContent");
   const totalRevenue = salesHistory.reduce((s, sale) => s + sale.total, 0);
-  const totalDiscounts = salesHistory.filter(s => s.isPwdSenior).length;
+  const totalDiscounts = salesHistory.filter(s => s.discountAmount > 0).length;
 
   let html = `
     <div class="report-summary">
@@ -679,7 +677,7 @@ function showSalesReport() {
         <div class="sale-header">
           <div>
             <span class="sale-order-num">Order #${sale.id.toString().slice(-6)}</span>
-            ${sale.isPwdSenior ? '<span class="sale-badge pwd">PWD/SR</span>' : ""}
+            ${sale.discountAmount > 0 ? '<span class="sale-badge discount">20% OFF</span>' : ""}
             <span class="sale-badge payment-${sale.paymentMethod}">${sale.paymentMethod.toUpperCase()}</span>
           </div>
           <span class="sale-total">₱${sale.total.toFixed(2)}</span>
@@ -702,7 +700,7 @@ function showSalesReport() {
         </div>
         <div class="sale-summary">
           <span>Subtotal: ₱${sale.subtotal.toFixed(2)}</span>
-          ${sale.isPwdSenior ? `<span style="color:var(--success);">Discount: -₱${sale.discountAmount.toFixed(2)}</span>` : ""}
+          ${sale.discountAmount > 0 ? `<span style="color:var(--success);">Discount: -₱${sale.discountAmount.toFixed(2)}</span>` : ""}
         </div>
       </div>
     `;
@@ -727,7 +725,7 @@ function exportToCSV() {
   let csv = "Order ID,Date/Time,Item Name,Variant,Temperature,Quantity,Price,Subtotal,Discount,Total,Payment Method\n";
   salesHistory.forEach(sale => {
     sale.items.forEach(item => {
-      csv += `${sale.id},${sale.timestamp},"${item.name}","${item.variant || ""}","${item.temperature || ""}",${item.quantity},${item.price},${item.subtotal},${sale.isPwdSenior ? sale.discountAmount : 0},${sale.total},${sale.paymentMethod}\n`;
+      csv += `${sale.id},${sale.timestamp},"${item.name}","${item.variant || ""}","${item.temperature || ""}",${item.quantity},${item.price},${item.subtotal},${item.hasDiscount ? item.discountAmount : 0},${sale.total},${sale.paymentMethod}\n`;
     });
   });
 
