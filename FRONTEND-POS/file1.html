@@ -8,63 +8,60 @@
   </head>
   <body>
     <div class="app-container">
-      <header>
-        <div class="logo">
-          <div class="logo-icon">🫘</div>
-          <div class="logo-text">
-            <h1>Brother Bean</h1>
-            <p>
-              Point of Sale System
-              <span class="storage-indicator" id="storageStatus">💾 Saved</span>
-            </p>
+      <div class="app-layout">
+        <aside class="side-nav">
+          <div class="logo">
+            <div class="logo-icon">🫘</div>
+            <div class="logo-text">
+              <h1>Brother Bean</h1>
+              <p>
+                Point of Sale System
+                <span class="storage-indicator" id="storageStatus">💾 Saved</span>
+              </p>
+            </div>
           </div>
-        </div>
-        <div class="header-actions">
-          <button class="btn btn-secondary" onclick="showSalesReport()">
-            📊 Daily Sales
-          </button>
-          <button class="btn btn-secondary" onclick="showMenu()">
-            📋 View Menu
-          </button>
-          <div
-            style="
-              width: 1px;
-              height: 30px;
-              background: var(--border);
-              margin: 0 10px;
-            "
-          ></div>
-          <button class="btn btn-primary" onclick="openDrawer()">
-            💰 Cash Drawer
-          </button>
-        </div>
-      </header>
+          <div class="side-nav-actions">
+            <button class="btn btn-secondary" onclick="showAdminDashboard()">
+              🧾 Admin Dashboard
+            </button>
+            <button class="btn btn-secondary" onclick="showSalesReport()">
+              📊 Daily Sales
+            </button>
+            <button class="btn btn-secondary" onclick="showMenu()">
+              📋 View Menu
+            </button>
+            <button class="btn btn-primary" onclick="openDrawer()">
+              💰 Cash Drawer
+            </button>
+          </div>
+        </aside>
 
-      <div class="stats-bar">
-        <div class="stat-card">
-          <div class="stat-icon">☕</div>
-          <div class="stat-info">
-            <h4>Today's Orders</h4>
-            <p id="todayOrders">0</p>
+        <div class="app-main">
+          <div class="stats-bar">
+            <div class="stat-card">
+              <div class="stat-icon">☕</div>
+              <div class="stat-info">
+                <h4>Today's Orders</h4>
+                <p id="todayOrders">0</p>
+              </div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-icon">💵</div>
+              <div class="stat-info">
+                <h4>Total Sales</h4>
+                <p id="totalSales">₱0.00</p>
+              </div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-icon">🏷️</div>
+              <div class="stat-info">
+                <h4>Active Discounts</h4>
+                <p id="activeDiscounts">0</p>
+              </div>
+            </div>
           </div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-icon">💵</div>
-          <div class="stat-info">
-            <h4>Total Sales</h4>
-            <p id="totalSales">₱0.00</p>
-          </div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-icon">🏷️</div>
-          <div class="stat-info">
-            <h4>Active Discounts</h4>
-            <p id="activeDiscounts">0</p>
-          </div>
-        </div>
-      </div>
 
-      <div class="main-grid">
+          <div class="main-grid">
         <div class="products-section">
           <div class="section-header">
             <h2 class="section-title"><span>☕</span> Menu Items</h2>
@@ -307,6 +304,19 @@
           </button>
         </div>
         <div id="salesReportContent"></div>
+      </div>
+    </div>
+
+    <!-- Admin Dashboard Modal -->
+    <div class="modal-overlay" id="adminDashboardModal">
+      <div class="modal" style="max-width: 960px; max-height: 90vh">
+        <div class="modal-header">
+          <span>🧾 Admin Dashboard</span>
+          <button class="close-modal" onclick="closeAdminDashboard()">
+            &times;
+          </button>
+        </div>
+        <div id="adminDashboardContent"></div>
       </div>
     </div>
 

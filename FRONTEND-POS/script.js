@@ -1,5 +1,5 @@
-// ─── Menu Nigga───────────────────────────────────────────
-const menuItems = [
+// ─── Menu Data ───────────────────────────────────────────
+const DEFAULT_MENU_ITEMS = [
   // Coffee
   { id: 1,  name: "Americano",              price: 90,  category: "coffee",    subcategory: "Coffee",       hasVariant: true,  variants: [{ name: "Plain", price: 90 }, { name: "Chocolate", price: 120 }, { name: "Caramel", price: 120 }] },
   { id: 2,  name: "Cafe Latte",             price: 120, category: "coffee",    subcategory: "Coffee",       hasTemp: true },
@@ -70,6 +70,9 @@ const menuItems = [
   { id: 49, name: "Cake",               price: 180, category: "Pastries", subcategory: "Pastries", hasVariant: true, variants: [{ name: "Slice", price: 180 }, { name: "Whole", price: 1500 }] },
 ];
 
+let menuItems       = [...DEFAULT_MENU_ITEMS];
+let extraCategories = [];
+
 // ─── State ───────────────────────────────────────────────────
 let cart                = [];
 let currentCategory     = "all";
@@ -81,12 +84,15 @@ let dailyStats          = { orders: 0, totalSales: 0, discountsApplied: 0 };
 let pendingItem         = null;
 let selectedVariant     = null;
 let selectedTemp        = null;
+let adminCurrentSection = "overview";
 
 // ─── LocalStorage Keys ───────────────────────────────────────
 const STORAGE_KEYS = {
   salesHistory:  "brotherBean_salesHistory",
   dailyStats:    "brotherBean_dailyStats",
   lastResetDate: "brotherBean_lastResetDate",
+  menuConfig:    "brotherBean_menuConfig",
+  menuCategories:"brotherBean_menuCategories",
 };
 
 // ─── Init ────────────────────────────────────────────────────
@@ -104,6 +110,12 @@ document.addEventListener("DOMContentLoaded", () => {
   });
   document.getElementById('drawerModal').addEventListener('click', (e) => {
     if (e.target.id === 'drawerModal') closeDrawerModal();
+  });
+  document.getElementById('salesReportModal').addEventListener('click', (e) => {
+    if (e.target.id === 'salesReportModal') closeSalesReport();
+  });
+  document.getElementById('adminDashboardModal').addEventListener('click', (e) => {
+    if (e.target.id === 'adminDashboardModal') closeAdminDashboard();
   });
 });
 
@@ -124,6 +136,8 @@ function saveToStorage() {
   try {
     localStorage.setItem(STORAGE_KEYS.salesHistory, JSON.stringify(salesHistory));
     localStorage.setItem(STORAGE_KEYS.dailyStats,   JSON.stringify(dailyStats));
+    localStorage.setItem(STORAGE_KEYS.menuConfig,   JSON.stringify(menuItems));
+    localStorage.setItem(STORAGE_KEYS.menuCategories, JSON.stringify(extraCategories));
     updateStorageIndicator();
   } catch (e) {
     console.error("Storage error:", e);
@@ -135,8 +149,12 @@ function loadFromStorage() {
   try {
     const savedHistory = localStorage.getItem(STORAGE_KEYS.salesHistory);
     const savedStats   = localStorage.getItem(STORAGE_KEYS.dailyStats);
+    const savedMenu    = localStorage.getItem(STORAGE_KEYS.menuConfig);
+    const savedCats    = localStorage.getItem(STORAGE_KEYS.menuCategories);
     if (savedHistory) salesHistory = JSON.parse(savedHistory);
     if (savedStats)   dailyStats   = JSON.parse(savedStats);
+    if (savedMenu)    menuItems    = JSON.parse(savedMenu);
+    if (savedCats)    extraCategories = JSON.parse(savedCats);
   } catch (e) {
     console.error("Load error:", e);
     showToast("Error loading saved data", "error");
@@ -753,6 +771,342 @@ function clearAllData() {
   showToast("All data cleared successfully", "success");
 }
 
+// ─── Admin Dashboard (Tabbed) ──────────────────────────────────
+function showAdminDashboard() {
+  window.scrollTo(0, 0);
+
+  if (!salesHistory.length) {
+    showToast("No sales data yet for admin view", "warning");
+  }
+
+  adminCurrentSection = "overview";
+  renderAdminDashboard();
+  document.body.classList.add("modal-open");
+  document.getElementById("adminDashboardModal").classList.add("active");
+}
+
+function setAdminSection(section) {
+  adminCurrentSection = section;
+  renderAdminDashboard();
+}
+
+function renderAdminDashboard() {
+  const totalOrders   = salesHistory.length;
+  const totalRevenue  = salesHistory.reduce((s, sale) => s + sale.total, 0);
+  const totalDiscount = salesHistory.reduce((s, sale) => s + sale.discountAmount, 0);
+
+  const paymentCounts = salesHistory.reduce((acc, sale) => {
+    acc[sale.paymentMethod] = (acc[sale.paymentMethod] || 0) + 1;
+    return acc;
+  }, {});
+
+  const itemMap = {};
+  salesHistory.forEach(sale => {
+    sale.items.forEach(item => {
+      if (!itemMap[item.name]) {
+        itemMap[item.name] = { quantity: 0, revenue: 0 };
+      }
+      itemMap[item.name].quantity += item.quantity;
+      itemMap[item.name].revenue  += item.subtotal;
+    });
+  });
+
+  const topItems = Object.entries(itemMap)
+    .sort((a, b) => b[1].revenue - a[1].revenue)
+    .slice(0, 5);
+
+  const avgOrderValue = totalOrders ? totalRevenue / totalOrders : 0;
+
+  const content = document.getElementById("adminDashboardContent");
+
+  let sectionHtml = "";
+
+  if (adminCurrentSection === "overview") {
+    sectionHtml = `
+      <div class="admin-grid">
+        <div class="admin-card">
+          <h4>Total Orders</h4>
+          <p>${totalOrders}</p>
+        </div>
+        <div class="admin-card">
+          <h4>Total Revenue</h4>
+          <p>₱${totalRevenue.toFixed(2)}</p>
+        </div>
+        <div class="admin-card">
+          <h4>Total Discounts</h4>
+          <p>₱${totalDiscount.toFixed(2)}</p>
+        </div>
+        <div class="admin-card">
+          <h4>Average Order Value</h4>
+          <p>₱${avgOrderValue.toFixed(2)}</p>
+        </div>
+      </div>
+    `;
+  } else if (adminCurrentSection === "sales") {
+    sectionHtml = `
+      <div class="admin-section">
+        <h3>Daily Sales Summary</h3>
+        <p style="font-size:13px;color:var(--gray);margin-bottom:10px;">
+          Quick view of today's recorded sales. Use the full Daily Sales modal for detailed per-order breakdown.
+        </p>
+        <div class="admin-grid small">
+          <div class="admin-card">
+            <h4>Orders</h4>
+            <p>${totalOrders}</p>
+          </div>
+          <div class="admin-card">
+            <h4>Revenue</h4>
+            <p>₱${totalRevenue.toFixed(2)}</p>
+          </div>
+          <div class="admin-card">
+            <h4>Discounted Orders</h4>
+            <p>${salesHistory.filter(s => s.discountAmount > 0).length}</p>
+          </div>
+        </div>
+      </div>
+    `;
+  } else if (adminCurrentSection === "items") {
+    sectionHtml = `
+      <div class="admin-section">
+        <h3>Top Items (by revenue)</h3>
+        ${
+          topItems.length
+            ? `<div class="admin-table">
+                 <div class="admin-table-header">
+                   <span>Item</span>
+                   <span>Qty</span>
+                   <span>Revenue</span>
+                 </div>
+                 ${topItems
+                   .map(
+                     ([name, data]) => `
+                       <div class="admin-table-row">
+                         <span>${name}</span>
+                         <span>${data.quantity}</span>
+                         <span>₱${data.revenue.toFixed(2)}</span>
+                       </div>
+                     `
+                   )
+                   .join("")}
+               </div>`
+            : `<p style="color: var(--gray); font-size: 14px;">No sales data yet.</p>`
+        }
+      </div>
+    `;
+  } else if (adminCurrentSection === "data") {
+    sectionHtml = `
+      <div class="admin-section">
+        <h3>Data Tools</h3>
+        <p style="font-size:13px;color:var(--gray);margin-bottom:10px;">
+          Export your sales data or clear everything when starting fresh.
+        </p>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;">
+          <button class="btn btn-secondary" style="flex:1;min-width:160px;" onclick="exportToCSV()">
+            📥 Export to Excel
+          </button>
+          <button class="btn btn-danger" style="flex:1;min-width:160px;" onclick="clearAllData()">
+            🗑️ Clear All Data
+          </button>
+        </div>
+      </div>
+    `;
+  } else if (adminCurrentSection === "menu") {
+    const categoryPairsFromMenu = menuItems.reduce((acc, m) => {
+      const key   = m.category;
+      const label = m.subcategory || m.category;
+      if (!acc.find(c => c.key === key && c.label === label)) {
+        acc.push({ key, label });
+      }
+      return acc;
+    }, []);
+    const allCategoryPairs = [...categoryPairsFromMenu, ...extraCategories];
+    const categories    = Array.from(new Set(allCategoryPairs.map(c => c.key)));
+    const subcategories = Array.from(new Set(allCategoryPairs.map(c => c.label)));
+    sectionHtml = `
+      <div class="admin-section">
+        <h3>Menu Manager</h3>
+        <p style="font-size:13px;color:var(--gray);margin-bottom:10px;">
+          Add or remove items from the POS menu. Changes are saved in this browser.
+        </p>
+        <div class="menu-category-manager">
+          <div class="menu-form-row">
+            <label>New category key</label>
+            <input id="newCategoryKey" type="text" placeholder="e.g. breakfast, promos" />
+          </div>
+          <div class="menu-form-row">
+            <label>New display group</label>
+            <input id="newCategoryLabel" type="text" placeholder="e.g. Breakfast, Promos" />
+          </div>
+          <button class="btn btn-secondary" style="margin-top:4px;width:100%;" onclick="addCustomCategory()">
+            ➕ Add Category
+          </button>
+        </div>
+        <div class="menu-manager">
+          <div class="menu-form">
+            <div class="menu-form-row">
+              <label>Name</label>
+              <input id="menuItemName" type="text" placeholder="Item name" />
+            </div>
+            <div class="menu-form-row">
+              <label>Price (₱)</label>
+              <input id="menuItemPrice" type="number" min="0" step="1" placeholder="100" />
+            </div>
+            <div class="menu-form-row">
+              <label>Category key</label>
+              <select id="menuItemCategory">
+                <option value="">Select category key…</option>
+                ${categories.map(c => `<option value="${c}">${c}</option>`).join("")}
+                <option value="__custom__">Custom…</option>
+              </select>
+            </div>
+            <div class="menu-form-row">
+              <label>Display group</label>
+              <select id="menuItemSubcategory">
+                <option value="">Select display group…</option>
+                ${subcategories.map(s => `<option value="${s}">${s}</option>`).join("")}
+                <option value="__custom__">Custom…</option>
+              </select>
+            </div>
+            <button class="btn btn-primary" style="width:100%;margin-top:6px;" onclick="addMenuItemFromForm()">
+              ➕ Add Menu Item
+            </button>
+          </div>
+          <div class="menu-list">
+            <div class="admin-table">
+              <div class="admin-table-header">
+                <span>Item</span>
+                <span>Category</span>
+                <span>₱</span>
+              </div>
+              ${menuItems.map(item => `
+                <div class="admin-table-row">
+                  <span>${item.name}</span>
+                  <span>${item.subcategory || item.category}</span>
+                  <span>
+                    ₱${item.price.toFixed(2)}
+                    <button class="menu-remove-btn" onclick="removeMenuItem(${item.id})">✕</button>
+                  </span>
+                </div>
+              `).join("")}
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  content.innerHTML = `
+    <div class="admin-dashboard">
+      <div class="admin-layout">
+        <aside class="admin-sidebar">
+          <div class="admin-nav">
+            <button class="admin-nav-item ${adminCurrentSection === "overview" ? "active" : ""}" onclick="setAdminSection('overview')">Overview</button>
+            <button class="admin-nav-item ${adminCurrentSection === "sales" ? "active" : ""}" onclick="setAdminSection('sales')">Sales</button>
+            <button class="admin-nav-item ${adminCurrentSection === "items" ? "active" : ""}" onclick="setAdminSection('items')">Items</button>
+            <button class="admin-nav-item ${adminCurrentSection === "menu" ? "active" : ""}" onclick="setAdminSection('menu')">Menu</button>
+            <button class="admin-nav-item ${adminCurrentSection === "data" ? "active" : ""}" onclick="setAdminSection('data')">Data</button>
+          </div>
+        </aside>
+        <div class="admin-content">
+          ${sectionHtml}
+          <div class="admin-meta">
+            <span>Totals based on ${salesHistory.length} recorded orders.</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function addMenuItemFromForm() {
+  const nameEl   = document.getElementById("menuItemName");
+  const priceEl  = document.getElementById("menuItemPrice");
+  const catEl    = document.getElementById("menuItemCategory");
+  const subcatEl = document.getElementById("menuItemSubcategory");
+
+  const name = nameEl.value.trim();
+  const price = parseFloat(priceEl.value);
+  let   category = catEl.value;
+  let   subcategory = subcatEl.value;
+
+  if (category === "__custom__") {
+    const input = prompt("Enter a custom category key (e.g. coffee, pasta):", "");
+    category = input && input.trim() ? input.trim() : "";
+  }
+  if (subcategory === "__custom__") {
+    const input = prompt("Enter a custom display group name (e.g. Coffee, Starters):", "");
+    subcategory = input && input.trim() ? input.trim() : "";
+  }
+
+  category    = (category && category.trim()) || "custom";
+  subcategory = (subcategory && subcategory.trim()) || "Custom";
+
+  if (!name || isNaN(price) || price <= 0) {
+    showToast("Please provide a valid name and price", "error");
+    return;
+  }
+
+  const maxId = menuItems.reduce((max, item) => Math.max(max, item.id || 0), 0);
+  const newItem = {
+    id: maxId + 1,
+    name,
+    price,
+    category,
+    subcategory,
+  };
+
+  menuItems.push(newItem);
+  saveToStorage();
+  renderProducts(currentCategory);
+  showMenu(); // refresh menu modal content if open
+  setAdminSection("menu");
+
+  nameEl.value = "";
+  priceEl.value = "";
+  catEl.value = "";
+  subcatEl.value = "";
+
+  showToast("Menu item added", "success");
+}
+
+function removeMenuItem(id) {
+  if (!confirm("Remove this menu item from the POS?")) return;
+  menuItems = menuItems.filter(item => item.id !== id);
+  saveToStorage();
+  renderProducts(currentCategory);
+  showMenu();
+  setAdminSection("menu");
+  showToast("Menu item removed", "success");
+}
+
+function addCustomCategory() {
+  const keyEl   = document.getElementById("newCategoryKey");
+  const labelEl = document.getElementById("newCategoryLabel");
+
+  const key   = (keyEl.value || "").trim();
+  const label = (labelEl.value || "").trim();
+
+  if (!key || !label) {
+    showToast("Please enter both category key and display name", "error");
+    return;
+  }
+
+  if (!extraCategories.find(c => c.key === key && c.label === label)) {
+    extraCategories.push({ key, label });
+    saveToStorage();
+  }
+
+  keyEl.value = "";
+  labelEl.value = "";
+  setAdminSection("menu");
+  showToast("Category added", "success");
+}
+
+function closeAdminDashboard() {
+  document.getElementById("adminDashboardModal").classList.remove("active");
+  document.body.classList.remove("modal-open");
+}
+
 // ─── Utility Modals ──────────────────────────────────────────
 function showMenu() {
   window.scrollTo(0, 0);
@@ -809,5 +1163,6 @@ document.addEventListener("keydown", e => {
     closeDrawerModal();
     closeSalesReport();
     closeVariantModal();
+    closeAdminDashboard();
   }
 });
