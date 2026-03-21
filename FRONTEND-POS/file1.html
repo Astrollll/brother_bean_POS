@@ -27,12 +27,29 @@
             <button class="btn btn-secondary" onclick="showSalesReport()">
               📊 Daily Sales
             </button>
+            <button class="btn btn-secondary" onclick="showTransactionHistory()">
+              🧾 Transactions
+            </button>
             <button class="btn btn-secondary" onclick="showMenu()">
               📋 View Menu
             </button>
             <button class="btn btn-primary" onclick="openDrawer()">
               💰 Cash Drawer
             </button>
+          </div>
+
+          <!-- Pending Orders Panel -->
+          <div class="pending-panel">
+            <div class="pending-panel-header">
+              <span>🍽️ Pending Orders</span>
+              <span class="pending-count" id="pendingCount">0</span>
+            </div>
+            <div class="pending-orders-list" id="pendingOrdersList">
+              <div class="pending-empty">
+                <span style="font-size:28px;">✅</span>
+                <p>No pending orders</p>
+              </div>
+            </div>
           </div>
         </aside>
 
@@ -117,13 +134,10 @@
         <div class="cart-section">
           <div class="section-header">
             <h2 class="section-title"><span>🛒</span> Current Order</h2>
-            <button
-              class="btn btn-secondary"
-              onclick="clearCart()"
-              style="padding: 8px 16px; font-size: 12px"
-            >
-              Clear Order
-            </button>
+            <div style="display:flex;gap:6px;">
+              <button class="btn btn-secondary" onclick="toggleSelectAllDiscount()" style="padding:8px 12px;font-size:12px;">♿ All 20%</button>
+              <button class="btn btn-secondary" onclick="clearCart()" style="padding:8px 16px;font-size:12px;">Clear Order</button>
+            </div>
           </div>
 
           <div class="cart-items" id="cartItems">
@@ -366,6 +380,29 @@
         <button class="complete-payment-btn" onclick="closeMenuModal()" style="margin-top: 20px">
           OK
         </button>
+      </div>
+    </div>
+
+    <!-- Transaction History Modal -->
+    <div class="modal-overlay" id="transactionModal">
+      <div class="modal" style="max-width: 700px; max-height: 90vh;">
+        <div class="modal-header">
+          <span>🧾 Transaction History</span>
+          <button class="close-modal" onclick="closeTransactionHistory()">&times;</button>
+        </div>
+        <div id="transactionListContent"></div>
+      </div>
+    </div>
+
+    <!-- Receipt Viewer / Editor Modal -->
+    <div class="modal-overlay" id="receiptViewerModal">
+      <div class="modal" style="max-width: 520px; max-height: 90vh; background: var(--cream);">
+        <div class="modal-header">
+          <span id="receiptViewerTitle">🧾 Receipt</span>
+          <button class="close-modal" onclick="closeReceiptViewer()">&times;</button>
+        </div>
+        <div id="receiptViewerContent"></div>
+        <div style="display: flex; gap: 10px; margin-top: 20px;" id="receiptViewerActions"></div>
       </div>
     </div>
 

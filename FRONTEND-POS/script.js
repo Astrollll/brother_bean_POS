@@ -85,6 +85,7 @@ let pendingItem         = null;
 let selectedVariant     = null;
 let selectedTemp        = null;
 let adminCurrentSection = "overview";
+let pendingOrders       = []; // orders waiting to be served
 
 // ─── LocalStorage Keys ───────────────────────────────────────
 const STORAGE_KEYS = {
@@ -103,6 +104,7 @@ document.addEventListener("DOMContentLoaded", () => {
   updateCart();
   updateStats();
   updateStorageIndicator();
+  renderPendingOrders();
   
   // Close modals when clicking outside
   document.getElementById('menuModal').addEventListener('click', (e) => {
@@ -365,6 +367,13 @@ function toggleItemDiscount(itemId) {
   }
 }
 
+function toggleSelectAllDiscount() {
+  const allSelected = cart.every(i => i.hasDiscount);
+  cart.forEach(i => i.hasDiscount = !allSelected);
+  updateCart();
+  showToast(allSelected ? "Discounts removed" : "20% discount applied to all items", allSelected ? "warning" : "success");
+}
+
 
 
 function updateCart() {
@@ -392,19 +401,23 @@ function updateCart() {
     cartItemsEl.classList.add("has-items");
     cartItemsEl.innerHTML = cart.map(item => `
       <div class="cart-item">
-        <div class="cart-item-details">
-          <div class="cart-item-name">${item.name}</div>
-          ${item.variant ? `<div class="cart-item-variant">${item.variant}${item.temperature !== "N/A" ? ` • ${item.temperature}` : ""}</div>` : ""}
-          ${!item.variant && item.temperature !== "N/A" ? `<div class="cart-item-variant">${item.temperature}</div>` : ""}
-          <div class="cart-item-price">₱${item.price.toFixed(2)} each ${item.hasDiscount ? '<span style="color:var(--success);font-weight:700;">-20%</span>' : ""}</div>
+        <div class="cart-item-top">
+          <button class="discount-item-btn ${item.hasDiscount ? 'active' : ''}" onclick="toggleItemDiscount(${item.id})" title="Apply 20% discount">♿ 20% OFF</button>
+          <div class="remove-btn" onclick="removeFromCart(${item.id})">🗑️</div>
         </div>
-        <div class="quantity-controls">
-          <button class="qty-btn" onclick="updateQuantity(${item.id}, -1)">−</button>
-          <span class="qty-value">${item.quantity}</span>
-          <button class="qty-btn" onclick="updateQuantity(${item.id}, 1)">+</button>
+        <div class="cart-item-bottom">
+          <div class="cart-item-details">
+            <div class="cart-item-name">${item.name}</div>
+            ${item.variant ? `<div class="cart-item-variant">${item.variant}${item.temperature !== "N/A" ? ` • ${item.temperature}` : ""}</div>` : ""}
+            ${!item.variant && item.temperature !== "N/A" ? `<div class="cart-item-variant">${item.temperature}</div>` : ""}
+            <div class="cart-item-price">₱${item.price.toFixed(2)} each ${item.hasDiscount ? '<span style="color:var(--success);font-weight:700;">-20%</span>' : ""}</div>
+          </div>
+          <div class="quantity-controls">
+            <button class="qty-btn" onclick="updateQuantity(${item.id}, -1)">−</button>
+            <span class="qty-value">${item.quantity}</span>
+            <button class="qty-btn" onclick="updateQuantity(${item.id}, 1)">+</button>
+          </div>
         </div>
-        <button class="discount-item-btn ${item.hasDiscount ? 'active' : ''}" onclick="toggleItemDiscount(${item.id})" title="Apply 20% discount">♿ 20% OFF</button>
-        <div class="remove-btn" onclick="removeFromCart(${item.id})">🗑️</div>
       </div>
     `).join("");
     checkoutBtn.disabled = false;
@@ -541,6 +554,10 @@ function completePayment() {
 
   const discountAmount = cart.reduce((s, i) => i.hasDiscount ? s + (i.price * i.quantity * 0.2) : s, 0);
   const hasDiscount = cart.some(i => i.hasDiscount);
+
+  // Track cash received & change
+  const amountPaid  = currentPaymentMethod === "cash" ? (parseFloat(enteredAmount) || total) : total;
+  const changeGiven = currentPaymentMethod === "cash" ? Math.max(0, amountPaid - total) : 0;
   
   dailyStats.orders++;
   dailyStats.totalSales += total;
@@ -551,24 +568,38 @@ function completePayment() {
   const sale = {
     id: Date.now(),
     items: cart.map(item => ({
-      name:        item.name,
-      price:       item.price,
-      quantity:    item.quantity,
-      variant:     item.variant,
-      temperature: item.temperature,
-      subtotal:    item.price * item.quantity,
-      hasDiscount: item.hasDiscount,
+      name:           item.name,
+      price:          item.price,
+      quantity:       item.quantity,
+      variant:        item.variant,
+      temperature:    item.temperature,
+      subtotal:       item.price * item.quantity,
+      hasDiscount:    item.hasDiscount,
       discountAmount: item.hasDiscount ? item.price * item.quantity * 0.2 : 0,
     })),
     subtotal:       subtotalAmt,
     total:          total,
+    amountPaid:     amountPaid,
+    changeGiven:    changeGiven,
     paymentMethod:  currentPaymentMethod,
     timestamp:      new Date().toLocaleString(),
-
+    cashier:        "Staff",
+    note:           "",
     discountAmount: discountAmount,
   };
   salesHistory.push(sale);
   saveToStorage();
+
+  // Add to pending orders queue
+  pendingOrders.push({
+    id:        sale.id,
+    orderNum:  sale.id.toString().slice(-6),
+    items:     sale.items,
+    total:     sale.total,
+    timestamp: sale.timestamp,
+    served:    false,
+  });
+  renderPendingOrders();
 
   generateReceipt(sale);
 
@@ -583,10 +614,9 @@ function completePayment() {
   showToast("Payment successful! Thank you!", "success");
 }
 
-// ─── Receipt ─────────────────────────────────────────────────
-function generateReceipt(sale) {
-  window.scrollTo(0, 0);
-  document.getElementById("receiptContent").innerHTML = `
+// ─── Receipt Builder (reusable) ──────────────────────────────
+function buildReceiptHTML(sale) {
+  return `
     <div class="receipt">
       <div class="receipt-header">
         <div class="receipt-title">Brother Bean</div>
@@ -595,7 +625,7 @@ function generateReceipt(sale) {
           ${sale.timestamp}<br>
           Order #${sale.id.toString().slice(-6)}<br>
           Payment: ${sale.paymentMethod.toUpperCase()}<br>
-          Cashier: Staff
+          Cashier: ${sale.cashier || "Staff"}<br>
         </div>
       </div>
       <div class="receipt-items">
@@ -609,18 +639,27 @@ function generateReceipt(sale) {
             <span class="receipt-item-qty">x${item.quantity}</span>
             <span>₱${(item.price * item.quantity).toFixed(2)}</span>
             ${item.hasDiscount ? `
-              <div style="width: 100%; display: flex; justify-content: space-between; align-items: center; margin-top: 4px; font-size: 0.9em; color: var(--success);">
+              <div style="width:100%;display:flex;justify-content:space-between;align-items:center;margin-top:4px;font-size:0.9em;color:var(--success);">
                 <span>↳ Discount (20%): -₱${item.discountAmount.toFixed(2)}</span>
-                <span style="font-weight: 700; color: var(--text);">₱${((item.price * item.quantity) - item.discountAmount).toFixed(2)}</span>
-              </div>
-            ` : ""}
-          </div>
-        `).join("")}
+                <span style="font-weight:700;">₱${((item.price * item.quantity) - item.discountAmount).toFixed(2)}</span>
+              </div>` : ""}
+          </div>`).join("")}
       </div>
       <div class="receipt-totals">
         <div class="receipt-row"><span>Subtotal</span><span>₱${sale.subtotal.toFixed(2)}</span></div>
         ${sale.discountAmount > 0 ? `<div class="receipt-row discount"><span>Discount (20%)</span><span>-₱${sale.discountAmount.toFixed(2)}</span></div>` : ""}
         <div class="receipt-row total"><span>TOTAL</span><span>₱${sale.total.toFixed(2)}</span></div>
+        ${sale.paymentMethod === "cash" ? `
+        <div class="receipt-row" style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--border);">
+          <span>Cash Received</span><span>₱${(sale.amountPaid || sale.total).toFixed(2)}</span>
+        </div>
+        <div class="receipt-row" style="font-weight:700;color:var(--success);">
+          <span>Change</span><span>₱${(sale.changeGiven || 0).toFixed(2)}</span>
+        </div>` : `
+        <div class="receipt-row" style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--border);color:var(--primary);font-weight:700;">
+          <span>Paid via GCash</span><span>✓</span>
+        </div>`}
+        ${sale.note ? `<div style="margin-top:10px;padding:8px;background:var(--light);border-radius:6px;font-size:12px;color:var(--gray);">📝 ${sale.note}</div>` : ""}
       </div>
       <div class="receipt-footer">
         Thank you for visiting Brother Bean!<br>
@@ -628,8 +667,13 @@ function generateReceipt(sale) {
         VAT Registered TIN: 000-000-000-000<br>
         Permit No: 0000000
       </div>
-    </div>
-  `;
+    </div>`;
+}
+
+// ─── Receipt ─────────────────────────────────────────────────
+function generateReceipt(sale) {
+  window.scrollTo(0, 0);
+  document.getElementById("receiptContent").innerHTML = buildReceiptHTML(sale);
 }
 
 function closeReceipt() {
@@ -1154,6 +1198,286 @@ function closeDrawerModal() {
   document.body.classList.remove('modal-open');
 }
 
+// ═══════════════════════════════════════════════════════════
+//  TRANSACTION HISTORY
+// ═══════════════════════════════════════════════════════════
+
+function showTransactionHistory() {
+  window.scrollTo(0, 0);
+  if (!salesHistory.length) { showToast("No transactions yet", "error"); return; }
+
+  const totalRevenue   = salesHistory.reduce((s, sale) => s + sale.total, 0);
+  const totalDiscounts = salesHistory.filter(s => s.discountAmount > 0).length;
+
+  let html = `
+    <div class="report-summary">
+      <div class="report-summary-item"><h4>Total Orders</h4><p>${salesHistory.length}</p></div>
+      <div class="report-summary-item"><h4>Revenue</h4><p>₱${totalRevenue.toFixed(2)}</p></div>
+      <div class="report-summary-item"><h4>Discounts</h4><p>${totalDiscounts}</p></div>
+    </div>
+    <div class="sales-report-content">`;
+
+  salesHistory.slice().reverse().forEach(sale => {
+    html += `
+      <div class="tx-entry">
+        <div class="tx-left">
+          <div class="tx-order">Order #${sale.id.toString().slice(-6)}</div>
+          <div class="tx-time">${sale.timestamp}</div>
+          <div class="tx-items-preview">
+            ${sale.items.map(i =>
+              `<div class="tx-item-line">• ${i.name}${i.variant ? ` (${i.variant})` : ""}${i.temperature && i.temperature !== "N/A" ? ` - ${i.temperature}` : ""} <span class="tx-item-qty">x${i.quantity}</span> <span class="tx-item-price">₱${i.subtotal.toFixed(2)}</span></div>`
+            ).join("")}
+          </div>
+        </div>
+        <div class="tx-right">
+          <div class="tx-total">₱${sale.total.toFixed(2)}</div>
+          <span class="sale-badge payment-${sale.paymentMethod}">${sale.paymentMethod.toUpperCase()}</span>
+          ${sale.discountAmount > 0 ? '<span class="sale-badge discount">20% OFF</span>' : ""}
+          <div class="tx-actions">
+            <button class="btn-tx-view" onclick="viewReceiptFromHistory(${sale.id})">🧾 View</button>
+            <button class="btn-tx-edit" onclick="editReceiptFromHistory(${sale.id})">✏️ Edit</button>
+            <button class="btn-tx-del"  onclick="deleteTransaction(${sale.id})">🗑️</button>
+          </div>
+        </div>
+      </div>`;
+  });
+
+  html += `</div>
+    <div style="display:flex;gap:10px;margin-top:20px;">
+      <button class="btn btn-secondary" onclick="exportToCSV()" style="flex:1;">📥 Export CSV</button>
+      <button class="btn btn-danger"    onclick="clearAllData()" style="flex:1;">🗑️ Clear All</button>
+    </div>`;
+
+  document.getElementById("transactionListContent").innerHTML = html;
+  document.body.classList.add("modal-open");
+  document.getElementById("transactionModal").classList.add("active");
+}
+
+function closeTransactionHistory() {
+  document.getElementById("transactionModal").classList.remove("active");
+  document.body.classList.remove("modal-open");
+}
+
+// ─── View Receipt ─────────────────────────────────────────────
+function viewReceiptFromHistory(saleId) {
+  const sale = salesHistory.find(s => s.id === saleId);
+  if (!sale) return;
+  document.getElementById("receiptViewerTitle").textContent = `🧾 Receipt — Order #${sale.id.toString().slice(-6)}`;
+  document.getElementById("receiptViewerContent").innerHTML = buildReceiptHTML(sale);
+  document.getElementById("receiptViewerActions").innerHTML = `
+    <button class="btn btn-secondary" onclick="closeReceiptViewer()" style="flex:1">Close</button>
+    <button class="btn btn-secondary" onclick="editReceiptFromHistory(${saleId})" style="flex:1">✏️ Edit</button>
+    <button class="btn btn-primary"   onclick="printFromViewer(${saleId})" style="flex:1">🖨️ Print</button>`;
+  document.getElementById("receiptViewerModal").classList.add("active");
+}
+
+function printFromViewer(saleId) {
+  const sale = salesHistory.find(s => s.id === saleId);
+  if (!sale) return;
+  const w = window.open("", "_blank");
+  w.document.write(`<html><head><title>Brother Bean Receipt</title>
+    <style>body{font-family:'Courier New',monospace;padding:20px;background:#f5f5f5;}
+    .receipt{max-width:400px;margin:0 auto;background:white;padding:30px;}</style></head><body>
+    ${buildReceiptHTML(sale)}<script>window.print();window.close();<\/script></body></html>`);
+  w.document.close();
+}
+
+// ─── Edit Receipt ─────────────────────────────────────────────
+function editReceiptFromHistory(saleId) {
+  const sale = salesHistory.find(s => s.id === saleId);
+  if (!sale) return;
+
+  document.getElementById("receiptViewerTitle").textContent = `✏️ Edit — Order #${sale.id.toString().slice(-6)}`;
+
+  const itemRows = sale.items.map((item, idx) => `
+    <tr>
+      <td><input class="edit-input" value="${item.name}" onchange="updateEditItem(${saleId},${idx},'name',this.value)"/></td>
+      <td><input class="edit-input edit-qty" type="number" min="1" value="${item.quantity}" onchange="updateEditItem(${saleId},${idx},'quantity',+this.value)"/></td>
+      <td><input class="edit-input edit-price" type="number" min="0" value="${item.price}" onchange="updateEditItem(${saleId},${idx},'price',+this.value)"/></td>
+      <td id="edit-sub-${saleId}-${idx}">₱${item.subtotal.toFixed(2)}</td>
+      <td><button class="btn-tx-del" onclick="removeEditItem(${saleId},${idx})">🗑️</button></td>
+    </tr>`).join("");
+
+  document.getElementById("receiptViewerContent").innerHTML = `
+    <div class="edit-form">
+      <div class="edit-section-title">📋 Order Items</div>
+      <table class="edit-table">
+        <thead><tr><th>Item</th><th>Qty</th><th>Price</th><th>Subtotal</th><th></th></tr></thead>
+        <tbody>${itemRows}</tbody>
+      </table>
+
+      <div class="edit-section-title" style="margin-top:16px;">💳 Payment Details</div>
+
+      <div class="edit-field-row">
+        <label>Payment Method</label>
+        <select class="edit-input" onchange="updateEditField(${saleId},'paymentMethod',this.value)">
+          <option value="cash"  ${sale.paymentMethod === "cash"  ? "selected" : ""}>Cash</option>
+          <option value="gcash" ${sale.paymentMethod === "gcash" ? "selected" : ""}>GCash</option>
+        </select>
+      </div>
+      <div class="edit-field-row">
+        <label>Cash Received (₱)</label>
+        <input class="edit-input" type="number" min="0" value="${sale.amountPaid || sale.total}"
+          onchange="updateEditField(${saleId},'amountPaid',+this.value)"/>
+      </div>
+      <div class="edit-field-row">
+        <label>Cashier Name</label>
+        <input class="edit-input" value="${sale.cashier || 'Staff'}"
+          onchange="updateEditField(${saleId},'cashier',this.value)"/>
+      </div>
+      <div class="edit-field-row">
+        <label>Note / Remarks</label>
+        <input class="edit-input" value="${sale.note || ''}" placeholder="Optional note..."
+          onchange="updateEditField(${saleId},'note',this.value)"/>
+      </div>
+    </div>`;
+
+  document.getElementById("receiptViewerActions").innerHTML = `
+    <button class="btn btn-danger"    onclick="closeReceiptViewer()" style="flex:1">Cancel</button>
+    <button class="btn btn-secondary" onclick="previewEditedReceipt(${saleId})" style="flex:1">👁️ Preview</button>
+    <button class="btn btn-primary"   onclick="saveEditedReceipt(${saleId})" style="flex:1">💾 Save</button>`;
+
+  document.getElementById("receiptViewerModal").classList.add("active");
+}
+
+function closeReceiptViewer() {
+  document.getElementById("receiptViewerModal").classList.remove("active");
+}
+
+// ─── Edit Helpers ─────────────────────────────────────────────
+function updateEditItem(saleId, idx, field, value) {
+  const sale = salesHistory.find(s => s.id === saleId);
+  if (!sale) return;
+  sale.items[idx][field] = value;
+  sale.items[idx].subtotal = sale.items[idx].price * sale.items[idx].quantity;
+  const subEl = document.getElementById(`edit-sub-${saleId}-${idx}`);
+  if (subEl) subEl.textContent = `₱${sale.items[idx].subtotal.toFixed(2)}`;
+  recalculateSale(sale);
+}
+
+function removeEditItem(saleId, idx) {
+  const sale = salesHistory.find(s => s.id === saleId);
+  if (!sale || sale.items.length <= 1) { showToast("Cannot remove last item", "error"); return; }
+  sale.items.splice(idx, 1);
+  recalculateSale(sale);
+  editReceiptFromHistory(saleId);
+}
+
+function updateEditField(saleId, field, value) {
+  const sale = salesHistory.find(s => s.id === saleId);
+  if (!sale) return;
+  sale[field] = value;
+  recalculateSale(sale);
+}
+
+function recalculateSale(sale) {
+  const subtotal      = sale.items.reduce((s, i) => s + i.subtotal, 0);
+  sale.subtotal       = subtotal;
+  sale.discountAmount = sale.items.reduce((s, i) => i.hasDiscount ? s + i.discountAmount : s, 0);
+  sale.total          = subtotal - sale.discountAmount;
+  if (sale.paymentMethod === "cash") {
+    sale.changeGiven = Math.max(0, (sale.amountPaid || sale.total) - sale.total);
+  } else {
+    sale.amountPaid  = sale.total;
+    sale.changeGiven = 0;
+  }
+}
+
+function previewEditedReceipt(saleId) {
+  const sale = salesHistory.find(s => s.id === saleId);
+  if (!sale) return;
+  recalculateSale(sale);
+  document.getElementById("receiptViewerTitle").textContent = `👁️ Preview — Order #${sale.id.toString().slice(-6)}`;
+  document.getElementById("receiptViewerContent").innerHTML = buildReceiptHTML(sale);
+  document.getElementById("receiptViewerActions").innerHTML = `
+    <button class="btn btn-secondary" onclick="editReceiptFromHistory(${saleId})" style="flex:1">← Back to Edit</button>
+    <button class="btn btn-primary"   onclick="saveEditedReceipt(${saleId})" style="flex:1">💾 Save Changes</button>`;
+}
+
+function saveEditedReceipt(saleId) {
+  const sale = salesHistory.find(s => s.id === saleId);
+  if (!sale) return;
+  recalculateSale(sale);
+  dailyStats.totalSales       = salesHistory.reduce((s, x) => s + x.total, 0);
+  dailyStats.discountsApplied = salesHistory.filter(x => x.discountAmount > 0).length;
+  saveToStorage();
+  updateStats();
+  showToast("Receipt updated successfully!", "success");
+  viewReceiptFromHistory(saleId);
+}
+
+// ─── Delete Transaction ───────────────────────────────────────
+function deleteTransaction(saleId) {
+  if (!confirm("Delete this transaction permanently?")) return;
+  salesHistory = salesHistory.filter(s => s.id !== saleId);
+  dailyStats.orders           = salesHistory.length;
+  dailyStats.totalSales       = salesHistory.reduce((s, x) => s + x.total, 0);
+  dailyStats.discountsApplied = salesHistory.filter(x => x.discountAmount > 0).length;
+  saveToStorage();
+  updateStats();
+  showToast("Transaction deleted", "success");
+  if (salesHistory.length) showTransactionHistory();
+  else closeTransactionHistory();
+}
+
+// ═══════════════════════════════════════════════════════════
+//  PENDING ORDERS (Kitchen Queue)
+// ═══════════════════════════════════════════════════════════
+
+function renderPendingOrders() {
+  const container = document.getElementById("pendingOrdersList");
+  const countBadge = document.getElementById("pendingCount");
+  if (!container) return;
+
+  const active = pendingOrders.filter(o => !o.served);
+  if (countBadge) countBadge.textContent = active.length;
+  countBadge && (countBadge.style.display = active.length > 0 ? "inline-flex" : "none");
+
+  if (active.length === 0) {
+    container.innerHTML = `
+      <div class="pending-empty">
+        <span style="font-size:28px;">✅</span>
+        <p>No pending orders</p>
+      </div>`;
+    return;
+  }
+
+  container.innerHTML = active.map(order => `
+    <div class="pending-card" id="pending-${order.id}">
+      <div class="pending-header">
+        <span class="pending-order-num">Order #${order.orderNum}</span>
+        <span class="pending-time">${order.timestamp.split(",")[1]?.trim() || order.timestamp}</span>
+      </div>
+      <div class="pending-items">
+        ${order.items.map(i => `
+          <div class="pending-item-row">
+            <span class="pending-item-name">${i.name}${i.variant ? ` (${i.variant})` : ""}${i.temperature && i.temperature !== "N/A" ? ` — ${i.temperature}` : ""}</span>
+            <span class="pending-item-qty">x${i.quantity}</span>
+          </div>`).join("")}
+      </div>
+      <button class="btn-served" onclick="markServed(${order.id})">
+        ✅ Done / Served
+      </button>
+    </div>
+  `).join("");
+}
+
+function markServed(orderId) {
+  const order = pendingOrders.find(o => o.id === orderId);
+  if (!order) return;
+  order.served = true;
+
+  // Animate out then re-render
+  const card = document.getElementById(`pending-${orderId}`);
+  if (card) {
+    card.classList.add("served-out");
+    setTimeout(() => renderPendingOrders(), 400);
+  } else {
+    renderPendingOrders();
+  }
+  showToast(`Order #${order.orderNum} marked as served!`, "success");
+}
+
 // ─── Keyboard Shortcuts ──────────────────────────────────────
 document.addEventListener("keydown", e => {
   if (e.key === "Escape") {
@@ -1164,5 +1488,7 @@ document.addEventListener("keydown", e => {
     closeSalesReport();
     closeVariantModal();
     closeAdminDashboard();
+    closeTransactionHistory();
+    closeReceiptViewer();
   }
 });

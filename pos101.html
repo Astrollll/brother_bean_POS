@@ -1,0 +1,2885 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>BB POS PROTOTYPE</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      :root {
+        --primary: #8b4513;
+        --primary-light: #a0522d;
+        --secondary: #d2691e;
+        --accent: #cd853f;
+        --success: #228b22;
+        --warning: #daa520;
+        --danger: #b22222;
+        --cream: #fff8dc;
+        --light: #fdf5e6;
+        --dark: #3e2723;
+        --gray: #8d6e63;
+        --border: #d7ccc8;
+        --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+      }
+
+      body {
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        background: linear-gradient(135deg, var(--cream) 0%, var(--light) 100%);
+        min-height: 100vh;
+        color: var(--dark);
+      }
+
+      .app-container {
+        max-width: 1400px;
+        margin: 0 auto;
+        padding: 20px;
+        min-height: 100vh;
+      }
+
+      header {
+        background: white;
+        border-radius: 16px;
+        padding: 20px 30px;
+        margin-bottom: 20px;
+        box-shadow: var(--shadow-lg);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        border-left: 5px solid var(--primary);
+      }
+
+      .logo {
+        display: flex;
+        align-items: center;
+        gap: 15px;
+      }
+
+      .logo-icon {
+        width: 50px;
+        height: 50px;
+        background: linear-gradient(135deg, var(--primary), var(--secondary));
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        font-size: 28px;
+        box-shadow: 0 4px 8px rgba(139, 69, 19, 0.3);
+      }
+
+      .logo-text h1 {
+        font-size: 24px;
+        color: var(--primary);
+        font-weight: 800;
+        letter-spacing: -0.5px;
+      }
+
+      .logo-text p {
+        font-size: 13px;
+        color: var(--gray);
+        margin-top: 2px;
+      }
+
+      .header-actions {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+      }
+
+      .btn {
+        padding: 10px 20px;
+        border: none;
+        border-radius: 10px;
+        cursor: pointer;
+        font-weight: 600;
+        transition: all 0.3s ease;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 14px;
+      }
+
+      .btn-primary {
+        background: var(--primary);
+        color: white;
+      }
+
+      .btn-primary:hover {
+        background: var(--primary-light);
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(139, 69, 19, 0.3);
+      }
+
+      .btn-secondary {
+        background: var(--light);
+        color: var(--dark);
+        border: 2px solid var(--border);
+      }
+
+      .btn-secondary:hover {
+        background: var(--border);
+      }
+
+      .btn-danger {
+        background: var(--danger);
+        color: white;
+      }
+
+      .btn-danger:hover {
+        background: #8b0000;
+      }
+
+      .main-grid {
+        display: grid;
+        grid-template-columns: 1fr 420px;
+        gap: 20px;
+        height: calc(100vh - 140px);
+      }
+
+      .products-section {
+        background: white;
+        border-radius: 16px;
+        padding: 25px;
+        box-shadow: var(--shadow-lg);
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+      }
+
+      .section-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 20px;
+      }
+
+      .section-title {
+        font-size: 22px;
+        font-weight: 700;
+        color: var(--primary);
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .search-bar {
+        position: relative;
+        margin-bottom: 20px;
+      }
+
+      .search-bar input {
+        width: 100%;
+        padding: 14px 20px 14px 50px;
+        border: 2px solid var(--border);
+        border-radius: 12px;
+        font-size: 15px;
+        transition: all 0.3s;
+        background: var(--light);
+      }
+
+      .search-bar input:focus {
+        outline: none;
+        border-color: var(--primary);
+        background: white;
+      }
+
+      .search-icon {
+        position: absolute;
+        left: 18px;
+        top: 50%;
+        transform: translateY(-50%);
+        color: var(--gray);
+        font-size: 18px;
+      }
+
+      .categories {
+        display: flex;
+        gap: 10px;
+        margin-bottom: 20px;
+        overflow-x: auto;
+        padding-bottom: 5px;
+        flex-wrap: wrap;
+      }
+
+      .category-chip {
+        padding: 10px 20px;
+        background: var(--light);
+        border: 2px solid var(--border);
+        border-radius: 25px;
+        cursor: pointer;
+        white-space: nowrap;
+        font-weight: 600;
+        transition: all 0.3s;
+        font-size: 14px;
+      }
+
+      .category-chip.active {
+        background: var(--primary);
+        color: white;
+        border-color: var(--primary);
+        box-shadow: 0 4px 8px rgba(139, 69, 19, 0.2);
+      }
+
+      .category-chip:hover:not(.active) {
+        background: var(--border);
+        transform: translateY(-1px);
+      }
+
+      .products-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+        gap: 15px;
+        overflow-y: auto;
+        padding-right: 10px;
+        flex: 1;
+      }
+
+      .product-card {
+        background: white;
+        border-radius: 12px;
+        padding: 15px;
+        cursor: pointer;
+        transition: all 0.3s;
+        border: 2px solid var(--border);
+        position: relative;
+        overflow: hidden;
+      }
+
+      .product-card:hover {
+        transform: translateY(-5px);
+        box-shadow: var(--shadow);
+        border-color: var(--primary);
+      }
+
+      .product-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: start;
+        margin-bottom: 10px;
+      }
+
+      .product-name {
+        font-weight: 700;
+        font-size: 15px;
+        line-height: 1.3;
+        color: var(--dark);
+        flex: 1;
+      }
+
+      .product-badge {
+        background: var(--accent);
+        color: white;
+        font-size: 10px;
+        padding: 3px 8px;
+        border-radius: 10px;
+        font-weight: 600;
+        margin-left: 5px;
+      }
+
+      .product-price {
+        color: var(--primary);
+        font-weight: 800;
+        font-size: 18px;
+        margin-top: 8px;
+      }
+
+      .product-category {
+        font-size: 12px;
+        color: var(--gray);
+        margin-top: 5px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+      }
+
+      .cart-section {
+        background: white;
+        border-radius: 16px;
+        padding: 25px;
+        box-shadow: var(--shadow-lg);
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+        border-top: 5px solid var(--secondary);
+      }
+
+      .cart-items {
+        flex: 1;
+        overflow-y: auto;
+        margin: 20px 0;
+        max-height: 400px;
+      }
+
+      .cart-item {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 15px;
+        background: var(--light);
+        border-radius: 10px;
+        margin-bottom: 10px;
+        animation: slideIn 0.3s ease;
+        border-left: 3px solid var(--primary);
+      }
+
+      @keyframes slideIn {
+        from {
+          opacity: 0;
+          transform: translateX(20px);
+        }
+        to {
+          opacity: 1;
+          transform: translateX(0);
+        }
+      }
+
+      .cart-item-details {
+        flex: 1;
+      }
+
+      .cart-item-name {
+        font-weight: 700;
+        font-size: 14px;
+        margin-bottom: 3px;
+        color: var(--dark);
+      }
+
+      .cart-item-variant {
+        font-size: 12px;
+        color: var(--secondary);
+        font-weight: 600;
+      }
+
+      .cart-item-price {
+        color: var(--gray);
+        font-size: 13px;
+      }
+
+      .quantity-controls {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        background: white;
+        padding: 4px;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+      }
+
+      .qty-btn {
+        width: 32px;
+        height: 32px;
+        border-radius: 6px;
+        border: none;
+        background: var(--light);
+        cursor: pointer;
+        font-weight: 700;
+        transition: all 0.2s;
+        color: var(--primary);
+        font-size: 16px;
+      }
+
+      .qty-btn:hover {
+        background: var(--primary);
+        color: white;
+      }
+
+      .qty-value {
+        font-weight: 800;
+        min-width: 24px;
+        text-align: center;
+        font-size: 15px;
+      }
+
+      .remove-btn {
+        color: var(--danger);
+        cursor: pointer;
+        padding: 8px;
+        border-radius: 6px;
+        transition: all 0.2s;
+        font-size: 18px;
+      }
+
+      .remove-btn:hover {
+        background: rgba(178, 34, 34, 0.1);
+      }
+
+      .discount-section {
+        background: linear-gradient(135deg, #fff3e0, #ffe0b2);
+        padding: 15px;
+        border-radius: 12px;
+        margin-bottom: 15px;
+        border: 2px solid var(--warning);
+      }
+
+      .discount-header {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 10px;
+        font-weight: 700;
+        color: var(--primary);
+      }
+
+      .discount-toggle {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        cursor: pointer;
+        padding: 8px;
+        background: white;
+        border-radius: 8px;
+        border: 2px solid var(--border);
+        transition: all 0.3s;
+      }
+
+      .discount-toggle.active {
+        background: var(--success);
+        color: white;
+        border-color: var(--success);
+      }
+
+      .discount-toggle input[type="checkbox"] {
+        width: 20px;
+        height: 20px;
+        cursor: pointer;
+      }
+
+      .cart-summary {
+        border-top: 2px solid var(--border);
+        padding-top: 20px;
+      }
+
+      .summary-row {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 12px;
+        font-size: 15px;
+        color: var(--gray);
+      }
+
+      .summary-row.discount {
+        color: var(--success);
+        font-weight: 600;
+        background: rgba(34, 139, 34, 0.1);
+        padding: 8px 12px;
+        border-radius: 8px;
+        margin: 10px 0;
+      }
+
+      .summary-row.total {
+        font-size: 26px;
+        font-weight: 800;
+        color: var(--dark);
+        margin-top: 15px;
+        padding-top: 15px;
+        border-top: 2px dashed var(--border);
+      }
+
+      .summary-row.discounted-total {
+        font-size: 20px;
+        color: var(--gray);
+        text-decoration: line-through;
+        font-weight: 600;
+      }
+
+      .checkout-btn {
+        width: 100%;
+        padding: 18px;
+        background: linear-gradient(135deg, var(--primary), var(--secondary));
+        color: white;
+        border: none;
+        border-radius: 12px;
+        font-size: 18px;
+        font-weight: 700;
+        cursor: pointer;
+        margin-top: 20px;
+        transition: all 0.3s;
+        box-shadow: 0 4px 15px rgba(139, 69, 19, 0.3);
+        text-transform: uppercase;
+        letter-spacing: 1px;
+      }
+
+      .checkout-btn:hover:not(:disabled) {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 20px rgba(139, 69, 19, 0.4);
+      }
+
+      .checkout-btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+        background: var(--gray);
+      }
+
+      .empty-cart {
+        text-align: center;
+        padding: 40px;
+        color: var(--gray);
+      }
+
+      .empty-cart-icon {
+        font-size: 56px;
+        margin-bottom: 15px;
+        opacity: 0.3;
+      }
+
+      /* Modal Styles */
+      .modal-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(62, 39, 35, 0.6);
+        display: none;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+        backdrop-filter: blur(4px);
+      }
+
+      .modal-overlay.active {
+        display: flex;
+      }
+
+      .modal {
+        background: white;
+        border-radius: 20px;
+        padding: 30px;
+        width: 90%;
+        max-width: 500px;
+        box-shadow: var(--shadow-lg);
+        animation: modalPop 0.3s ease;
+        max-height: 90vh;
+        overflow-y: auto;
+      }
+
+      @keyframes modalPop {
+        from {
+          opacity: 0;
+          transform: scale(0.9);
+        }
+        to {
+          opacity: 1;
+          transform: scale(1);
+        }
+      }
+
+      .modal-header {
+        font-size: 24px;
+        font-weight: 700;
+        margin-bottom: 25px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        color: var(--primary);
+      }
+
+      .close-modal {
+        background: none;
+        border: none;
+        font-size: 28px;
+        cursor: pointer;
+        color: var(--gray);
+        line-height: 1;
+        transition: color 0.3s;
+      }
+
+      .close-modal:hover {
+        color: var(--danger);
+      }
+
+      .payment-methods {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 12px;
+        margin-bottom: 25px;
+      }
+
+      .payment-method {
+        padding: 20px 10px;
+        border: 2px solid var(--border);
+        border-radius: 12px;
+        text-align: center;
+        cursor: pointer;
+        transition: all 0.3s;
+        background: var(--light);
+      }
+
+      .payment-method:hover,
+      .payment-method.active {
+        border-color: var(--primary);
+        background: rgba(139, 69, 19, 0.05);
+        transform: translateY(-2px);
+      }
+
+      .payment-method.active {
+        background: rgba(139, 69, 19, 0.1);
+        box-shadow: 0 4px 8px rgba(139, 69, 19, 0.1);
+      }
+
+      .payment-icon {
+        font-size: 36px;
+        margin-bottom: 8px;
+      }
+
+      .payment-label {
+        font-size: 13px;
+        font-weight: 700;
+        color: var(--dark);
+      }
+
+      .amount-display {
+        background: linear-gradient(135deg, var(--light), var(--cream));
+        padding: 25px;
+        border-radius: 12px;
+        text-align: center;
+        margin-bottom: 25px;
+        border: 2px solid var(--border);
+      }
+
+      .amount-label {
+        font-size: 14px;
+        color: var(--gray);
+        margin-bottom: 8px;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+      }
+
+      .amount-value {
+        font-size: 42px;
+        font-weight: 800;
+        color: var(--primary);
+      }
+
+      .numpad {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 12px;
+        margin-bottom: 20px;
+      }
+
+      .numpad-btn {
+        padding: 22px;
+        border: none;
+        background: var(--light);
+        border-radius: 10px;
+        font-size: 22px;
+        font-weight: 700;
+        cursor: pointer;
+        transition: all 0.2s;
+        color: var(--dark);
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+      }
+
+      .numpad-btn:hover {
+        background: var(--border);
+        transform: translateY(-2px);
+      }
+
+      .numpad-btn.action {
+        background: var(--primary);
+        color: white;
+      }
+
+      .numpad-btn.action:hover {
+        background: var(--primary-light);
+      }
+
+      .numpad-btn.wide {
+        grid-column: span 2;
+      }
+
+      #changeDisplay {
+        margin-bottom: 20px;
+        text-align: center;
+        font-size: 20px;
+        font-weight: 700;
+        padding: 15px;
+        border-radius: 10px;
+        background: var(--light);
+      }
+
+      .payment-actions {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+        margin-top: 20px;
+      }
+
+      .complete-payment-btn {
+        width: 100%;
+        padding: 18px;
+        background: var(--success);
+        color: white;
+        border: none;
+        border-radius: 12px;
+        font-size: 18px;
+        font-weight: 700;
+        cursor: pointer;
+        transition: all 0.3s;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+      }
+
+      .complete-payment-btn:hover:not(:disabled) {
+        background: #1b5e20;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(34, 139, 34, 0.3);
+      }
+
+      .complete-payment-btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+        background: var(--gray);
+      }
+
+      /* Receipt Styles */
+      .receipt {
+        background: white;
+        padding: 30px;
+        font-family: "Courier New", monospace;
+        max-width: 400px;
+        margin: 0 auto;
+        border: 2px dashed var(--border);
+      }
+
+      .receipt-header {
+        text-align: center;
+        margin-bottom: 20px;
+        border-bottom: 2px dashed var(--border);
+        padding-bottom: 20px;
+      }
+
+      .receipt-title {
+        font-size: 28px;
+        font-weight: bold;
+        color: var(--primary);
+        margin-bottom: 5px;
+      }
+
+      .receipt-subtitle {
+        font-size: 14px;
+        color: var(--gray);
+        font-style: italic;
+      }
+
+      .receipt-info {
+        font-size: 12px;
+        color: var(--gray);
+        margin-top: 10px;
+        line-height: 1.5;
+      }
+
+      .receipt-items {
+        margin: 20px 0;
+      }
+
+      .receipt-item {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 10px;
+        font-size: 14px;
+        line-height: 1.4;
+      }
+
+      .receipt-item-name {
+        flex: 1;
+      }
+
+      .receipt-item-variant {
+        font-size: 11px;
+        color: var(--gray);
+        font-style: italic;
+      }
+
+      .receipt-item-qty {
+        margin: 0 10px;
+        color: var(--gray);
+      }
+
+      .receipt-totals {
+        border-top: 2px dashed var(--border);
+        margin-top: 20px;
+        padding-top: 15px;
+      }
+
+      .receipt-row {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 8px;
+        font-size: 14px;
+      }
+
+      .receipt-row.discount {
+        color: var(--success);
+        font-weight: bold;
+      }
+
+      .receipt-row.total {
+        font-size: 20px;
+        font-weight: bold;
+        margin-top: 10px;
+        padding-top: 10px;
+        border-top: 2px solid var(--dark);
+      }
+
+      .receipt-footer {
+        text-align: center;
+        margin-top: 30px;
+        font-size: 12px;
+        color: var(--gray);
+        line-height: 1.6;
+      }
+
+      .hidden {
+        display: none !important;
+      }
+
+      /* Toast Notification */
+      .toast {
+        position: fixed;
+        bottom: 30px;
+        right: 30px;
+        background: var(--dark);
+        color: white;
+        padding: 16px 24px;
+        border-radius: 12px;
+        box-shadow: var(--shadow-lg);
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        transform: translateY(100px);
+        opacity: 0;
+        transition: all 0.3s;
+        z-index: 2000;
+      }
+
+      .toast.show {
+        transform: translateY(0);
+        opacity: 1;
+      }
+
+      .toast.success {
+        background: var(--success);
+      }
+
+      .toast.error {
+        background: var(--danger);
+      }
+
+      .toast.warning {
+        background: var(--warning);
+        color: var(--dark);
+      }
+
+      /* Variant Selection Modal */
+      .variant-options {
+        display: grid;
+        gap: 10px;
+        margin-bottom: 20px;
+      }
+
+      .variant-btn {
+        padding: 15px;
+        border: 2px solid var(--border);
+        border-radius: 10px;
+        background: white;
+        cursor: pointer;
+        font-size: 16px;
+        font-weight: 600;
+        transition: all 0.3s;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+
+      .variant-btn:hover {
+        border-color: var(--primary);
+        background: var(--light);
+      }
+
+      .variant-btn.selected {
+        background: var(--primary);
+        color: white;
+        border-color: var(--primary);
+      }
+
+      .temperature-options {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+        margin-top: 15px;
+      }
+
+      .temp-btn {
+        padding: 12px;
+        border: 2px solid var(--border);
+        border-radius: 10px;
+        background: white;
+        cursor: pointer;
+        font-weight: 600;
+        transition: all 0.3s;
+      }
+
+      .temp-btn:hover {
+        border-color: var(--primary);
+      }
+
+      .temp-btn.selected {
+        background: var(--secondary);
+        color: white;
+        border-color: var(--secondary);
+      }
+
+      /* Responsive */
+      @media (max-width: 1024px) {
+        .main-grid {
+          grid-template-columns: 1fr;
+          height: auto;
+        }
+
+        .cart-section {
+          max-height: 600px;
+        }
+      }
+
+      @media (max-width: 640px) {
+        .products-grid {
+          grid-template-columns: repeat(2, 1fr);
+        }
+
+        header {
+          flex-direction: column;
+          gap: 15px;
+          text-align: center;
+        }
+
+        .categories {
+          flex-wrap: nowrap;
+          overflow-x: auto;
+        }
+
+        .payment-actions {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      .stats-bar {
+        display: flex;
+        gap: 20px;
+        margin-bottom: 20px;
+        flex-wrap: wrap;
+      }
+
+      .stat-card {
+        background: white;
+        padding: 15px 25px;
+        border-radius: 12px;
+        box-shadow: var(--shadow);
+        display: flex;
+        align-items: center;
+        gap: 15px;
+        border-left: 4px solid var(--primary);
+      }
+
+      .stat-icon {
+        font-size: 28px;
+      }
+
+      .stat-info h4 {
+        font-size: 12px;
+        color: var(--gray);
+        text-transform: uppercase;
+        letter-spacing: 1px;
+      }
+
+      .stat-info p {
+        font-size: 20px;
+        font-weight: 800;
+        color: var(--dark);
+      }
+
+      /* Sales Report Modal Styles */
+      .sales-report-content {
+        max-height: 60vh;
+        overflow-y: auto;
+        padding-right: 10px;
+      }
+
+      .sale-entry {
+        background: var(--light);
+        border-radius: 12px;
+        padding: 20px;
+        margin-bottom: 15px;
+        border-left: 4px solid var(--primary);
+      }
+
+      .sale-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 12px;
+        padding-bottom: 10px;
+        border-bottom: 1px dashed var(--border);
+      }
+
+      .sale-order-num {
+        font-weight: 800;
+        color: var(--primary);
+        font-size: 16px;
+      }
+
+      .sale-total {
+        font-weight: 800;
+        color: var(--dark);
+        font-size: 18px;
+      }
+
+      .sale-time {
+        font-size: 12px;
+        color: var(--gray);
+        margin-bottom: 10px;
+      }
+
+      .sale-items-list {
+        margin-top: 10px;
+      }
+
+      .sale-item-row {
+        display: flex;
+        justify-content: space-between;
+        padding: 6px 0;
+        font-size: 14px;
+        border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+      }
+
+      .sale-item-row:last-child {
+        border-bottom: none;
+      }
+
+      .sale-item-name {
+        flex: 1;
+        color: var(--dark);
+      }
+
+      .sale-item-details {
+        font-size: 12px;
+        color: var(--gray);
+        margin-left: 5px;
+      }
+
+      .sale-item-price {
+        color: var(--primary);
+        font-weight: 600;
+      }
+
+      .sale-badge {
+        display: inline-block;
+        padding: 3px 8px;
+        border-radius: 6px;
+        font-size: 11px;
+        font-weight: 700;
+        margin-left: 8px;
+      }
+
+      .sale-badge.pwd {
+        background: var(--success);
+        color: white;
+      }
+
+      .sale-badge.payment-cash {
+        background: #e8f5e9;
+        color: var(--success);
+      }
+
+      .sale-badge.payment-card {
+        background: #e3f2fd;
+        color: #1976d2;
+      }
+
+      .sale-badge.payment-gcash {
+        background: #fff3e0;
+        color: #f57c00;
+      }
+
+      .sale-summary {
+        margin-top: 15px;
+        padding-top: 10px;
+        border-top: 2px solid var(--border);
+        display: flex;
+        justify-content: space-between;
+        font-size: 13px;
+        color: var(--gray);
+      }
+
+      .no-sales {
+        text-align: center;
+        padding: 40px;
+        color: var(--gray);
+      }
+
+      .report-summary {
+        background: linear-gradient(135deg, var(--primary), var(--secondary));
+        color: white;
+        padding: 20px;
+        border-radius: 12px;
+        margin-bottom: 20px;
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 15px;
+        text-align: center;
+      }
+
+      .report-summary-item h4 {
+        font-size: 12px;
+        opacity: 0.9;
+        margin-bottom: 5px;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+      }
+
+      .report-summary-item p {
+        font-size: 24px;
+        font-weight: 800;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="app-container">
+      <header>
+        <div class="logo">
+          <div class="logo-icon">🫘</div>
+          <div class="logo-text">
+            <h1>Brother Bean</h1>
+            <p>
+              Point of Sale System
+              <span class="storage-indicator" id="storageStatus">💾 Saved</span>
+            </p>
+          </div>
+        </div>
+        <div class="header-actions">
+          <button class="btn btn-secondary" onclick="showSalesReport()">
+            📊 Daily Sales
+          </button>
+          <button class="btn btn-secondary" onclick="showMenu()">
+            📋 View Menu
+          </button>
+          <div
+            style="
+              width: 1px;
+              height: 30px;
+              background: var(--border);
+              margin: 0 10px;
+            "
+          ></div>
+          <button class="btn btn-primary" onclick="openDrawer()">
+            💰 Cash Drawer
+          </button>
+        </div>
+      </header>
+
+      <div class="stats-bar">
+        <div class="stat-card">
+          <div class="stat-icon">☕</div>
+          <div class="stat-info">
+            <h4>Today's Orders</h4>
+            <p id="todayOrders">0</p>
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon">💵</div>
+          <div class="stat-info">
+            <h4>Total Sales</h4>
+            <p id="totalSales">₱0.00</p>
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon">🏷️</div>
+          <div class="stat-info">
+            <h4>Active Discounts</h4>
+            <p id="activeDiscounts">0</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="main-grid">
+        <div class="products-section">
+          <div class="section-header">
+            <h2 class="section-title">
+              <span>☕</span>
+              Menu Items
+            </h2>
+          </div>
+
+          <div class="search-bar">
+            <span class="search-icon">🔍</span>
+            <input
+              type="text"
+              id="searchInput"
+              placeholder="Search menu items..."
+              oninput="searchProducts()"
+            />
+          </div>
+
+          <div class="categories" id="categories">
+            <div class="category-chip active" onclick="selectCategory('all')">
+              All Items
+            </div>
+            <div class="category-chip" onclick="selectCategory('coffee')">
+              ☕ Coffee
+            </div>
+            <div class="category-chip" onclick="selectCategory('signature')">
+              ⭐ Signature
+            </div>
+            <div class="category-chip" onclick="selectCategory('matcha')">
+              🍵 Matcha Series
+            </div>
+            <div class="category-chip" onclick="selectCategory('noncoffee')">
+              🥤 Non-Coffee
+            </div>
+            <div class="category-chip" onclick="selectCategory('starters')">
+              🍟 Starters
+            </div>
+            <div class="category-chip" onclick="selectCategory('ricemeals')">
+              🍚 Rice Meals
+            </div>
+            <div class="category-chip" onclick="selectCategory('pasta')">
+              🍝 Pasta
+            </div>
+            <div class="category-chip" onclick="selectCategory('addons')">
+              ➕ Add-ons
+            </div>
+            <div class="category-chip" onclick="selectCategory('Pastries')">
+              🧁 Pastries
+            </div>
+          </div>
+
+          <div class="products-grid" id="productsGrid">
+            <!-- Products rendered here -->
+          </div>
+        </div>
+
+        <div class="cart-section">
+          <div class="section-header">
+            <h2 class="section-title">
+              <span>🛒</span>
+              Current Order
+            </h2>
+            <button
+              class="btn btn-secondary"
+              onclick="clearCart()"
+              style="padding: 8px 16px; font-size: 12px"
+            >
+              Clear Order
+            </button>
+          </div>
+
+          <div class="discount-section">
+            <div class="discount-header">
+              <span>♿</span>
+              <span>Special Discount (20% OFF)</span>
+            </div>
+            <label
+              class="discount-toggle"
+              id="discountToggle"
+              onclick="toggleDiscount()"
+            >
+              <input type="checkbox" id="pwdSeniorCheck" />
+              <span>PWD / Senior Citizen</span>
+              <span
+                style="margin-left: auto; font-size: 12px; color: var(--gray)"
+                >Save 20%</span
+              >
+            </label>
+          </div>
+
+          <div class="cart-items" id="cartItems">
+            <div class="empty-cart">
+              <div class="empty-cart-icon">🛒</div>
+              <p>Your order is empty</p>
+              <p style="font-size: 13px; margin-top: 5px">
+                Click items from the menu to add
+              </p>
+            </div>
+          </div>
+
+          <div class="cart-summary">
+            <div class="summary-row">
+              <span>Subtotal</span>
+              <span id="subtotal">₱0.00</span>
+            </div>
+            <div class="summary-row discount hidden" id="discountRow">
+              <span>PWD/Senior Discount (20%)</span>
+              <span id="discountAmount">-₱0.00</span>
+            </div>
+            <div
+              class="summary-row discounted-total hidden"
+              id="originalTotalRow"
+            >
+              <span>Original Total</span>
+              <span id="originalTotal">₱0.00</span>
+            </div>
+            <div class="summary-row total">
+              <span>Total Amount</span>
+              <span id="total">₱0.00</span>
+            </div>
+            <button
+              class="checkout-btn"
+              id="checkoutBtn"
+              onclick="openPaymentModal()"
+              disabled
+            >
+              💳 Proceed to Payment
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Variant Selection Modal -->
+    <div class="modal-overlay" id="variantModal">
+      <div class="modal">
+        <div class="modal-header">
+          <span id="variantTitle">Select Option</span>
+          <button class="close-modal" onclick="closeVariantModal()">
+            &times;
+          </button>
+        </div>
+
+        <div id="variantContent">
+          <!-- Dynamic content -->
+        </div>
+
+        <div class="temperature-options hidden" id="tempSection">
+          <button class="temp-btn" onclick="selectTemp('Hot')">🔥 Hot</button>
+          <button class="temp-btn" onclick="selectTemp('Iced')">🧊 Iced</button>
+        </div>
+
+        <button
+          class="complete-payment-btn"
+          onclick="confirmVariant()"
+          style="margin-top: 20px"
+          id="confirmVariantBtn"
+          disabled
+        >
+          Add to Order
+        </button>
+      </div>
+    </div>
+
+    <!-- Payment Modal -->
+    <div class="modal-overlay" id="paymentModal">
+      <div class="modal">
+        <div class="modal-header">
+          <span>Payment</span>
+          <button class="close-modal" onclick="closePaymentModal()">
+            &times;
+          </button>
+        </div>
+
+        <div class="payment-methods">
+          <div
+            class="payment-method active"
+            onclick="selectPaymentMethod('cash')"
+          >
+            <div class="payment-icon">💵</div>
+            <div class="payment-label">Cash</div>
+          </div>
+          <div class="payment-method" onclick="selectPaymentMethod('gcash')">
+            <div class="payment-icon">📱</div>
+            <div class="payment-label">GCash</div>
+          </div>
+        </div>
+
+        <div class="amount-display">
+          <div class="amount-label">Amount Due</div>
+          <div class="amount-value" id="paymentAmount">₱0.00</div>
+        </div>
+
+        <div class="numpad" id="cashNumpad">
+          <button class="numpad-btn" onclick="enterDigit('1')">1</button>
+          <button class="numpad-btn" onclick="enterDigit('2')">2</button>
+          <button class="numpad-btn" onclick="enterDigit('3')">3</button>
+          <button class="numpad-btn" onclick="enterDigit('4')">4</button>
+          <button class="numpad-btn" onclick="enterDigit('5')">5</button>
+          <button class="numpad-btn" onclick="enterDigit('6')">6</button>
+          <button class="numpad-btn" onclick="enterDigit('7')">7</button>
+          <button class="numpad-btn" onclick="enterDigit('8')">8</button>
+          <button class="numpad-btn" onclick="enterDigit('9')">9</button>
+          <button class="numpad-btn" onclick="enterDigit('.')">.</button>
+          <button class="numpad-btn" onclick="enterDigit('0')">0</button>
+          <button class="numpad-btn action" onclick="clearAmount()">C</button>
+          <button class="numpad-btn wide action" onclick="exactAmount()">
+            Exact Amount
+          </button>
+          <button class="numpad-btn wide action" onclick="quickAmount(100)">
+            +₱50
+          </button>
+          <button class="numpad-btn wide action" onclick="quickAmount(100)">
+            +₱100
+          </button>
+          <button class="numpad-btn wide action" onclick="quickAmount(500)">
+            +₱500
+          </button>
+          <button class="numpad-btn wide action" onclick="quickAmount(1000)">
+            +₱1000
+          </button>
+        </div>
+
+        <div id="changeDisplay"></div>
+
+        <div class="payment-actions">
+          <button
+            class="btn btn-danger"
+            onclick="closePaymentModal()"
+            style="padding: 18px; font-size: 16px"
+          >
+            ← Back
+          </button>
+          <button
+            class="complete-payment-btn"
+            onclick="completePayment()"
+            id="doneBtn"
+            disabled
+          >
+            ✅ Done
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Receipt Modal -->
+    <div class="modal-overlay" id="receiptModal">
+      <div class="modal" style="max-width: 450px; background: var(--cream)">
+        <div id="receiptContent"></div>
+        <div style="display: flex; gap: 10px; margin-top: 20px">
+          <button
+            class="btn btn-secondary"
+            onclick="closeReceipt()"
+            style="flex: 1"
+          >
+            Close
+          </button>
+          <button
+            class="btn btn-primary"
+            onclick="printReceipt()"
+            style="flex: 1"
+          >
+            🖨️ Print Receipt
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Sales Report Modal -->
+    <div class="modal-overlay" id="salesReportModal">
+      <div class="modal" style="max-width: 600px; max-height: 80vh">
+        <div class="modal-header">
+          <span>📊 Daily Sales Report</span>
+          <button class="close-modal" onclick="closeSalesReport()">
+            &times;
+          </button>
+        </div>
+
+        <div id="salesReportContent">
+          <!-- Dynamic content -->
+        </div>
+      </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div class="toast" id="toast">
+      <span id="toastIcon">✅</span>
+      <span id="toastMessage">Operation successful</span>
+    </div>
+
+    <script>
+      // Brother Bean Menu Database (Prices in PHP)
+      const menuItems = [
+        // Coffee (Hot/Iced) - Americano has variants
+        {
+          id: 1,
+          name: "Americano",
+          price: 90,
+          category: "coffee",
+          subcategory: "Coffee",
+          hasVariant: true,
+          variants: [
+            { name: "Plain", price: 90 },
+            { name: "Chocolate", price: 120 },
+            { name: "Caramel", price: 120 },
+          ],
+        },
+        {
+          id: 2,
+          name: "Cafe Latte",
+          price: 120,
+          category: "coffee",
+          subcategory: "Coffee",
+          hasTemp: true,
+        },
+        {
+          id: 3,
+          name: "Brown Sugar Latte",
+          price: 130,
+          category: "coffee",
+          subcategory: "Coffee",
+          hasTemp: true,
+        },
+        {
+          id: 4,
+          name: "Vanilla Latte",
+          price: 140,
+          category: "coffee",
+          subcategory: "Coffee",
+          hasTemp: true,
+        },
+        {
+          id: 5,
+          name: "Spanish Latte",
+          price: 140,
+          category: "coffee",
+          subcategory: "Coffee",
+          hasTemp: true,
+          popular: true,
+        },
+        {
+          id: 6,
+          name: "Caramel Latte",
+          price: 140,
+          category: "coffee",
+          subcategory: "Coffee",
+          hasTemp: true,
+          popular: true,
+        },
+        {
+          id: 7,
+          name: "Cafe Mocha",
+          price: 140,
+          category: "coffee",
+          subcategory: "Coffee",
+          hasTemp: true,
+        },
+        {
+          id: 8,
+          name: "White Choco Mocha",
+          price: 150,
+          category: "coffee",
+          subcategory: "Coffee",
+          hasTemp: true,
+        },
+        {
+          id: 9,
+          name: "Mocha Caramel",
+          price: 150,
+          category: "coffee",
+          subcategory: "Coffee",
+          hasTemp: true,
+        },
+
+        // Signature (Hot/Iced)
+        {
+          id: 10,
+          name: "Creamy Coconut Latte",
+          price: 170,
+          category: "signature",
+          subcategory: "Signature",
+          hasTemp: true,
+          bestseller: true,
+        },
+        {
+          id: 11,
+          name: "Honey Oat Espresso",
+          price: 175,
+          category: "signature",
+          subcategory: "Signature",
+          hasTemp: true,
+          bestseller: true,
+        },
+        {
+          id: 12,
+          name: "Ube Coconut Brew",
+          price: 180,
+          category: "signature",
+          subcategory: "Signature",
+          hasTemp: true,
+          bestseller: true,
+        },
+
+        // Matcha Series (Hot/Iced)
+        {
+          id: 13,
+          name: "Matcha Latte",
+          price: 180,
+          category: "matcha",
+          subcategory: "Matcha Series",
+          hasTemp: true,
+          popular: true,
+        },
+        {
+          id: 14,
+          name: "Strawberry Matcha",
+          price: 220,
+          category: "matcha",
+          subcategory: "Matcha Series",
+          hasTemp: true,
+        },
+        {
+          id: 15,
+          name: "Salted Cream Matcha",
+          price: 195,
+          category: "matcha",
+          subcategory: "Matcha Series",
+          hasTemp: true,
+        },
+        {
+          id: 16,
+          name: "Coconut Matcha",
+          price: 210,
+          category: "matcha",
+          subcategory: "Matcha Series",
+          hasTemp: true,
+        },
+        {
+          id: 17,
+          name: "Dirty Matcha",
+          price: 220,
+          category: "matcha",
+          subcategory: "Matcha Series",
+          hasTemp: true,
+          note: "Coffee-based",
+        },
+
+        // Non-Coffee
+        {
+          id: 18,
+          name: "Tsoko Latte",
+          price: 130,
+          category: "noncoffee",
+          subcategory: "Non-Coffee",
+          hasTemp: true,
+        },
+        {
+          id: 19,
+          name: "Strawberry Milkshake",
+          price: 150,
+          category: "noncoffee",
+          subcategory: "Non-Coffee",
+          hasTemp: false,
+        },
+        {
+          id: 20,
+          name: "Ube Milkshake",
+          price: 140,
+          category: "noncoffee",
+          subcategory: "Non-Coffee",
+          hasTemp: false,
+        },
+        {
+          id: 21,
+          name: "Calamansi Cooler",
+          price: 90,
+          category: "noncoffee",
+          subcategory: "Non-Coffee",
+          hasTemp: true,
+        },
+
+        // Starters (No temp)
+        {
+          id: 22,
+          name: "French Fries",
+          price: 90,
+          category: "starters",
+          subcategory: "Starters",
+          hasTemp: false,
+        },
+        {
+          id: 23,
+          name: "Hotdog Sandwich w/ Nachos",
+          price: 110,
+          category: "starters",
+          subcategory: "Starters",
+          hasTemp: false,
+        },
+        {
+          id: 24,
+          name: "Burger w/ Nachos",
+          price: 140,
+          category: "starters",
+          subcategory: "Starters",
+          hasTemp: false,
+        },
+        {
+          id: 25,
+          name: "Nachos w/ Dip",
+          price: 130,
+          category: "starters",
+          subcategory: "Starters",
+          hasTemp: false,
+          note: "Salsa/Cheese",
+        },
+
+        // Rice Meals (Served with Egg & Atchara) - No temp
+        {
+          id: 26,
+          name: "Fried Chicken - Plain",
+          price: 180,
+          category: "ricemeals",
+          subcategory: "Rice Meals",
+          hasTemp: false,
+        },
+        {
+          id: 27,
+          name: "Fried Chicken - Salted Egg",
+          price: 210,
+          category: "ricemeals",
+          subcategory: "Rice Meals",
+          hasTemp: false,
+          popular: true,
+        },
+        {
+          id: 28,
+          name: "Fried Chicken - Yangnyeom",
+          price: 220,
+          category: "ricemeals",
+          subcategory: "Rice Meals",
+          hasTemp: false,
+        },
+        {
+          id: 29,
+          name: "Black Pepper Beef",
+          price: 195,
+          category: "ricemeals",
+          subcategory: "Rice Meals",
+          hasTemp: false,
+        },
+        {
+          id: 30,
+          name: "Burger Steak",
+          price: 150,
+          category: "ricemeals",
+          subcategory: "Rice Meals",
+          hasTemp: false,
+        },
+        {
+          id: 31,
+          name: "Corned Beef",
+          price: 115,
+          category: "ricemeals",
+          subcategory: "Rice Meals",
+          hasTemp: false,
+        },
+        {
+          id: 32,
+          name: "Longganisa (Sweet)",
+          price: 99,
+          category: "ricemeals",
+          subcategory: "Rice Meals",
+          hasTemp: false,
+        },
+        {
+          id: 33,
+          name: "Tocino",
+          price: 99,
+          category: "ricemeals",
+          subcategory: "Rice Meals",
+          hasTemp: false,
+        },
+        {
+          id: 34,
+          name: "Lumpiang Shanghai",
+          price: 95,
+          category: "ricemeals",
+          subcategory: "Rice Meals",
+          hasTemp: false,
+        },
+        {
+          id: 35,
+          name: "Hotdog",
+          price: 95,
+          category: "ricemeals",
+          subcategory: "Rice Meals",
+          hasTemp: false,
+        },
+
+        // Pasta - No temp
+        {
+          id: 36,
+          name: "Meatball Marinara",
+          price: 195,
+          category: "pasta",
+          subcategory: "Pasta",
+          hasTemp: false,
+        },
+        {
+          id: 37,
+          name: "Creamy Chicken",
+          price: 220,
+          category: "pasta",
+          subcategory: "Pasta",
+          hasTemp: false,
+          popular: true,
+        },
+
+        // Add-ons (Drinks) - No temp
+        {
+          id: 38,
+          name: "Espresso Shot",
+          price: 40,
+          category: "addons",
+          subcategory: "Add-ons Drink",
+          hasTemp: false,
+        },
+        {
+          id: 39,
+          name: "Oat Milk",
+          price: 50,
+          category: "addons",
+          subcategory: "Add-ons Drink",
+          hasTemp: false,
+        },
+        {
+          id: 40,
+          name: "Coconut Milk",
+          price: 60,
+          category: "addons",
+          subcategory: "Add-ons Drink",
+          hasTemp: false,
+        },
+        {
+          id: 41,
+          name: "Syrup",
+          price: 30,
+          category: "addons",
+          subcategory: "Add-ons Drink",
+          hasTemp: false,
+        },
+        {
+          id: 42,
+          name: "Salted Cream",
+          price: 45,
+          category: "addons",
+          subcategory: "Add-ons Drink",
+          hasTemp: false,
+        },
+
+        // Add-ons (Food) - No temp
+        {
+          id: 43,
+          name: "Rice",
+          price: 20,
+          category: "addons",
+          subcategory: "Add-ons Food",
+          hasTemp: false,
+        },
+        {
+          id: 44,
+          name: "Egg",
+          price: 20,
+          category: "addons",
+          subcategory: "Add-ons Food",
+          hasTemp: false,
+        },
+        {
+          id: 45,
+          name: "Nacho Dip - Tomato Salsa",
+          price: 45,
+          category: "addons",
+          subcategory: "Add-ons Food",
+          hasTemp: false,
+        },
+        {
+          id: 46,
+          name: "Nacho Dip - Cheesy Jalapeño",
+          price: 40,
+          category: "addons",
+          subcategory: "Add-ons Food",
+          hasTemp: false,
+        },
+        {
+          id: 47,
+          name: "Brownies",
+          price: 70,
+          category: "Pastries",
+          subcategory: "Pastries",
+          hasTemp: false,
+        },
+        {
+          id: 48,
+          name: "Dubai Chewy Cookies",
+          price: 100,
+          category: "Pastries",
+          subcategory: "Pastries",
+          hasVariant: true,
+          variants: [
+            { name: "1pc", price: 100 },
+            { name: "2pc", price: 190 },
+            { name: "4pc", price: 375 },
+          ],
+        },
+        {
+          id: 49,
+          name: "Cake",
+          price: 180,
+          category: "Pastries",
+          subcategory: "Pastries",
+          hasVariant: true,
+          variants: [
+            { name: "Slice", price: 180 },
+            { name: "Whole", price: 1500 },
+          ],
+        },
+      ];
+
+      // State Management
+      let cart = [];
+      let currentCategory = "all";
+      let currentPaymentMethod = "cash";
+      let isPwdSenior = false;
+      let enteredAmount = "";
+      let salesHistory = [];
+      let dailyStats = {
+        orders: 0,
+        totalSales: 0,
+        discountsApplied: 0,
+      };
+      let pendingItem = null;
+      let selectedVariant = null;
+      let selectedTemp = null;
+
+      // LocalStorage Keys
+      const STORAGE_KEYS = {
+        salesHistory: "brotherBean_salesHistory",
+        dailyStats: "brotherBean_dailyStats",
+        lastResetDate: "brotherBean_lastResetDate",
+      };
+
+      // Initialize
+      document.addEventListener("DOMContentLoaded", () => {
+        loadFromStorage();
+        checkDailyReset();
+        renderProducts();
+        updateCart();
+        updateStats();
+        updateStorageIndicator();
+      });
+
+      // Check if we need to reset for a new day
+      function checkDailyReset() {
+        const lastReset = localStorage.getItem(STORAGE_KEYS.lastResetDate);
+        const today = new Date().toDateString();
+
+        if (lastReset !== today) {
+          // New day - reset stats but keep history
+          dailyStats = {
+            orders: 0,
+            totalSales: 0,
+            discountsApplied: 0,
+          };
+          localStorage.setItem(STORAGE_KEYS.lastResetDate, today);
+          saveToStorage();
+          showToast("New day! Daily stats reset.", "warning");
+        }
+      }
+
+      // Save to LocalStorage
+      function saveToStorage() {
+        try {
+          localStorage.setItem(
+            STORAGE_KEYS.salesHistory,
+            JSON.stringify(salesHistory),
+          );
+          localStorage.setItem(
+            STORAGE_KEYS.dailyStats,
+            JSON.stringify(dailyStats),
+          );
+          updateStorageIndicator();
+        } catch (e) {
+          console.error("Storage error:", e);
+          showToast("Warning: Storage full! Export data soon.", "error");
+        }
+      }
+
+      // Load from LocalStorage
+      function loadFromStorage() {
+        try {
+          const savedHistory = localStorage.getItem(STORAGE_KEYS.salesHistory);
+          const savedStats = localStorage.getItem(STORAGE_KEYS.dailyStats);
+
+          if (savedHistory) {
+            salesHistory = JSON.parse(savedHistory);
+          }
+          if (savedStats) {
+            dailyStats = JSON.parse(savedStats);
+          }
+        } catch (e) {
+          console.error("Load error:", e);
+          showToast("Error loading saved data", "error");
+        }
+      }
+
+      // Update storage indicator
+      function updateStorageIndicator() {
+        const indicator = document.getElementById("storageStatus");
+        if (salesHistory.length > 0) {
+          indicator.textContent = `💾 ${salesHistory.length} orders saved`;
+          indicator.classList.remove("offline");
+        } else {
+          indicator.textContent = "💾 Ready";
+        }
+      }
+
+      // Render Products
+      function renderProducts(filter = "all") {
+        const grid = document.getElementById("productsGrid");
+        const searchTerm = document
+          .getElementById("searchInput")
+          .value.toLowerCase();
+
+        let filtered = menuItems;
+
+        if (filter !== "all") {
+          filtered = menuItems.filter((p) => p.category === filter);
+        }
+
+        if (searchTerm) {
+          filtered = filtered.filter(
+            (p) =>
+              p.name.toLowerCase().includes(searchTerm) ||
+              p.subcategory.toLowerCase().includes(searchTerm),
+          );
+        }
+
+        // Group by subcategory
+        const grouped = filtered.reduce((acc, item) => {
+          if (!acc[item.subcategory]) acc[item.subcategory] = [];
+          acc[item.subcategory].push(item);
+          return acc;
+        }, {});
+
+        let html = "";
+        for (const [subcategory, items] of Object.entries(grouped)) {
+          html += `<div style="grid-column: 1/-1; font-weight: 700; color: var(--primary); margin-top: 10px; margin-bottom: 5px; font-size: 14px; text-transform: uppercase; letter-spacing: 1px;">${subcategory}</div>`;
+          html += items
+            .map(
+              (product) => `
+                    <div class="product-card" onclick="handleProductClick(${product.id})">
+                        <div class="product-header">
+                            <div class="product-name">
+                                ${product.name}
+                                ${product.bestseller ? '<span class="product-badge">★ SIGNATURE</span>' : ""}
+                                ${product.popular ? '<span class="product-badge" style="background: var(--secondary);">♥ BEST</span>' : ""}
+                            </div>
+                        </div>
+                        <div class="product-price">₱${product.price.toFixed(2)}</div>
+                        ${product.note ? `<div class="product-category">${product.note}</div>` : ""}
+                        ${product.hasTemp ? '<div class="product-category" style="color: var(--primary);">☕ Hot / Iced</div>' : ""}
+                        ${product.hasVariant ? '<div class="product-category" style="color: var(--secondary);">⚡ Options Available</div>' : ""}
+                    </div>
+                `,
+            )
+            .join("");
+        }
+
+        grid.innerHTML =
+          html ||
+          '<div style="grid-column: 1/-1; text-align: center; padding: 40px; color: var(--gray);">No items found</div>';
+      }
+
+      // Handle Product Click (Check for variants/temp)
+      function handleProductClick(productId) {
+        const product = menuItems.find((p) => p.id === productId);
+
+        if (product.hasVariant || product.hasTemp) {
+          openVariantModal(product);
+        } else {
+          addToCart(productId);
+        }
+      }
+
+      // Variant Selection Modal
+      function openVariantModal(product) {
+        pendingItem = product;
+        selectedVariant = null;
+        selectedTemp = null;
+
+        document.getElementById("variantTitle").textContent = product.name;
+        const content = document.getElementById("variantContent");
+        const tempSection = document.getElementById("tempSection");
+
+        let html = "";
+
+        // Show variants if available (like Americano)
+        if (product.hasVariant && product.variants) {
+          html +=
+            '<div style="margin-bottom: 15px; font-weight: 600; color: var(--gray);">Select Variant:</div>';
+          html += '<div class="variant-options">';
+          product.variants.forEach((v) => {
+            html += `
+                        <button class="variant-btn" onclick="selectVariant('${v.name}', ${v.price})">
+                            <span>${v.name}</span>
+                            <span>₱${v.price.toFixed(2)}</span>
+                        </button>
+                    `;
+          });
+          html += "</div>";
+        } else {
+          // Just show price for non-variant items
+          html += `<div style="text-align: center; padding: 20px; background: var(--cream); border-radius: 10px; margin-bottom: 15px;">
+                    <div style="font-size: 24px; font-weight: 800; color: var(--primary);">₱${product.price.toFixed(2)}</div>
+                </div>`;
+        }
+
+        content.innerHTML = html;
+
+        // Show temperature options for drinks
+        if (product.hasTemp) {
+          tempSection.classList.remove("hidden");
+          document
+            .querySelectorAll(".temp-btn")
+            .forEach((btn) => btn.classList.remove("selected"));
+        } else {
+          tempSection.classList.add("hidden");
+          selectedTemp = "N/A";
+        }
+
+        document.getElementById("confirmVariantBtn").disabled = true;
+        document.getElementById("variantModal").classList.add("active");
+      }
+
+      function selectVariant(name, price) {
+        selectedVariant = { name, price };
+        document
+          .querySelectorAll(".variant-btn")
+          .forEach((btn) => btn.classList.remove("selected"));
+        event.currentTarget.classList.add("selected");
+        checkCanConfirm();
+      }
+
+      function selectTemp(temp) {
+        selectedTemp = temp;
+        document
+          .querySelectorAll(".temp-btn")
+          .forEach((btn) => btn.classList.remove("selected"));
+        event.currentTarget.classList.add("selected");
+        checkCanConfirm();
+      }
+
+      function checkCanConfirm() {
+        const needsVariant = pendingItem.hasVariant;
+        const needsTemp = pendingItem.hasTemp;
+
+        const variantOk = !needsVariant || selectedVariant;
+        const tempOk = !needsTemp || selectedTemp;
+
+        document.getElementById("confirmVariantBtn").disabled = !(
+          variantOk && tempOk
+        );
+      }
+
+      function confirmVariant() {
+        if (!pendingItem) return;
+
+        const itemToAdd = {
+          ...pendingItem,
+          id: Date.now(), // Unique ID for cart
+          baseId: pendingItem.id,
+          name: pendingItem.name,
+          price: selectedVariant ? selectedVariant.price : pendingItem.price,
+          variant: selectedVariant ? selectedVariant.name : null,
+          temperature: selectedTemp,
+        };
+
+        // Add directly to cart
+        const existingItem = cart.find(
+          (item) =>
+            item.baseId === pendingItem.id &&
+            item.variant === itemToAdd.variant &&
+            item.temperature === itemToAdd.temperature,
+        );
+
+        if (existingItem) {
+          existingItem.quantity++;
+          showToast(`Added another ${itemToAdd.name}`, "success");
+        } else {
+          cart.push({
+            ...itemToAdd,
+            quantity: 1,
+          });
+          showToast(`${itemToAdd.name} added to order`, "success");
+        }
+
+        updateCart();
+        closeVariantModal();
+      }
+
+      function closeVariantModal() {
+        document.getElementById("variantModal").classList.remove("active");
+        pendingItem = null;
+        selectedVariant = null;
+        selectedTemp = null;
+      }
+
+      // Category Selection
+      function selectCategory(category) {
+        currentCategory = category;
+        document.querySelectorAll(".category-chip").forEach((chip) => {
+          chip.classList.remove("active");
+          if (
+            (category === "all" && chip.textContent.includes("All")) ||
+            chip.getAttribute("onclick").includes(`'${category}'`)
+          ) {
+            chip.classList.add("active");
+          }
+        });
+        renderProducts(category);
+      }
+
+      // Search Products
+      function searchProducts() {
+        renderProducts(currentCategory);
+      }
+
+      // Add to Cart (for non-variant items)
+      function addToCart(productId) {
+        const product = menuItems.find((p) => p.id === productId);
+        const existingItem = cart.find((item) => item.baseId === productId);
+
+        if (existingItem) {
+          existingItem.quantity++;
+          showToast(`Added another ${product.name}`, "success");
+        } else {
+          cart.push({
+            id: Date.now(),
+            baseId: product.id,
+            name: product.name,
+            price: product.price,
+            category: product.category,
+            variant: null,
+            temperature: "N/A",
+            quantity: 1,
+          });
+          showToast(`${product.name} added to order`, "success");
+        }
+
+        updateCart();
+      }
+
+      // Toggle PWD/Senior Discount
+      function toggleDiscount() {
+        const checkbox = document.getElementById("pwdSeniorCheck");
+        const toggle = document.getElementById("discountToggle");
+
+        isPwdSenior = !isPwdSenior;
+        checkbox.checked = isPwdSenior;
+
+        if (isPwdSenior) {
+          toggle.classList.add("active");
+          if (cart.length > 0) {
+            showToast("20% PWD/Senior discount applied!", "success");
+          }
+        } else {
+          toggle.classList.remove("active");
+          if (cart.length > 0) {
+            showToast("Discount removed", "warning");
+          }
+        }
+
+        updateCart();
+      }
+
+      // Update Cart Display
+      function updateCart() {
+        const cartItems = document.getElementById("cartItems");
+        const subtotalEl = document.getElementById("subtotal");
+        const totalEl = document.getElementById("total");
+        const checkoutBtn = document.getElementById("checkoutBtn");
+        const discountRow = document.getElementById("discountRow");
+        const discountAmountEl = document.getElementById("discountAmount");
+        const originalTotalRow = document.getElementById("originalTotalRow");
+        const originalTotalEl = document.getElementById("originalTotal");
+
+        if (cart.length === 0) {
+          cartItems.innerHTML = `
+                    <div class="empty-cart">
+                        <div class="empty-cart-icon">🛒</div>
+                        <p>Your order is empty</p>
+                        <p style="font-size: 13px; margin-top: 5px;">Click items from the menu to add</p>
+                    </div>
+                `;
+          checkoutBtn.disabled = true;
+          discountRow.classList.add("hidden");
+          originalTotalRow.classList.add("hidden");
+        } else {
+          cartItems.innerHTML = cart
+            .map(
+              (item) => `
+                    <div class="cart-item">
+                        <div class="cart-item-details">
+                            <div class="cart-item-name">${item.name}</div>
+                            ${item.variant ? `<div class="cart-item-variant">${item.variant}${item.temperature !== "N/A" ? ` • ${item.temperature}` : ""}</div>` : ""}
+                            ${!item.variant && item.temperature !== "N/A" ? `<div class="cart-item-variant">${item.temperature}</div>` : ""}
+                            <div class="cart-item-price">₱${item.price.toFixed(2)} each</div>
+                        </div>
+                        <div class="quantity-controls">
+                            <button class="qty-btn" onclick="updateQuantity(${item.id}, -1)">−</button>
+                            <span class="qty-value">${item.quantity}</span>
+                            <button class="qty-btn" onclick="updateQuantity(${item.id}, 1)">+</button>
+                        </div>
+                        <div class="remove-btn" onclick="removeFromCart(${item.id})">🗑️</div>
+                    </div>
+                `,
+            )
+            .join("");
+          checkoutBtn.disabled = false;
+        }
+
+        // Calculate totals (NO TAX)
+        const subtotal = cart.reduce(
+          (sum, item) => sum + item.price * item.quantity,
+          0,
+        );
+
+        let discountAmount = 0;
+        let finalTotal = subtotal;
+
+        // Apply 20% discount for PWD/Senior
+        if (isPwdSenior && subtotal > 0) {
+          discountAmount = subtotal * 0.2;
+          finalTotal = subtotal - discountAmount;
+
+          discountRow.classList.remove("hidden");
+          originalTotalRow.classList.remove("hidden");
+          discountAmountEl.textContent = `-₱${discountAmount.toFixed(2)}`;
+          originalTotalEl.textContent = `₱${subtotal.toFixed(2)}`;
+        } else {
+          discountRow.classList.add("hidden");
+          originalTotalRow.classList.add("hidden");
+        }
+
+        subtotalEl.textContent = `₱${subtotal.toFixed(2)}`;
+        totalEl.textContent = `₱${finalTotal.toFixed(2)}`;
+      }
+
+      // Update Quantity
+      function updateQuantity(itemId, change) {
+        const item = cart.find((i) => i.id === itemId);
+
+        if (item) {
+          const newQty = item.quantity + change;
+          if (newQty > 0) {
+            item.quantity = newQty;
+          } else {
+            removeFromCart(itemId);
+            return;
+          }
+          updateCart();
+        }
+      }
+
+      // Remove from Cart
+      function removeFromCart(itemId) {
+        const item = cart.find((i) => i.id === itemId);
+        cart = cart.filter((item) => item.id !== itemId);
+        updateCart();
+        showToast(`${item.name} removed`, "success");
+      }
+
+      // Clear Cart
+      function clearCart() {
+        if (cart.length === 0) return;
+        if (confirm("Are you sure you want to clear this order?")) {
+          cart = [];
+          isPwdSenior = false;
+          document.getElementById("pwdSeniorCheck").checked = false;
+          document.getElementById("discountToggle").classList.remove("active");
+          updateCart();
+          showToast("Order cleared", "success");
+        }
+      }
+
+      // Payment Modal
+      function openPaymentModal() {
+        const total = document.getElementById("total").textContent;
+        document.getElementById("paymentAmount").textContent = total;
+        document.getElementById("paymentModal").classList.add("active");
+        enteredAmount = "";
+        updateChangeDisplay();
+        updateDoneButton();
+      }
+
+      function closePaymentModal() {
+        document.getElementById("paymentModal").classList.remove("active");
+        enteredAmount = "";
+      }
+
+      function selectPaymentMethod(method) {
+        currentPaymentMethod = method;
+        document
+          .querySelectorAll(".payment-method")
+          .forEach((el) => el.classList.remove("active"));
+        event.currentTarget.classList.add("active");
+
+        const numpad = document.getElementById("cashNumpad");
+        const changeDisplay = document.getElementById("changeDisplay");
+
+        if (method === "cash") {
+          numpad.style.display = "grid";
+          changeDisplay.style.display = "block";
+        } else {
+          numpad.style.display = "none";
+          changeDisplay.style.display = "none";
+        }
+        updateDoneButton();
+      }
+
+      function updateDoneButton() {
+        const doneBtn = document.getElementById("doneBtn");
+        const total = parseFloat(
+          document
+            .getElementById("total")
+            .textContent.replace("₱", "")
+            .replace(",", ""),
+        );
+
+        if (currentPaymentMethod === "cash") {
+          const entered = parseFloat(enteredAmount) || 0;
+          doneBtn.disabled = entered < total;
+        } else {
+          doneBtn.disabled = false;
+        }
+      }
+
+      // Numpad Functions
+      function enterDigit(digit) {
+        if (enteredAmount.length < 10) {
+          enteredAmount += digit;
+          updateChangeDisplay();
+          updateDoneButton();
+        }
+      }
+
+      function clearAmount() {
+        enteredAmount = "";
+        updateChangeDisplay();
+        updateDoneButton();
+      }
+
+      function exactAmount() {
+        const total = parseFloat(
+          document
+            .getElementById("total")
+            .textContent.replace("₱", "")
+            .replace(",", ""),
+        );
+        enteredAmount = total.toFixed(2);
+        updateChangeDisplay();
+        updateDoneButton();
+      }
+
+      function quickAmount(amount) {
+        const current = parseFloat(enteredAmount) || 0;
+        enteredAmount = (current + amount).toFixed(2);
+        updateChangeDisplay();
+        updateDoneButton();
+      }
+
+      function updateChangeDisplay() {
+        const total = parseFloat(
+          document
+            .getElementById("total")
+            .textContent.replace("₱", "")
+            .replace(",", ""),
+        );
+        const entered = parseFloat(enteredAmount) || 0;
+        const change = entered - total;
+
+        const display = document.getElementById("changeDisplay");
+        if (enteredAmount && change >= 0) {
+          display.innerHTML = `<span style="color: var(--success);">Change: ₱${change.toFixed(2)}</span>`;
+        } else if (enteredAmount) {
+          display.innerHTML = `<span style="color: var(--danger);">Insufficient: ₱${Math.abs(change).toFixed(2)}</span>`;
+        } else {
+          display.innerHTML = "";
+        }
+      }
+
+      // Complete Payment
+      function completePayment() {
+        const total = parseFloat(
+          document
+            .getElementById("total")
+            .textContent.replace("₱", "")
+            .replace(",", ""),
+        );
+
+        // Update stats
+        dailyStats.orders++;
+        dailyStats.totalSales += total;
+        if (isPwdSenior) dailyStats.discountsApplied++;
+
+        // Save to sales history with full item details
+        const sale = {
+          id: Date.now(),
+          items: cart.map((item) => ({
+            name: item.name,
+            price: item.price,
+            quantity: item.quantity,
+            variant: item.variant,
+            temperature: item.temperature,
+            subtotal: item.price * item.quantity,
+          })),
+          subtotal: cart.reduce(
+            (sum, item) => sum + item.price * item.quantity,
+            0,
+          ),
+          total: total,
+          paymentMethod: currentPaymentMethod,
+          timestamp: new Date().toLocaleString(),
+          isPwdSenior: isPwdSenior,
+          discountAmount: isPwdSenior
+            ? cart.reduce((sum, item) => sum + item.price * item.quantity, 0) *
+              0.2
+            : 0,
+        };
+        salesHistory.push(sale);
+
+        // SAVE TO LOCALSTORAGE
+        saveToStorage();
+
+        // Generate receipt
+        generateReceipt(sale);
+
+        // Clear cart
+        cart = [];
+        isPwdSenior = false;
+        document.getElementById("pwdSeniorCheck").checked = false;
+        document.getElementById("discountToggle").classList.remove("active");
+        enteredAmount = "";
+        updateCart();
+        updateStats();
+        closePaymentModal();
+
+        // Show receipt
+        document.getElementById("receiptModal").classList.add("active");
+        showToast("Payment successful! Thank you!", "success");
+      }
+
+      // Generate Receipt
+      function generateReceipt(sale) {
+        const receiptHTML = `
+                <div class="receipt">
+                    <div class="receipt-header">
+                        <div class="receipt-title">Brother Bean</div>
+                        <div class="receipt-subtitle">Coffee first, then the world.</div>
+                        <div class="receipt-info">
+                            ${sale.timestamp}<br>
+                            Order #${sale.id.toString().slice(-6)}<br>
+                            Payment: ${sale.paymentMethod.toUpperCase()}<br>
+                            ${sale.isPwdSenior ? "<strong>♿ PWD/Senior Citizen</strong><br>" : ""}
+                            Cashier: Staff
+                        </div>
+                    </div>
+                    <div class="receipt-items">
+                        ${sale.items
+                          .map(
+                            (item) => `
+                            <div class="receipt-item">
+                                <span class="receipt-item-name">
+                                    ${item.name}
+                                    ${item.variant ? `<div class="receipt-item-variant">${item.variant}</div>` : ""}
+                                    ${item.temperature !== "N/A" ? `<div class="receipt-item-variant">${item.temperature}</div>` : ""}
+                                </span>
+                                <span class="receipt-item-qty">x${item.quantity}</span>
+                                <span>₱${(item.price * item.quantity).toFixed(2)}</span>
+                            </div>
+                        `,
+                          )
+                          .join("")}
+                    </div>
+                    <div class="receipt-totals">
+                        <div class="receipt-row">
+                            <span>Subtotal</span>
+                            <span>₱${sale.subtotal.toFixed(2)}</span>
+                        </div>
+                        ${
+                          sale.isPwdSenior
+                            ? `
+                            <div class="receipt-row discount">
+                                <span>PWD/Senior Discount (20%)</span>
+                                <span>-₱${sale.discountAmount.toFixed(2)}</span>
+                            </div>
+                        `
+                            : ""
+                        }
+                        <div class="receipt-row total">
+                            <span>TOTAL</span>
+                            <span>₱${sale.total.toFixed(2)}</span>
+                        </div>
+                    </div>
+                    <div class="receipt-footer">
+                        Thank you for visiting Brother Bean!<br>
+                        Please come again 🫘<br><br>
+                        VAT Registered TIN: 000-000-000-000<br>
+                        Permit No: 0000000
+                    </div>
+                </div>
+            `;
+
+        document.getElementById("receiptContent").innerHTML = receiptHTML;
+      }
+
+      function closeReceipt() {
+        document.getElementById("receiptModal").classList.remove("active");
+      }
+
+      function printReceipt() {
+        const receiptWindow = window.open("", "_blank");
+        const receiptContent =
+          document.getElementById("receiptContent").innerHTML;
+        receiptWindow.document.write(`
+                <html>
+                <head>
+                    <title>Brother Bean Receipt</title>
+                    <style>
+                        body { 
+                            font-family: 'Courier New', monospace; 
+                            padding: 20px; 
+                            background: #f5f5f5;
+                        }
+                        .receipt { 
+                            max-width: 400px; 
+                            margin: 0 auto; 
+                            background: white;
+                            padding: 30px;
+                            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+                        }
+                    </style>
+                </head>
+                <body>
+                    ${receiptContent}
+                    <script>window.print(); window.close();<\/script>
+                </body>
+                </html>
+            `);
+        receiptWindow.document.close();
+      }
+
+      // Update Statistics
+      function updateStats() {
+        document.getElementById("todayOrders").textContent = dailyStats.orders;
+        document.getElementById("totalSales").textContent =
+          `₱${dailyStats.totalSales.toFixed(2)}`;
+        document.getElementById("activeDiscounts").textContent =
+          dailyStats.discountsApplied;
+      }
+
+      // Toast Notification
+      function showToast(message, type = "success") {
+        const toast = document.getElementById("toast");
+        const iconMap = {
+          success: "✅",
+          error: "❌",
+          warning: "⚠️",
+        };
+
+        toast.className = `toast ${type}`;
+        document.getElementById("toastIcon").textContent = iconMap[type];
+        document.getElementById("toastMessage").textContent = message;
+
+        toast.classList.add("show");
+        setTimeout(() => {
+          toast.classList.remove("show");
+        }, 3000);
+      }
+
+      // Sales Report with Full Item Details
+      function showSalesReport() {
+        if (salesHistory.length === 0) {
+          showToast("No sales recorded today", "error");
+          return;
+        }
+
+        const content = document.getElementById("salesReportContent");
+
+        // Calculate summary stats
+        const totalRevenue = salesHistory.reduce(
+          (sum, sale) => sum + sale.total,
+          0,
+        );
+        const totalDiscounts = salesHistory.filter((s) => s.isPwdSenior).length;
+
+        let html = `
+                <div class="report-summary">
+                    <div class="report-summary-item">
+                        <h4>Total Orders</h4>
+                        <p>${salesHistory.length}</p>
+                    </div>
+                    <div class="report-summary-item">
+                        <h4>Revenue</h4>
+                        <p>₱${totalRevenue.toFixed(2)}</p>
+                    </div>
+                    <div class="report-summary-item">
+                        <h4>Discounts</h4>
+                        <p>${totalDiscounts}</p>
+                    </div>
+                </div>
+                <div class="sales-report-content">
+            `;
+
+        // Show each sale with items
+        salesHistory
+          .slice()
+          .reverse()
+          .forEach((sale, index) => {
+            const orderNum = salesHistory.length - index;
+            html += `
+                    <div class="sale-entry">
+                        <div class="sale-header">
+                            <div>
+                                <span class="sale-order-num">Order #${sale.id.toString().slice(-6)}</span>
+                                ${sale.isPwdSenior ? '<span class="sale-badge pwd">PWD/SR</span>' : ""}
+                                <span class="sale-badge payment-${sale.paymentMethod}">${sale.paymentMethod.toUpperCase()}</span>
+                            </div>
+                            <span class="sale-total">₱${sale.total.toFixed(2)}</span>
+                        </div>
+                        <div class="sale-time">${sale.timestamp}</div>
+                        <div class="sale-items-list">
+                `;
+
+            // List all items in this order
+            sale.items.forEach((item) => {
+              const variantText = item.variant ? ` (${item.variant})` : "";
+              const tempText =
+                item.temperature && item.temperature !== "N/A"
+                  ? ` - ${item.temperature}`
+                  : "";
+              html += `
+                        <div class="sale-item-row">
+                            <span class="sale-item-name">
+                                ${item.name}${variantText}${tempText}
+                                <span class="sale-item-details">x${item.quantity}</span>
+                            </span>
+                            <span class="sale-item-price">₱${item.subtotal.toFixed(2)}</span>
+                        </div>
+                    `;
+            });
+
+            html += `
+                        </div>
+                        <div class="sale-summary">
+                            <span>Subtotal: ₱${sale.subtotal.toFixed(2)}</span>
+                            ${sale.isPwdSenior ? `<span style="color: var(--success);">Discount: -₱${sale.discountAmount.toFixed(2)}</span>` : ""}
+                        </div>
+                    </div>
+                `;
+          });
+
+        html += `
+                </div>
+                <div class="data-actions">
+                    <button class="btn btn-export" onclick="exportToCSV()">
+                        📥 Export to Excel
+                    </button>
+                    <button class="btn btn-clear" onclick="clearAllData()">
+                        🗑️ Clear All Data
+                    </button>
+                </div>
+            `;
+
+        content.innerHTML = html;
+        document.getElementById("salesReportModal").classList.add("active");
+      }
+
+      function closeSalesReport() {
+        document.getElementById("salesReportModal").classList.remove("active");
+      }
+
+      // Export to CSV
+      function exportToCSV() {
+        let csv =
+          "Order ID,Date/Time,Item Name,Variant,Temperature,Quantity,Price,Subtotal,Discount,Total,Payment Method\n";
+
+        salesHistory.forEach((sale) => {
+          sale.items.forEach((item) => {
+            csv += `${sale.id},${sale.timestamp},"${item.name}","${item.variant || ""}","${item.temperature || ""}",${item.quantity},${item.price},${item.subtotal},${sale.isPwdSenior ? sale.discountAmount : 0},${sale.total},${sale.paymentMethod}\n`;
+          });
+        });
+
+        const blob = new Blob([csv], { type: "text/csv" });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `brother_bean_sales_${new Date().toISOString().split("T")[0]}.csv`;
+        a.click();
+        window.URL.revokeObjectURL(url);
+
+        showToast("Data exported successfully!", "success");
+      }
+
+      // Clear all data
+      function clearAllData() {
+        if (
+          confirm(
+            "⚠️ WARNING: This will permanently delete ALL sales history!\n\nAre you sure you want to continue?",
+          )
+        ) {
+          if (confirm("Final confirmation: Delete all saved transactions?")) {
+            localStorage.removeItem(STORAGE_KEYS.salesHistory);
+            localStorage.removeItem(STORAGE_KEYS.dailyStats);
+            salesHistory = [];
+            dailyStats = {
+              orders: 0,
+              totalSales: 0,
+              discountsApplied: 0,
+            };
+            updateStats();
+            updateStorageIndicator();
+            closeSalesReport();
+            showToast("All data cleared successfully", "success");
+          }
+        }
+      }
+
+      function showMenu() {
+        const categories = {};
+        menuItems.forEach((item) => {
+          if (!categories[item.subcategory]) categories[item.subcategory] = [];
+          categories[item.subcategory].push(item);
+        });
+
+        let menuText = "📋 Brother Bean Menu\n\n";
+        for (const [cat, items] of Object.entries(categories)) {
+          menuText += `\n${cat}:\n`;
+          items.forEach((item) => {
+            menuText += `  • ${item.name} - ₱${item.price}\n`;
+          });
+        }
+
+        alert(menuText);
+      }
+
+      function openDrawer() {
+        const cashInDrawer = dailyStats.totalSales;
+        alert(
+          `💰 Cash Drawer Status\n\nCurrent Cash: ₱${cashInDrawer.toFixed(2)}\nToday's Transactions: ${dailyStats.orders}\nTotal Saved Orders: ${salesHistory.length}\n\nDrawer is balanced ✅`,
+        );
+      }
+
+      // Keyboard Shortcuts
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") {
+          closePaymentModal();
+          closeReceipt();
+          closeVariantModal();
+          closeSalesReport();
+        }
+      });
+    </script>
+  </body>
+</html>
