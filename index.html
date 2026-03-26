@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Brother Bean Cafe POS - PROTOTYPE</title>
+    <link rel="stylesheet" href="assets/style.css" />
+  </head>
+  <body>
+    <div class="app-container">
+      <header>
+        <div class="logo">
+          <div class="logo-icon">🐻</div>
+          <div class="logo-text">
+            <h1>Brother Bean Cafe</h1>
+            <p>Point of Sale System</p>
+          </div>
+        </div>
+        <div class="header-actions">
+        <button class="btn btn-primary" onclick="openDrawer()">
+            💰 Cash Drawer
+          </button>
+        </div>
+      </header>
+
+      <div class="main-grid">
+        <div class="products-section">
+          <div class="section-header">
+            <h2 class="section-title">
+              <span>☕</span>
+              Menu Items
+            </h2>
+          </div>
+
+          <div class="search-bar">
+            <span class="search-icon">🔍</span>
+            <input
+              type="text"
+              id="searchInput"
+              placeholder="Search menu items..."
+              oninput="searchProducts()"
+            />
+          </div>
+
+          <div class="categories" id="categories">
+            <div class="category-chip active" onclick="selectCategory('all')">
+              All Items
+            </div>
+            <div class="category-chip" onclick="selectCategory('coffee')">
+              ☕ Coffee
+            </div>
+            <div class="category-chip" onclick="selectCategory('signature')">
+              ⭐ Signature
+            </div>
+            <div class="category-chip" onclick="selectCategory('matcha')">
+              🍵 Matcha
+            </div>
+            <div class="category-chip" onclick="selectCategory('noncoffee')">
+              🥤 Non-coffee
+            </div>
+            <div class="category-chip" onclick="selectCategory('starters')">
+              🍟 Starters
+            </div>
+            <div class="category-chip" onclick="selectCategory('ricemeals')">
+              🍚 Rice Meals
+            </div>
+            <div class="category-chip" onclick="selectCategory('pasta')">
+              🍝 Pasta
+            </div>
+          </div>
+
+          <div class="products-grid" id="productsGrid">
+            <!-- Products rendered here -->
+          </div>
+        </div>
+
+        <div class="cart-section">
+          <div class="section-header">
+            <h2 class="section-title">
+              <span>🛒</span>
+              Current Order
+            </h2>
+            <button
+              class="btn btn-secondary"
+              onclick="clearCart()"
+              style="padding: 8px 16px; font-size: 12px"
+            >
+              Clear Order
+            </button>
+          </div>
+
+          <div class="discount-section">
+            <div class="discount-header">
+              <span>♿</span>
+              <span>Special Discount (20% OFF)</span>
+            </div>
+            <label
+              class="discount-toggle"
+              id="discountToggle"
+              onclick="toggleDiscount()"
+            >
+              <input type="checkbox" id="pwdSeniorCheck" />
+              <span>PWD / Senior Citizen</span>
+              <span style="margin-left: auto; font-size: 12px; color: var(--gray)">Save 20%</span>
+            </label>
+          </div>
+
+          <div class="cart-items" id="cartItems">
+            <div class="empty-cart">
+              <div class="empty-cart-icon">🛒</div>
+              <p>Your order is empty</p>
+              <p style="font-size: 13px; margin-top: 5px">
+                Click items from the menu to add
+              </p>
+            </div>
+          </div>
+
+          <div class="cart-summary">
+            <div class="summary-row">
+              <span>Subtotal</span>
+              <span id="subtotal">₱0.00</span>
+            </div>
+            <div class="summary-row discount hidden" id="discountRow">
+              <span>PWD/Senior Discount (20%)</span>
+              <span id="discountAmount">-₱0.00</span>
+            </div>
+            <div class="summary-row discounted-total hidden" id="originalTotalRow">
+              <span>Original Total</span>
+              <span id="originalTotal">₱0.00</span>
+            </div>
+            <div class="summary-row total">
+              <span>Total Amount</span>
+              <span id="total">₱0.00</span>
+            </div>
+            <button
+              class="checkout-btn"
+              id="checkoutBtn"
+              onclick="openPaymentModal()"
+              disabled
+            >
+              💳 Proceed to Payment
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Variant Selection Modal -->
+    <div class="modal-overlay" id="variantModal">
+      <div class="modal">
+        <div class="modal-header">
+          <span id="variantTitle">Select Option</span>
+          <button class="close-modal" onclick="closeVariantModal()">&times;</button>
+        </div>
+
+        <div id="variantContent">
+          <!-- Dynamic content -->
+        </div>
+
+        <div class="temperature-options hidden" id="tempSection">
+          <button class="temp-btn" onclick="selectTemp('Hot')">🔥 Hot</button>
+          <button class="temp-btn" onclick="selectTemp('Iced')">🧊 Iced</button>
+        </div>
+
+        <button
+          class="complete-payment-btn"
+          onclick="confirmVariant()"
+          style="margin-top: 20px"
+          id="confirmVariantBtn"
+          disabled
+        >
+          Add to Order
+        </button>
+      </div>
+    </div>
+
+    <!-- Payment Modal -->
+    <div class="modal-overlay" id="paymentModal">
+      <div class="modal">
+        <div class="modal-header">
+          <span>Payment</span>
+          <button class="close-modal" onclick="closePaymentModal()">&times;</button>
+        </div>
+
+        <div class="payment-methods">
+          <div class="payment-method active" onclick="selectPaymentMethod('cash')">
+            <div class="payment-icon">💵</div>
+            <div class="payment-label">Cash</div>
+          </div>
+          <div class="payment-method" onclick="selectPaymentMethod('gcash')">
+            <div class="payment-icon">📱</div>
+            <div class="payment-label">GCash</div>
+          </div>
+        </div>
+
+      <div class="amount-display">
+  <div class="amount-label">Amount Due</div>
+  <div class="amount-value" id="paymentAmount">₱0.00</div>
+  <div class="amount-label" style="margin-top: 8px;">Amount Tendered</div>
+  <div class="amount-tendered" id="tenderedDisplay">₱0.00</div>
+  <div id="changeDisplay" style="margin-top: 8px; font-size: 14px; min-height: 20px;"></div>
+</div>
+
+        <div class="numpad" id="cashNumpad">
+          <button class="numpad-btn" onclick="enterDigit('1')">1</button>
+          <button class="numpad-btn" onclick="enterDigit('2')">2</button>
+          <button class="numpad-btn" onclick="enterDigit('3')">3</button>
+          <button class="numpad-btn" onclick="enterDigit('4')">4</button>
+          <button class="numpad-btn" onclick="enterDigit('5')">5</button>
+          <button class="numpad-btn" onclick="enterDigit('6')">6</button>
+          <button class="numpad-btn" onclick="enterDigit('7')">7</button>
+          <button class="numpad-btn" onclick="enterDigit('8')">8</button>
+          <button class="numpad-btn" onclick="enterDigit('9')">9</button>
+          <button class="numpad-btn" onclick="enterDigit('.')">.</button>
+          <button class="numpad-btn" onclick="enterDigit('0')">0</button>
+          <button class="numpad-btn action" onclick="clearAmount()">C</button>
+        </div>
+
+
+        <div class="payment-actions">
+          <button
+            class="btn btn-danger"
+            onclick="closePaymentModal()"
+            style="padding: 18px; font-size: 16px"
+          >
+            ← Back
+          </button>
+          <button
+            class="complete-payment-btn"
+            onclick="completePayment()"
+            id="doneBtn"
+            disabled
+          >
+            ✅ Done
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Receipt Modal -->
+    <div class="modal-overlay" id="receiptModal">
+      <div class="modal" style="max-width: 450px; background: var(--light)">
+        <div id="receiptContent"></div>
+        <div style="display: flex; gap: 10px; margin-top: 20px">
+          <button class="btn btn-secondary" onclick="closeReceipt()" style="flex: 1">
+            Close
+          </button>
+          <button class="btn btn-primary" onclick="printReceipt()" style="flex: 1">
+            🖨️ Print Receipt
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div class="toast" id="toast">
+      <span id="toastIcon">✅</span>
+      <span id="toastMessage">Operation successful</span>
+    </div>
+
+    <script type="module" src="controllers/posController.js"></script>
+  </body>
+</html>

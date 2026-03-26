@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Brother Bean — Admin Panel</title>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/adminstyle.css">
+</head>
+<body>
+
+<!-- ══ LOGIN ══ -->
+<div id="login-screen">
+  <div class="ls-left">
+    <div class="ls-logo">☕</div>
+    <div class="ls-name">Brother Bean</div>
+    <div class="ls-sub">Coffee House</div>
+    <div class="ls-divider"></div>
+    <div class="ls-portal">Admin Portal</div>
+  </div>
+  <div class="ls-right">
+    <div class="ls-title">Welcome Back!</div>
+    <div class="ls-desc">Sign in to manage your shop</div>
+    <div class="ls-label">Username</div>
+    <input class="ls-input" type="text" id="u" placeholder="admin" autocomplete="off">
+    <div class="ls-label">Password</div>
+    <input class="ls-input" type="password" id="p" placeholder="••••••••">
+    <div class="ls-error" id="err"></div>
+    <button class="ls-btn" onclick="window.login()">Sign In</button>
+  </div>
+</div>
+
+<!-- ══ APP ══ -->
+<div id="app">
+
+  <!-- Top Bar -->
+  <div class="topbar">
+    <div class="topbar-brand">
+      <span class="topbar-icon">☕</span>
+      <div>
+        <div class="topbar-name">Brother Bean</div>
+        <div class="topbar-sub">Coffee House</div>
+      </div>
+    </div>
+    <div class="topbar-sep"></div>
+    <div class="topbar-page" id="topbar-page">Dashboard</div>
+    <div class="topbar-right">
+      <span class="topbar-date">Saturday, March 14, 2026</span>
+      <div class="topbar-notif">🔔<div class="notif-dot"></div></div>
+      <div class="topbar-avatar">AD</div>
+      <span class="topbar-uname">Admin</span>
+      <button class="topbar-logout" onclick="window.logout()">Sign out</button>
+    </div>
+  </div>
+
+  <div class="body-wrap">
+
+    <!-- Sidebar -->
+    <div class="sidebar">
+      <div class="nav-section">Overview</div>
+      <div class="nav-item active" onclick="window.showPage('dashboard', this, 'Dashboard')">
+        <span class="nav-icon">📊</span>Dashboard
+      </div>
+
+      <div class="nav-section">Shop</div>
+      <div class="nav-item" onclick="window.showPage('menu', this, 'Menu')">
+        <span class="nav-icon">☕</span>Menu
+      </div>
+      <div class="nav-item" onclick="window.showPage('inventory', this, 'Inventory')">
+        <span class="nav-icon">📦</span>Inventory<span class="nav-badge">2</span>
+      </div>
+      <div class="nav-item" onclick="window.showPage('staff', this, 'Staff')">
+        <span class="nav-icon">👥</span>Staff
+      </div>
+      <div class="nav-section">System</div>
+      <div class="nav-item" onclick="window.showPage('settings', this, 'Settings')">
+        <span class="nav-icon">⚙️</span>Settings
+      </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="main">
+
+      <!-- ── DASHBOARD ── -->
+      <div id="dashboard" class="page active">
+        <div class="page-header">
+          <div class="page-title">Good morning ☀️</div>
+          <div class="page-sub">Here's what's happening at Brother Bean today.</div>
+        </div>
+
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-top">
+              <div class="stat-icon-wrap">💰</div>
+              <span class="stat-trend trend-up" id="salesTrend">—</span>
+            </div>
+            <div class="stat-val" id="statSales">₱0.00</div>
+            <div class="stat-label">Today's Sales</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-top">
+              <div class="stat-icon-wrap">🧾</div>
+              <span class="stat-trend trend-up" id="ordersTrend">—</span>
+            </div>
+            <div class="stat-val" id="statOrders">0</div>
+            <div class="stat-label">Orders Today</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-top">
+              <div class="stat-icon-wrap">🔥</div>
+              <span class="stat-trend trend-neutral" id="bestSellerCount">—</span>
+            </div>
+            <div class="stat-val" id="statBestSeller" style="font-size:1.1rem;padding-top:4px;">—</div>
+            <div class="stat-label">Best Seller</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-top">
+              <div class="stat-icon-wrap">👥</div>
+              <span class="stat-trend trend-neutral" id="staffTotal">of 0</span>
+            </div>
+            <div class="stat-val" id="statStaff">0</div>
+            <div class="stat-label">Staff on Duty</div>
+          </div>
+        </div>
+
+        <div class="grid-2">
+          <div class="card">
+            <div class="card-head">
+              <span class="card-title">Recent Orders</span>
+            </div>
+            <div id="recentOrdersList"><div style="color:var(--muted);font-size:13px;">Loading...</div></div>
+          </div>
+          <div class="card">
+            <div class="card-head"><span class="card-title">Staff on Duty</span></div>
+            <div id="dashStaffList"><div style="color:var(--muted);font-size:13px;">Loading...</div></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-head">
+            <span class="card-title">Top Selling Items Today</span>
+            <button onclick="window.resetDay()" style="background:var(--red);color:white;border:none;padding:6px 16px;border-radius:20px;font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif;">🔄 Reset Day</button>
+          </div>
+          <div id="topItemsList"><div style="color:var(--muted);font-size:13px;">Loading...</div></div>
+        </div>
+      </div>
+
+      <!-- ── ORDERS ── -->
+      <div id="orders" class="page">
+        <div class="page-header">
+          <div class="page-title">Orders</div>
+          <div class="page-sub">All orders for today, March 14, 2026</div>
+        </div>
+        <div class="card">
+          <div class="card-head"><span class="card-title">Order List</span><span class="card-action">Export</span></div>
+          <div class="tbl-wrap">
+            <table>
+              <tr><th>#</th><th>Items</th><th>Type</th><th>Time</th><th>Amount</th><th>Status</th></tr>
+              <tr><td>#112</td><td>Caramel Latte ×2, Croissant</td><td>Dine in</td><td>10:42 AM</td><td>₱465</td><td><span class="badge b-orange">Pending</span></td></tr>
+              <tr><td>#111</td><td>Americano, Muffin</td><td>Takeout</td><td>10:38 AM</td><td>₱215</td><td><span class="badge b-green">Done</span></td></tr>
+              <tr><td>#110</td><td>Matcha Latte ×3</td><td>Delivery</td><td>10:21 AM</td><td>₱525</td><td><span class="badge b-green">Done</span></td></tr>
+              <tr><td>#109</td><td>Cold Brew ×2, Cheesecake</td><td>Dine in</td><td>10:10 AM</td><td>₱480</td><td><span class="badge b-orange">Pending</span></td></tr>
+              <tr><td>#108</td><td>Espresso ×2</td><td>Takeout</td><td>9:58 AM</td><td>₱160</td><td><span class="badge b-green">Done</span></td></tr>
+              <tr><td>#107</td><td>Cappuccino, Waffle</td><td>Dine in</td><td>9:45 AM</td><td>₱340</td><td><span class="badge b-red">Cancelled</span></td></tr>
+              <tr><td>#106</td><td>Hot Choco ×2, Muffin</td><td>Dine in</td><td>9:30 AM</td><td>₱395</td><td><span class="badge b-green">Done</span></td></tr>
+              <tr><td>#105</td><td>Caramel Latte, Croissant ×2</td><td>Takeout</td><td>9:15 AM</td><td>₱375</td><td><span class="badge b-green">Done</span></td></tr>
+              <tr><td>#104</td><td>Cold Brew ×3</td><td>Delivery</td><td>9:00 AM</td><td>₱525</td><td><span class="badge b-orange">Pending</span></td></tr>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── MENU ── -->
+      <div id="menu" class="page">
+        <div class="page-header">
+          <div class="page-title">Menu</div>
+          <div class="page-sub">All items from the POS — sold today pulled from Firebase</div>
+        </div>
+        <div id="menuContent">
+          <div style="color:var(--muted);font-size:13px;">Loading menu data...</div>
+        </div>
+      </div>
+
+            <!-- ── INVENTORY ── -->
+      <div id="inventory" class="page">
+        <div class="page-header">
+          <div class="page-title">Inventory</div>
+          <div class="page-sub">Track your ingredients and supplies — 2 items need attention</div>
+        </div>
+        <div class="card">
+          <div class="card-head"><span class="card-title">Stock Levels</span><span class="card-action">+ Add Item</span></div>
+          <div class="inv-row">
+            <div><div class="inv-name">Espresso Beans</div><div class="inv-cat">Coffee</div></div>
+            <div class="inv-bar-col"><div class="inv-qty">4.2 kg remaining</div><div class="inv-bar-bg"><div class="inv-bar low" style="width:42%"></div></div></div>
+            <span class="badge b-orange">Low</span>
+          </div>
+          <div class="inv-row">
+            <div><div class="inv-name">Fresh Milk</div><div class="inv-cat">Dairy</div></div>
+            <div class="inv-bar-col"><div class="inv-qty">18 L remaining</div><div class="inv-bar-bg"><div class="inv-bar" style="width:72%"></div></div></div>
+            <span class="badge b-green">Good</span>
+          </div>
+          <div class="inv-row">
+            <div><div class="inv-name">Matcha Powder</div><div class="inv-cat">Ingredients</div></div>
+            <div class="inv-bar-col"><div class="inv-qty">1.1 kg remaining</div><div class="inv-bar-bg"><div class="inv-bar crit" style="width:22%"></div></div></div>
+            <span class="badge b-red">Critical</span>
+          </div>
+          <div class="inv-row">
+            <div><div class="inv-name">Caramel Syrup</div><div class="inv-cat">Syrup</div></div>
+            <div class="inv-bar-col"><div class="inv-qty">6 bottles remaining</div><div class="inv-bar-bg"><div class="inv-bar" style="width:60%"></div></div></div>
+            <span class="badge b-green">Good</span>
+          </div>
+          <div class="inv-row">
+            <div><div class="inv-name">Croissants</div><div class="inv-cat">Pastry</div></div>
+            <div class="inv-bar-col"><div class="inv-qty">12 pcs remaining</div><div class="inv-bar-bg"><div class="inv-bar low" style="width:30%"></div></div></div>
+            <span class="badge b-orange">Low</span>
+          </div>
+          <div class="inv-row">
+            <div><div class="inv-name">Cups (12oz)</div><div class="inv-cat">Supplies</div></div>
+            <div class="inv-bar-col"><div class="inv-qty">280 pcs remaining</div><div class="inv-bar-bg"><div class="inv-bar" style="width:85%"></div></div></div>
+            <span class="badge b-green">Good</span>
+          </div>
+          <div class="inv-row">
+            <div><div class="inv-name">Cheesecake Slices</div><div class="inv-cat">Pastry</div></div>
+            <div class="inv-bar-col"><div class="inv-qty">5 pcs remaining</div><div class="inv-bar-bg"><div class="inv-bar crit" style="width:15%"></div></div></div>
+            <span class="badge b-red">Critical</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── STAFF ── -->
+      <div id="staff" class="page">
+        <div class="page-header">
+          <div class="page-title">Staff</div>
+          <div class="page-sub">Manage your team and weekly schedule</div>
+        </div>
+
+        <!-- Add Staff -->
+        <div class="card" style="margin-bottom:14px;">
+          <div class="card-head"><span class="card-title">Staff Members</span><span class="card-action" onclick="window.showAddStaff()">+ Add Staff</span></div>
+          <div id="staffList"><div style="color:var(--muted);font-size:13px;">Loading...</div></div>
+        </div>
+
+        <!-- Add Staff Form (hidden by default) -->
+        <div class="card" id="addStaffForm" style="margin-bottom:14px;display:none;">
+          <div class="card-head"><span class="card-title">Add New Staff</span></div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
+            <div>
+              <div class="ls-label">Full Name</div>
+              <input class="ls-input" id="newStaffName" placeholder="e.g. Maria Reyes" style="margin-bottom:0;">
+            </div>
+            <div>
+              <div class="ls-label">Role</div>
+              <input class="ls-input" id="newStaffRole" placeholder="e.g. Barista" style="margin-bottom:0;">
+            </div>
+          </div>
+          <div style="display:flex;gap:10px;">
+            <button onclick="window.addStaff()" style="background:var(--brown);color:white;border:none;padding:10px 20px;border-radius:8px;font-size:13px;cursor:pointer;font-family:'DM Sans',sans-serif;">Save Staff</button>
+            <button onclick="document.getElementById('addStaffForm').style.display='none'" style="background:transparent;color:var(--muted);border:1px solid var(--border);padding:10px 20px;border-radius:8px;font-size:13px;cursor:pointer;font-family:'DM Sans',sans-serif;">Cancel</button>
+          </div>
+        </div>
+
+        <!-- Weekly Schedule -->
+        <div class="card">
+          <div class="card-head">
+            <span class="card-title">Weekly Schedule</span>
+            <button onclick="window.saveSchedule()" style="background:var(--brown);color:white;border:none;padding:6px 16px;border-radius:20px;font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif;">💾 Save Schedule</button>
+          </div>
+          <div id="scheduleEditor"><div style="color:var(--muted);font-size:13px;">Loading schedule...</div></div>
+        </div>
+      </div>
+
+      <!-- ── SETTINGS ── -->
+      <div id="settings" class="page">
+        <div class="page-header">
+          <div class="page-title">Settings</div>
+          <div class="page-sub">Manage your shop preferences</div>
+        </div>
+        <div class="grid-2">
+          <div>
+            <div class="card" style="margin-bottom:14px;">
+              <div class="card-head"><span class="card-title">Shop Operations</span></div>
+              <div class="setting-row"><div><div class="setting-label">Online ordering</div><div class="setting-desc">Accept orders via delivery apps</div></div><label class="toggle"><input type="checkbox" checked><span class="tslider"></span></label></div>
+              <div class="setting-row"><div><div class="setting-label">Dine-in available</div><div class="setting-desc">Allow customers to eat in the shop</div></div><label class="toggle"><input type="checkbox" checked><span class="tslider"></span></label></div>
+              <div class="setting-row"><div><div class="setting-label">Loyalty rewards</div><div class="setting-desc">Enable stamp card system</div></div><label class="toggle"><input type="checkbox" checked><span class="tslider"></span></label></div>
+              <div class="setting-row"><div><div class="setting-label">Low stock alerts</div><div class="setting-desc">Notify when ingredients run low</div></div><label class="toggle"><input type="checkbox" checked><span class="tslider"></span></label></div>
+            </div>
+            <div class="card">
+              <div class="card-head"><span class="card-title">Notifications</span></div>
+              <div class="setting-row"><div><div class="setting-label">Email alerts</div><div class="setting-desc">Get notified on suspicious activity</div></div><label class="toggle"><input type="checkbox" checked><span class="tslider"></span></label></div>
+              <div class="setting-row"><div><div class="setting-label">New orders</div><div class="setting-desc">Notify on every new order</div></div><label class="toggle"><input type="checkbox"><span class="tslider"></span></label></div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-head"><span class="card-title">Shop Info</span></div>
+            <div class="setting-row"><div><div class="setting-label">Shop name</div><div class="setting-desc">Brother Bean Coffee House</div></div></div>
+            <div class="setting-row"><div><div class="setting-label">Opening hours</div><div class="setting-desc">7:00 AM – 9:00 PM daily</div></div></div>
+            <div class="setting-row"><div><div class="setting-label">Location</div><div class="setting-desc">Imus, Cavite</div></div></div>
+            <div class="setting-row"><div><div class="setting-label">Currency</div><div class="setting-desc">Philippine Peso (₱)</div></div></div>
+            <div class="setting-row"><div><div class="setting-label">Admin username</div><div class="setting-desc">admin</div></div></div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /main -->
+  </div><!-- /body-wrap -->
+</div><!-- /app -->
+
+<script type="module" src="controllers/adminController.js"></script>
