@@ -45,8 +45,7 @@
     <div class="topbar-sep"></div>
     <div class="topbar-page" id="topbar-page">Dashboard</div>
     <div class="topbar-right">
-      <span class="topbar-date">Saturday, March 14, 2026</span>
-      <div class="topbar-notif">🔔<div class="notif-dot"></div></div>
+      <span class="topbar-date" id="topbar-date"></span>
       <div class="topbar-avatar">AD</div>
       <span class="topbar-uname">Admin</span>
       <button class="topbar-logout" onclick="window.logout()">Sign out</button>
@@ -63,6 +62,9 @@
       </div>
 
       <div class="nav-section">Shop</div>
+      <div class="nav-item" onclick="window.showPage('transactions', this, 'Transactions')">
+        <span class="nav-icon">🧾</span>Transactions
+      </div>
       <div class="nav-item" onclick="window.showPage('menu', this, 'Menu')">
         <span class="nav-icon">☕</span>Menu
       </div>
@@ -72,6 +74,7 @@
       <div class="nav-item" onclick="window.showPage('staff', this, 'Staff')">
         <span class="nav-icon">👥</span>Staff
       </div>
+
       <div class="nav-section">System</div>
       <div class="nav-item" onclick="window.showPage('settings', this, 'Settings')">
         <span class="nav-icon">⚙️</span>Settings
@@ -90,34 +93,22 @@
 
         <div class="stats-grid">
           <div class="stat-card">
-            <div class="stat-top">
-              <div class="stat-icon-wrap">💰</div>
-              <span class="stat-trend trend-up" id="salesTrend">—</span>
-            </div>
+            <div class="stat-top"><div class="stat-icon-wrap">💰</div><span class="stat-trend trend-up" id="salesTrend">—</span></div>
             <div class="stat-val" id="statSales">₱0.00</div>
             <div class="stat-label">Today's Sales</div>
           </div>
           <div class="stat-card">
-            <div class="stat-top">
-              <div class="stat-icon-wrap">🧾</div>
-              <span class="stat-trend trend-up" id="ordersTrend">—</span>
-            </div>
+            <div class="stat-top"><div class="stat-icon-wrap">🧾</div><span class="stat-trend trend-up" id="ordersTrend">—</span></div>
             <div class="stat-val" id="statOrders">0</div>
             <div class="stat-label">Orders Today</div>
           </div>
           <div class="stat-card">
-            <div class="stat-top">
-              <div class="stat-icon-wrap">🔥</div>
-              <span class="stat-trend trend-neutral" id="bestSellerCount">—</span>
-            </div>
+            <div class="stat-top"><div class="stat-icon-wrap">🔥</div><span class="stat-trend trend-neutral" id="bestSellerCount">—</span></div>
             <div class="stat-val" id="statBestSeller" style="font-size:1.1rem;padding-top:4px;">—</div>
             <div class="stat-label">Best Seller</div>
           </div>
           <div class="stat-card">
-            <div class="stat-top">
-              <div class="stat-icon-wrap">👥</div>
-              <span class="stat-trend trend-neutral" id="staffTotal">of 0</span>
-            </div>
+            <div class="stat-top"><div class="stat-icon-wrap">👥</div><span class="stat-trend trend-neutral" id="staffTotal">of 0</span></div>
             <div class="stat-val" id="statStaff">0</div>
             <div class="stat-label">Staff on Duty</div>
           </div>
@@ -127,6 +118,7 @@
           <div class="card">
             <div class="card-head">
               <span class="card-title">Recent Orders</span>
+              <span class="card-action" onclick="window.showPage('transactions', document.querySelector('.nav-item:nth-child(4)'), 'Transactions')">View all →</span>
             </div>
             <div id="recentOrdersList"><div style="color:var(--muted);font-size:13px;">Loading...</div></div>
           </div>
@@ -145,27 +137,96 @@
         </div>
       </div>
 
-      <!-- ── ORDERS ── -->
-      <div id="orders" class="page">
+      <!-- ── TRANSACTIONS ── -->
+      <div id="transactions" class="page">
         <div class="page-header">
-          <div class="page-title">Orders</div>
-          <div class="page-sub">All orders for today, March 14, 2026</div>
+          <div class="page-title">Transactions</div>
+          <div class="page-sub">Full order history from the POS system</div>
         </div>
+
+        <!-- Filter Card -->
+        <div class="card" style="margin-bottom:14px;">
+          <div class="card-head">
+            <span class="card-title">Filter & Search</span>
+            <span class="card-action" onclick="window.clearTxFilters()">Clear filters</span>
+          </div>
+          <div class="tx-filter-grid">
+            <div class="tx-filter-group">
+              <div class="tx-filter-label">From</div>
+              <input type="date" id="txFrom" class="tx-filter-input" onchange="window.applyTxFilters()">
+            </div>
+            <div class="tx-filter-group">
+              <div class="tx-filter-label">To</div>
+              <input type="date" id="txTo" class="tx-filter-input" onchange="window.applyTxFilters()">
+            </div>
+            <div class="tx-filter-group">
+              <div class="tx-filter-label">Payment</div>
+              <select id="txPay" class="tx-filter-input" onchange="window.applyTxFilters()">
+                <option value="">All</option>
+                <option value="cash">Cash</option>
+                <option value="gcash">GCash</option>
+              </select>
+            </div>
+            <div class="tx-filter-group" style="flex:2;">
+              <div class="tx-filter-label">Search</div>
+              <input type="text" id="txSearch" class="tx-filter-input" placeholder="Order #, item name…" oninput="window.applyTxFilters()" style="width:100%;">
+            </div>
+          </div>
+          <div class="tx-quick-btns">
+            <button class="tx-quick-btn tx-quick-active" id="qbtn-today"  onclick="window.setTxToday(this)">Today</button>
+            <button class="tx-quick-btn"                 id="qbtn-week"   onclick="window.setTxWeek(this)">This Week</button>
+            <button class="tx-quick-btn"                 id="qbtn-month"  onclick="window.setTxMonth(this)">This Month</button>
+            <button class="tx-quick-btn"                 id="qbtn-all"    onclick="window.setTxAll(this)">All Time</button>
+          </div>
+        </div>
+
+        <!-- Summary Stats -->
+        <div class="stats-grid" style="margin-bottom:14px;">
+          <div class="stat-card">
+            <div class="stat-top"><div class="stat-icon-wrap">🧾</div></div>
+            <div class="stat-val" id="txStatOrders">0</div>
+            <div class="stat-label">Total Orders</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-top"><div class="stat-icon-wrap">💰</div></div>
+            <div class="stat-val" id="txStatRevenue">₱0.00</div>
+            <div class="stat-label">Total Revenue</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-top"><div class="stat-icon-wrap">💵</div></div>
+            <div class="stat-val" id="txStatCash">0</div>
+            <div class="stat-label">Cash Orders</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-top"><div class="stat-icon-wrap">📱</div></div>
+            <div class="stat-val" id="txStatGcash">0</div>
+            <div class="stat-label">GCash Orders</div>
+          </div>
+        </div>
+
+        <!-- Orders Table -->
         <div class="card">
-          <div class="card-head"><span class="card-title">Order List</span><span class="card-action">Export</span></div>
-          <div class="tbl-wrap">
-            <table>
-              <tr><th>#</th><th>Items</th><th>Type</th><th>Time</th><th>Amount</th><th>Status</th></tr>
-              <tr><td>#112</td><td>Caramel Latte ×2, Croissant</td><td>Dine in</td><td>10:42 AM</td><td>₱465</td><td><span class="badge b-orange">Pending</span></td></tr>
-              <tr><td>#111</td><td>Americano, Muffin</td><td>Takeout</td><td>10:38 AM</td><td>₱215</td><td><span class="badge b-green">Done</span></td></tr>
-              <tr><td>#110</td><td>Matcha Latte ×3</td><td>Delivery</td><td>10:21 AM</td><td>₱525</td><td><span class="badge b-green">Done</span></td></tr>
-              <tr><td>#109</td><td>Cold Brew ×2, Cheesecake</td><td>Dine in</td><td>10:10 AM</td><td>₱480</td><td><span class="badge b-orange">Pending</span></td></tr>
-              <tr><td>#108</td><td>Espresso ×2</td><td>Takeout</td><td>9:58 AM</td><td>₱160</td><td><span class="badge b-green">Done</span></td></tr>
-              <tr><td>#107</td><td>Cappuccino, Waffle</td><td>Dine in</td><td>9:45 AM</td><td>₱340</td><td><span class="badge b-red">Cancelled</span></td></tr>
-              <tr><td>#106</td><td>Hot Choco ×2, Muffin</td><td>Dine in</td><td>9:30 AM</td><td>₱395</td><td><span class="badge b-green">Done</span></td></tr>
-              <tr><td>#105</td><td>Caramel Latte, Croissant ×2</td><td>Takeout</td><td>9:15 AM</td><td>₱375</td><td><span class="badge b-green">Done</span></td></tr>
-              <tr><td>#104</td><td>Cold Brew ×3</td><td>Delivery</td><td>9:00 AM</td><td>₱525</td><td><span class="badge b-orange">Pending</span></td></tr>
-            </table>
+          <div class="card-head">
+            <span class="card-title">Order List</span>
+            <span id="txResultCount" style="font-size:12px;color:var(--muted);"></span>
+          </div>
+          <div id="txTableWrap">
+            <div style="color:var(--muted);font-size:13px;padding:10px 0;">Select a date range to load transactions.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── ORDER DETAIL MODAL ── -->
+      <div class="tx-detail-overlay" id="txDetailOverlay">
+        <div class="tx-detail-modal">
+          <div class="tx-detail-header">
+            <div class="tx-detail-title" id="txDetailTitle">Order Details</div>
+            <button class="tx-detail-close" onclick="window.closeTxDetailBtn()">&times;</button>
+          </div>
+          <div class="tx-detail-body" id="txDetailBody"></div>
+          <div class="tx-detail-footer">
+            <button onclick="window.closeTxDetailBtn()" style="background:transparent;color:var(--muted);border:1px solid var(--border);padding:10px 22px;border-radius:8px;font-size:13px;cursor:pointer;font-family:'DM Sans',sans-serif;">Close</button>
+            <button onclick="window.reprintTx()" style="background:var(--brown);color:white;border:none;padding:10px 22px;border-radius:8px;font-size:13px;cursor:pointer;font-family:'DM Sans',sans-serif;">🖨️ Print Receipt</button>
           </div>
         </div>
       </div>
@@ -181,7 +242,7 @@
         </div>
       </div>
 
-            <!-- ── INVENTORY ── -->
+      <!-- ── INVENTORY ── -->
       <div id="inventory" class="page">
         <div class="page-header">
           <div class="page-title">Inventory</div>
@@ -189,41 +250,13 @@
         </div>
         <div class="card">
           <div class="card-head"><span class="card-title">Stock Levels</span><span class="card-action">+ Add Item</span></div>
-          <div class="inv-row">
-            <div><div class="inv-name">Espresso Beans</div><div class="inv-cat">Coffee</div></div>
-            <div class="inv-bar-col"><div class="inv-qty">4.2 kg remaining</div><div class="inv-bar-bg"><div class="inv-bar low" style="width:42%"></div></div></div>
-            <span class="badge b-orange">Low</span>
-          </div>
-          <div class="inv-row">
-            <div><div class="inv-name">Fresh Milk</div><div class="inv-cat">Dairy</div></div>
-            <div class="inv-bar-col"><div class="inv-qty">18 L remaining</div><div class="inv-bar-bg"><div class="inv-bar" style="width:72%"></div></div></div>
-            <span class="badge b-green">Good</span>
-          </div>
-          <div class="inv-row">
-            <div><div class="inv-name">Matcha Powder</div><div class="inv-cat">Ingredients</div></div>
-            <div class="inv-bar-col"><div class="inv-qty">1.1 kg remaining</div><div class="inv-bar-bg"><div class="inv-bar crit" style="width:22%"></div></div></div>
-            <span class="badge b-red">Critical</span>
-          </div>
-          <div class="inv-row">
-            <div><div class="inv-name">Caramel Syrup</div><div class="inv-cat">Syrup</div></div>
-            <div class="inv-bar-col"><div class="inv-qty">6 bottles remaining</div><div class="inv-bar-bg"><div class="inv-bar" style="width:60%"></div></div></div>
-            <span class="badge b-green">Good</span>
-          </div>
-          <div class="inv-row">
-            <div><div class="inv-name">Croissants</div><div class="inv-cat">Pastry</div></div>
-            <div class="inv-bar-col"><div class="inv-qty">12 pcs remaining</div><div class="inv-bar-bg"><div class="inv-bar low" style="width:30%"></div></div></div>
-            <span class="badge b-orange">Low</span>
-          </div>
-          <div class="inv-row">
-            <div><div class="inv-name">Cups (12oz)</div><div class="inv-cat">Supplies</div></div>
-            <div class="inv-bar-col"><div class="inv-qty">280 pcs remaining</div><div class="inv-bar-bg"><div class="inv-bar" style="width:85%"></div></div></div>
-            <span class="badge b-green">Good</span>
-          </div>
-          <div class="inv-row">
-            <div><div class="inv-name">Cheesecake Slices</div><div class="inv-cat">Pastry</div></div>
-            <div class="inv-bar-col"><div class="inv-qty">5 pcs remaining</div><div class="inv-bar-bg"><div class="inv-bar crit" style="width:15%"></div></div></div>
-            <span class="badge b-red">Critical</span>
-          </div>
+          <div class="inv-row"><div><div class="inv-name">Espresso Beans</div><div class="inv-cat">Coffee</div></div><div class="inv-bar-col"><div class="inv-qty">4.2 kg remaining</div><div class="inv-bar-bg"><div class="inv-bar low" style="width:42%"></div></div></div><span class="badge b-orange">Low</span></div>
+          <div class="inv-row"><div><div class="inv-name">Fresh Milk</div><div class="inv-cat">Dairy</div></div><div class="inv-bar-col"><div class="inv-qty">18 L remaining</div><div class="inv-bar-bg"><div class="inv-bar" style="width:72%"></div></div></div><span class="badge b-green">Good</span></div>
+          <div class="inv-row"><div><div class="inv-name">Matcha Powder</div><div class="inv-cat">Ingredients</div></div><div class="inv-bar-col"><div class="inv-qty">1.1 kg remaining</div><div class="inv-bar-bg"><div class="inv-bar crit" style="width:22%"></div></div></div><span class="badge b-red">Critical</span></div>
+          <div class="inv-row"><div><div class="inv-name">Caramel Syrup</div><div class="inv-cat">Syrup</div></div><div class="inv-bar-col"><div class="inv-qty">6 bottles remaining</div><div class="inv-bar-bg"><div class="inv-bar" style="width:60%"></div></div></div><span class="badge b-green">Good</span></div>
+          <div class="inv-row"><div><div class="inv-name">Croissants</div><div class="inv-cat">Pastry</div></div><div class="inv-bar-col"><div class="inv-qty">12 pcs remaining</div><div class="inv-bar-bg"><div class="inv-bar low" style="width:30%"></div></div></div><span class="badge b-orange">Low</span></div>
+          <div class="inv-row"><div><div class="inv-name">Cups (12oz)</div><div class="inv-cat">Supplies</div></div><div class="inv-bar-col"><div class="inv-qty">280 pcs remaining</div><div class="inv-bar-bg"><div class="inv-bar" style="width:85%"></div></div></div><span class="badge b-green">Good</span></div>
+          <div class="inv-row"><div><div class="inv-name">Cheesecake Slices</div><div class="inv-cat">Pastry</div></div><div class="inv-bar-col"><div class="inv-qty">5 pcs remaining</div><div class="inv-bar-bg"><div class="inv-bar crit" style="width:15%"></div></div></div><span class="badge b-red">Critical</span></div>
         </div>
       </div>
 
@@ -233,33 +266,21 @@
           <div class="page-title">Staff</div>
           <div class="page-sub">Manage your team and weekly schedule</div>
         </div>
-
-        <!-- Add Staff -->
         <div class="card" style="margin-bottom:14px;">
           <div class="card-head"><span class="card-title">Staff Members</span><span class="card-action" onclick="window.showAddStaff()">+ Add Staff</span></div>
           <div id="staffList"><div style="color:var(--muted);font-size:13px;">Loading...</div></div>
         </div>
-
-        <!-- Add Staff Form (hidden by default) -->
         <div class="card" id="addStaffForm" style="margin-bottom:14px;display:none;">
           <div class="card-head"><span class="card-title">Add New Staff</span></div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
-            <div>
-              <div class="ls-label">Full Name</div>
-              <input class="ls-input" id="newStaffName" placeholder="e.g. Maria Reyes" style="margin-bottom:0;">
-            </div>
-            <div>
-              <div class="ls-label">Role</div>
-              <input class="ls-input" id="newStaffRole" placeholder="e.g. Barista" style="margin-bottom:0;">
-            </div>
+            <div><div class="ls-label">Full Name</div><input class="ls-input" id="newStaffName" placeholder="e.g. Maria Reyes" style="margin-bottom:0;"></div>
+            <div><div class="ls-label">Role</div><input class="ls-input" id="newStaffRole" placeholder="e.g. Barista" style="margin-bottom:0;"></div>
           </div>
           <div style="display:flex;gap:10px;">
             <button onclick="window.addStaff()" style="background:var(--brown);color:white;border:none;padding:10px 20px;border-radius:8px;font-size:13px;cursor:pointer;font-family:'DM Sans',sans-serif;">Save Staff</button>
             <button onclick="document.getElementById('addStaffForm').style.display='none'" style="background:transparent;color:var(--muted);border:1px solid var(--border);padding:10px 20px;border-radius:8px;font-size:13px;cursor:pointer;font-family:'DM Sans',sans-serif;">Cancel</button>
           </div>
         </div>
-
-        <!-- Weekly Schedule -->
         <div class="card">
           <div class="card-head">
             <span class="card-title">Weekly Schedule</span>
@@ -306,3 +327,5 @@
 </div><!-- /app -->
 
 <script type="module" src="controllers/adminController.js"></script>
+</body>
+</html>

@@ -4,26 +4,62 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Brother Bean Cafe POS - PROTOTYPE</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="assets/style.css" />
   </head>
   <body>
     <div class="app-container">
-      <header>
-        <div class="logo">
-          <div class="logo-icon">🐻</div>
-          <div class="logo-text">
-            <h1>Brother Bean Cafe</h1>
-            <p>Point of Sale System</p>
+      <div class="main-grid">
+
+        <!-- SIDEBAR -->
+        <aside class="sidebar">
+          <div class="brand-card">
+            <div class="brand-logo">🐻</div>
+            <div class="brand-info">
+              <h2>Brother Bean</h2>
+              <p>Point of Sale System</p>
+              <span class="brand-status">● Ready</span>
+            </div>
           </div>
-        </div>
-        <div class="header-actions">
-        <button class="btn btn-primary" onclick="openDrawer()">
+
+          <div class="stats-bar">
+            <div class="stat-card">
+              <div class="stat-icon">☕</div>
+              <div class="stat-info">
+                <h4>Today's Orders</h4>
+                <p id="statOrders">0</p>
+              </div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-icon">💵</div>
+              <div class="stat-info">
+                <h4>Total Sales</h4>
+                <p id="statSales">₱0.00</p>
+              </div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-icon">🏷️</div>
+              <div class="stat-info">
+                <h4>Active Discounts</h4>
+                <p id="statDiscounts">0</p>
+              </div>
+            </div>
+          </div>
+
+          <button class="btn btn-primary sidebar-cash-btn" onclick="openDrawer()">
             💰 Cash Drawer
           </button>
-        </div>
-      </header>
 
-      <div class="main-grid">
+          <div class="pending-section">
+            <div class="pending-header">🔔 Pending Orders</div>
+            <div class="pending-empty">
+              <div class="checkmark-box">✅</div>
+              <span>No pending orders</span>
+            </div>
+          </div>
+        </aside>
+
         <div class="products-section">
           <div class="section-header">
             <h2 class="section-title">
@@ -66,6 +102,9 @@
             </div>
             <div class="category-chip" onclick="selectCategory('pasta')">
               🍝 Pasta
+            </div>
+            <div class="category-chip" onclick="selectCategory('pastries')">
+              🧁 Pastries
             </div>
           </div>
 
@@ -259,5 +298,6 @@
     </div>
 
     <script type="module" src="controllers/posController.js"></script>
+    <script type="module" src="reseedMenu.js"></script>
   </body>
 </html>

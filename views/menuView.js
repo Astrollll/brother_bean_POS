@@ -9,6 +9,7 @@ export const categoryIcons = {
   "Starters":     "🍟",
   "Rice Meals":   "🍚",
   "Pasta":        "🍝",
+  "Pastries":     "🧁",
   "Add-ons Drink":"🧃",
   "Add-ons Food": "🍱",
 };
@@ -16,6 +17,7 @@ export const categoryIcons = {
 // Admin menu view — shows name, price, sold today
 export function renderAdminMenu(menuItems, soldMap = {}) {
   const grouped = groupBySubcategory(menuItems.filter(i => i.category !== "addons"));
+  // Ensure Pastries shows "Check display" note in admin view
 
   let html = "";
   for (const [subcategory, items] of Object.entries(grouped)) {
