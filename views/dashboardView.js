@@ -30,6 +30,10 @@ export function renderRecentOrders(orders) {
       : o.timestamp || "";
     const shortId = (o.orderId || "").slice(-6);
 
+    const discountBadge = o.isPwdSenior
+      ? `<span class="badge b-orange">♿ PWD/Senior</span>`
+      : "";
+
     return `<div class="order-row">
       <div>
         <div class="order-num">#${shortId}</div>
@@ -38,7 +42,10 @@ export function renderRecentOrders(orders) {
       </div>
       <div class="order-right">
         <div class="order-amt">₱${(o.total || 0).toFixed(2)}</div>
-        <span class="badge b-green">Done</span>
+        <div style="display:flex;gap:4px;justify-content:flex-end;flex-wrap:wrap;">
+          <span class="badge b-green">Done</span>
+          ${discountBadge}
+        </div>
       </div>
     </div>`;
   }).join("");
