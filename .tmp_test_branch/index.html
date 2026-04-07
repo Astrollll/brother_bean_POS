@@ -1,0 +1,518 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Brother Bean Cafe POS - Modern Design</title>
+    <meta name="theme-color" content="#6B4423" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="Brother Bean POS" />
+    <link rel="manifest" href="/pos.webmanifest" />
+    <link rel="icon" type="image/jpeg" href="/assets/icons/brother-bean-logo.jpg" />
+    <link rel="apple-touch-icon" href="/assets/icons/brother-bean-logo.jpg" />
+    <link href="/assets/bootstrap-5.3.8-dist/css/bootstrap.min.css" rel="stylesheet" />
+    <link href="https://cdn.jsdelivr.net/npm/remixicon@4.6.0/fonts/remixicon.css" rel="stylesheet" />
+    <link rel="stylesheet" href="/assets/style.css" />
+  </head>
+  <body>
+    <div class="app-wrapper">
+      <!-- Left Sidebar -->
+<aside class="sidebar-nav d-flex flex-column" id="sidebarNav">
+  <button class="sidebar-close-btn" type="button" onclick="closeSidebar()" aria-label="Close menu"><i class="ri-close-line" aria-hidden="true"></i></button>
+        <div class="sidebar-brand">
+          <div class="logo-icon">
+            <img src="/assets/icons/brother-bean-logo.jpg" alt="Brother Bean Coffee House logo" />
+          </div>
+          <div class="logo-text">
+            <h1>Brother Bean</h1>
+            <p>Cafe POS</p>
+          </div>
+        </div>
+        
+        <!-- Storage Status -->
+        <div class="storage-indicator" id="storageStatus">
+          <i class="ri-database-2-line" aria-hidden="true"></i> Ready
+        </div>
+
+        <div class="sidebar-tools d-flex" aria-label="Display controls">
+          <button class="sidebar-tool-btn" id="themeToggleBtn" type="button" onclick="toggleTheme()" aria-label="Toggle theme">
+            <i class="ri-moon-line" aria-hidden="true"></i> Dark
+          </button>
+        </div>
+        
+        <div class="sidebar-divider"></div>
+        
+        <!-- Navigation Buttons -->
+        <button class="nav-btn" onclick="openDrawer()">
+          <i class="ri-safe-2-line" aria-hidden="true"></i> Cash Drawer
+        </button>
+        
+        <div class="sidebar-divider"></div>
+        
+        <!-- Stats Preview -->
+        <div class="sidebar-stats">
+          <div><i class="ri-line-chart-line" aria-hidden="true"></i> Today: <span id="todayOrders">0</span> orders</div>
+          <div><i class="ri-money-dollar-circle-line" aria-hidden="true"></i> Sales: <span id="totalSales">₱0.00</span></div>
+          <div class="sidebar-pending-row"><i class="ri-time-line" aria-hidden="true"></i> Pending Sync Orders: <span id="pendingOrdersSidebar">0</span></div>
+        </div>
+
+        <button class="sidebar-sales-chart" type="button" onclick="openSalesDashboard()" aria-label="Open today's sales dashboard">
+          <div class="sidebar-sales-chart-head">
+            <span class="sidebar-sales-chart-title">Sales Trend</span>
+            <span class="sidebar-sales-chart-range">Today summary</span>
+          </div>
+          <div class="sidebar-sales-summary" aria-label="Sales summary">
+            <div class="sidebar-sales-pill">
+              <span class="sidebar-sales-pill-label">Total</span>
+              <span class="sidebar-sales-pill-value" id="salesSummaryTotal">₱0.00</span>
+            </div>
+            <div class="sidebar-sales-pill">
+              <span class="sidebar-sales-pill-label">Orders</span>
+              <span class="sidebar-sales-pill-value" id="salesSummaryOrders">0</span>
+            </div>
+            <div class="sidebar-sales-pill">
+              <span class="sidebar-sales-pill-label">Peak</span>
+              <span class="sidebar-sales-pill-value" id="salesSummaryPeak">N/A</span>
+            </div>
+          </div>
+          <div class="sidebar-sales-note">Tap to view full chart and time breakdown</div>
+        </button>
+
+        <div class="sidebar-spacer"></div>
+        <button class="nav-btn nav-btn-logout" onclick="logout()">
+          <i class="ri-logout-box-r-line" aria-hidden="true"></i> Logout
+        </button>
+      </aside>
+
+      <div class="app-container">
+        <div class="mobile-topbar" role="toolbar" aria-label="Quick actions">
+          <button class="mobile-menu-btn" type="button" onclick="toggleSidebar()" aria-label="Open menu"><i class="ri-menu-line" aria-hidden="true"></i> Menu</button>
+          <div class="mobile-brand" aria-label="Brother Bean Cafe POS">
+            <div class="mobile-brand-icon">
+              <img src="/assets/icons/brother-bean-logo.jpg" alt="Brother Bean logo" />
+            </div>
+            <div class="mobile-brand-text">
+              <strong>Brother Bean</strong>
+              <span>Cafe POS</span>
+            </div>
+          </div>
+          <div class="mobile-view-switch" role="tablist" aria-label="View switcher">
+            <button class="mobile-view-btn active" id="menuViewBtn" type="button" onclick="setMainView('menu')" aria-pressed="true">Menu</button>
+            <button class="mobile-view-btn" id="orderViewBtn" type="button" onclick="setMainView('order')" aria-pressed="false">Order</button>
+          </div>
+        </div>
+        <div class="main-grid">
+          <!-- Products Section -->
+          <div class="products-section flex-grow-1">
+            <div class="section-header">
+              <h2 class="section-title">
+                <span><i class="ri-cup-line" aria-hidden="true"></i></span>
+                Menu Items
+              </h2>
+              <button class="section-view-switch mobile-only" id="menuToOrderBtn" type="button" onclick="setMainView('order')" aria-pressed="false">
+                View Order
+              </button>
+            </div>
+
+            <div class="search-bar">
+              <span class="search-icon"><i class="ri-search-line" aria-hidden="true"></i></span>
+              <input
+                type="text"
+                id="searchInput"
+                placeholder=" Search menu items..."
+                oninput="searchProducts()"
+              />
+            </div>
+
+            <div class="categories-toolbar d-flex flex-wrap align-items-center" aria-label="Menu categories">
+              <button class="category-nav-btn" type="button" onclick="scrollCategories(-1)" aria-label="Scroll categories left"><i class="ri-arrow-left-s-line" aria-hidden="true"></i></button>
+              <div class="categories" id="categories"></div>
+              <button class="category-nav-btn" type="button" onclick="scrollCategories(1)" aria-label="Scroll categories right"><i class="ri-arrow-right-s-line" aria-hidden="true"></i></button>
+              <select class="category-quick-select" id="categoryQuickSelect" aria-label="Quick category picker" onchange="selectCategory(this.value)">
+                <option value="all">All Items</option>
+              </select>
+            </div>
+
+            <div class="products-grid" id="productsGrid">
+              <!-- Products rendered here -->
+            </div>
+          </div>
+
+          <!-- Cart Section -->
+          <div class="cart-section">
+            <div class="section-header">
+              <h2 class="section-title">
+                <span><i class="ri-shopping-cart-2-line" aria-hidden="true"></i></span>
+                Current Order
+              </h2>
+              <div class="order-header-actions d-flex flex-wrap justify-content-end">
+                <button class="section-view-switch mobile-only" id="orderToMenuBtn" type="button" onclick="setMainView('menu')" aria-pressed="false">
+                  View Menu
+                </button>
+                <button
+                  class="btn btn-secondary cart-action-btn cart-action-density"
+                  id="densityToggleBtn"
+                  type="button"
+                  onclick="toggleCartDensity()"
+                  style="padding: 8px 12px; font-size: 12px"
+                >
+                  <i class="ri-layout-grid-line" aria-hidden="true"></i> Compact View
+                </button>
+                <button
+                  class="btn btn-secondary cart-action-btn cart-action-clear"
+                  id="clearOrderBtn"
+                  type="button"
+                  onclick="clearCart()"
+                  disabled
+                  style="padding: 8px 16px; font-size: 12px"
+                >
+                  Clear Order
+                </button>
+              </div>
+            </div>
+
+            <div class="discount-section">
+              <div class="discount-header">
+                <span><i class="ri-wheelchair-line" aria-hidden="true"></i></span>
+                <span>Special Discount (20% OFF)</span>
+              </div>
+              <label
+                class="discount-toggle"
+                id="discountToggle"
+                onclick="toggleDiscount()"
+              >
+                <input type="checkbox" id="pwdSeniorCheck" />
+                <span>PWD / Senior Citizen</span>
+                <span style="margin-left: auto; font-size: 12px; color: var(--text-muted)">Save 20%</span>
+              </label>
+            </div>
+
+            <div class="cart-items" id="cartItems">
+              <div class="empty-cart">
+                <div class="empty-cart-icon"><i class="ri-shopping-cart-line" aria-hidden="true"></i></div>
+                <p>Your order is empty</p>
+                <p style="font-size: 13px; margin-top: 5px">
+                  Click items from the menu to add
+                </p>
+              </div>
+            </div>
+
+            <div class="cart-summary">
+              <div class="summary-row">
+                <span>Subtotal</span>
+                <span id="subtotal">₱0.00</span>
+              </div>
+              <div class="summary-row discount hidden" id="discountRow">
+                <span>PWD/Senior Discount (20%)</span>
+                <span id="discountAmount">-₱0.00</span>
+              </div>
+              <div class="summary-row discounted-total hidden" id="originalTotalRow">
+                <span>Original Total</span>
+                <span id="originalTotal">₱0.00</span>
+              </div>
+              <div class="summary-row total">
+                <span>Total Amount</span>
+                <span id="total">₱0.00</span>
+              </div>
+              <button
+                class="checkout-btn"
+                id="checkoutBtn"
+                onclick="openPaymentModal()"
+                disabled
+              >
+                <i class="ri-bank-card-line" aria-hidden="true"></i> Proceed to Payment
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="sidebar-overlay" id="sidebarOverlay" onclick="closeSidebar()" aria-hidden="true"></div>
+
+    <!-- Menu Item Modal -->
+    <div class="modal-overlay" id="variantModal" aria-hidden="true">
+      <div class="modal bb-modal" role="dialog" aria-modal="true" aria-labelledby="menuModalTitle">
+        <div class="bb-modal-header">
+          <div class="bb-modal-title-wrap">
+            <div class="bb-modal-kicker">Menu item</div>
+            <div class="bb-modal-title" id="menuModalTitle">Select item</div>
+          </div>
+          <button class="bb-icon-btn" type="button" onclick="closeMenuItemModal()" aria-label="Close">&times;</button>
+        </div>
+
+        <div class="bb-modal-body" id="menuModalBody">
+          <!-- Dynamic content -->
+        </div>
+
+        <div class="bb-modal-footer">
+          <div class="bb-modal-summary">
+            <div class="bb-summary-row">
+              <span class="bb-summary-label">Qty</span>
+              <span class="bb-summary-value" id="menuQtySummary">1</span>
+            </div>
+            <div class="bb-summary-row">
+              <span class="bb-summary-label">Item total</span>
+              <span class="bb-summary-value bb-summary-strong" id="menuItemTotal">₱0.00</span>
+            </div>
+          </div>
+          <button class="bb-primary-btn" type="button" onclick="confirmMenuItem()" id="menuAddBtn">
+            Add to order
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Order / Payment Modal -->
+    <div class="modal-overlay" id="paymentModal" aria-hidden="true">
+      <div class="modal bb-modal bb-pay" role="dialog" aria-modal="true" aria-labelledby="paymentTitle">
+        <div class="bb-modal-header">
+          <div class="bb-modal-title-wrap">
+            <div class="bb-modal-kicker">Checkout</div>
+            <div class="bb-modal-title" id="paymentTitle">Take payment</div>
+          </div>
+          <button class="bb-icon-btn" type="button" onclick="closePaymentModal()" aria-label="Close">&times;</button>
+        </div>
+
+        <div class="bb-modal-body bb-pay-body">
+          <div class="bb-pay-top">
+            <div class="bb-amount-card">
+              <div class="bb-amount-label">Amount due</div>
+              <div class="bb-amount-value" id="paymentAmount">₱0.00</div>
+              <div class="bb-amount-subgrid">
+                <div>
+                  <div class="bb-mini-label">Tendered</div>
+                  <div class="bb-mini-value" id="tenderedDisplay">₱0.00</div>
+                </div>
+                <div>
+                  <div class="bb-mini-label">Status</div>
+                  <div class="bb-mini-value" id="changeDisplay"></div>
+                </div>
+              </div>
+            </div>
+
+            <div class="bb-methods" role="tablist" aria-label="Payment method">
+              <button class="bb-method active" type="button" data-method="cash" onclick="selectPaymentMethod('cash')" role="tab" aria-selected="true">
+                <span class="bb-method-ico"><i class="ri-money-dollar-circle-line" aria-hidden="true"></i></span>
+                <span class="bb-method-text">Cash</span>
+              </button>
+              <button class="bb-method" type="button" data-method="gcash" onclick="selectPaymentMethod('gcash')" role="tab" aria-selected="false">
+                <span class="bb-method-ico"><i class="ri-smartphone-line" aria-hidden="true"></i></span>
+                <span class="bb-method-text">GCash</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="bb-numpad-wrap" id="cashNumpad">
+            <button class="bb-pad" onclick="enterDigit('1')">1</button>
+            <button class="bb-pad" onclick="enterDigit('2')">2</button>
+            <button class="bb-pad" onclick="enterDigit('3')">3</button>
+            <button class="bb-pad" onclick="enterDigit('4')">4</button>
+            <button class="bb-pad" onclick="enterDigit('5')">5</button>
+            <button class="bb-pad" onclick="enterDigit('6')">6</button>
+            <button class="bb-pad" onclick="enterDigit('7')">7</button>
+            <button class="bb-pad" onclick="enterDigit('8')">8</button>
+            <button class="bb-pad" onclick="enterDigit('9')">9</button>
+            <button class="bb-pad" onclick="enterDigit('.')">.</button>
+            <button class="bb-pad" onclick="enterDigit('0')">0</button>
+            <button class="bb-pad bb-pad-action" onclick="clearAmount()">Clear</button>
+          </div>
+        </div>
+
+        <div class="bb-modal-footer">
+          <button class="bb-secondary-btn" type="button" onclick="closePaymentModal()">Back</button>
+          <button class="bb-primary-btn" type="button" onclick="completePayment()" id="doneBtn" disabled>Done</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Admin Dashboard Modal -->
+    <div class="modal-overlay" id="adminModal">
+      <div class="modal bb-modal admin-modal" role="dialog">
+        <div class="bb-modal-header">
+          <div class="bb-modal-title-wrap">
+            <div class="bb-modal-kicker">Administrator</div>
+            <div class="bb-modal-title">Dashboard Control</div>
+          </div>
+          <button class="bb-icon-btn" onclick="closeAdminDashboard()" aria-label="Close">&times;</button>
+        </div>
+        
+        <div class="bb-modal-body">
+          <!-- Overview -->
+          <div class="admin-tab-content" data-tab-content="overview">
+            <!-- Dynamic content -->
+          </div>
+          
+          <!-- Menu Manager -->
+          <div class="admin-tab-content" data-tab-content="menu" style="display:none">
+            <!-- Dynamic content -->
+          </div>
+          
+          <!-- Data Export -->
+          <div class="admin-tab-content" data-tab-content="data" style="display:none">
+            <!-- Dynamic content -->
+          </div>
+        </div>
+        
+        <div class="bb-modal-footer">
+          <div class="admin-tabs">
+            <button data-admin-tab="overview" class="admin-tab-btn active"><i class="ri-bar-chart-box-line" aria-hidden="true"></i> Overview</button>
+            <button data-admin-tab="menu" class="admin-tab-btn"><i class="ri-restaurant-line" aria-hidden="true"></i> Menu</button>
+            <button data-admin-tab="data" class="admin-tab-btn"><i class="ri-database-2-line" aria-hidden="true"></i> Data</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Receipt Modal -->
+    <div class="modal-overlay" id="receiptModal">
+      <div class="modal bb-modal" role="dialog" aria-modal="true" aria-labelledby="receiptTitle">
+        <div class="bb-modal-header">
+          <div class="bb-modal-title-wrap">
+            <div class="bb-modal-kicker">Order</div>
+            <div class="bb-modal-title" id="receiptTitle">Receipt</div>
+          </div>
+          <button class="bb-icon-btn" type="button" onclick="closeReceipt()" aria-label="Close">&times;</button>
+        </div>
+
+        <div class="bb-modal-body" id="receiptContent"></div>
+
+        <div class="bb-modal-footer">
+          <button class="bb-secondary-btn" type="button" onclick="closeReceipt()">Close</button>
+          <button class="bb-primary-btn" type="button" onclick="printReceipt()">Print receipt</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Cash Drawer Modal -->
+    <div class="modal-overlay" id="drawerModal" aria-hidden="true">
+      <div class="modal bb-modal bb-mini-modal" role="dialog" aria-modal="true" aria-labelledby="drawerTitle">
+        <div class="bb-modal-header">
+          <div class="bb-modal-title-wrap">
+            <div class="bb-modal-kicker">Cash drawer</div>
+            <div class="bb-modal-title" id="drawerTitle">Drawer Summary</div>
+          </div>
+          <button class="bb-icon-btn" type="button" onclick="closeDrawerModal()" aria-label="Close">&times;</button>
+        </div>
+
+        <div class="bb-modal-body">
+          <div class="bb-drawer-grid">
+            <div class="bb-drawer-card">
+              <div class="bb-drawer-label">Current cash</div>
+              <div class="bb-drawer-value" id="drawerCashValue">₱0.00</div>
+            </div>
+            <div class="bb-drawer-card">
+              <div class="bb-drawer-label">Transactions today</div>
+              <div class="bb-drawer-value" id="drawerTxnValue">0</div>
+            </div>
+          </div>
+          <div class="bb-drawer-note">Drawer is balanced</div>
+        </div>
+
+        <div class="bb-modal-footer">
+          <button class="bb-primary-btn" type="button" onclick="closeDrawerModal()">Close</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Logout Confirmation Modal -->
+    <div class="modal-overlay" id="logoutConfirmModal" aria-hidden="true">
+      <div class="modal bb-modal bb-mini-modal" role="dialog" aria-modal="true" aria-labelledby="logoutConfirmTitle">
+        <div class="bb-modal-header">
+          <div class="bb-modal-title-wrap">
+            <div class="bb-modal-kicker">Session</div>
+            <div class="bb-modal-title" id="logoutConfirmTitle">Confirm Logout</div>
+          </div>
+          <button class="bb-icon-btn" type="button" onclick="closeLogoutModal()" aria-label="Close">&times;</button>
+        </div>
+
+        <div class="bb-modal-body">
+          <p class="bb-confirm-copy">Are you sure you want to log out?</p>
+        </div>
+
+        <div class="bb-modal-footer">
+          <button class="bb-secondary-btn" type="button" onclick="closeLogoutModal()">Cancel</button>
+          <button class="bb-primary-btn bb-danger-btn" type="button" onclick="confirmLogout()">Logout</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Sales Dashboard Modal -->
+    <div class="modal-overlay" id="salesDashboardModal" aria-hidden="true">
+      <div class="modal bb-modal bb-sales-dashboard" role="dialog" aria-modal="true" aria-labelledby="salesDashboardTitle">
+        <div class="bb-modal-header">
+          <div class="bb-modal-title-wrap">
+            <div class="bb-modal-kicker">Analytics</div>
+            <div class="bb-modal-title" id="salesDashboardTitle">Today's Sales Dashboard</div>
+          </div>
+          <button class="bb-icon-btn" type="button" onclick="closeSalesDashboard()" aria-label="Close">&times;</button>
+        </div>
+
+        <div class="bb-modal-body">
+          <div class="sales-dashboard-grid">
+            <div class="sales-dashboard-main">
+              <div class="sales-dashboard-chart-head">
+                <h3>Sales by 2-hour windows</h3>
+                <p id="salesDashboardSubhead">Live updates as orders complete</p>
+              </div>
+              <div class="sales-chart-bars sales-chart-bars-lg" id="salesDashboardBars" role="img" aria-label="Enlarged sales graph"></div>
+              <div class="sales-chart-axis sales-chart-axis-lg" id="salesDashboardAxis"></div>
+            </div>
+
+            <div class="sales-dashboard-side">
+              <div class="sales-kpi-cards">
+                <div class="sales-kpi-card">
+                  <div class="sales-kpi-label">Total Sales</div>
+                  <div class="sales-kpi-value" id="salesDashTotal">₱0.00</div>
+                </div>
+                <div class="sales-kpi-card">
+                  <div class="sales-kpi-label">Orders</div>
+                  <div class="sales-kpi-value" id="salesDashOrders">0</div>
+                </div>
+                <div class="sales-kpi-card">
+                  <div class="sales-kpi-label">Average Ticket</div>
+                  <div class="sales-kpi-value" id="salesDashAvg">₱0.00</div>
+                </div>
+                <div class="sales-kpi-card">
+                  <div class="sales-kpi-label">Peak Window</div>
+                  <div class="sales-kpi-value" id="salesDashPeak">N/A</div>
+                </div>
+              </div>
+
+              <div class="sales-slot-list" id="salesSlotList"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="bb-modal-footer">
+          <div class="bb-modal-summary">
+            <div class="bb-summary-row"><span class="bb-summary-label">Discounted orders</span><span class="bb-summary-value" id="salesDashDiscounts">0</span></div>
+            <div class="bb-summary-row"><span class="bb-summary-label">Status</span><span class="bb-summary-value">Today only (auto-resets daily)</span></div>
+          </div>
+          <button class="bb-primary-btn" type="button" onclick="closeSalesDashboard()">Close dashboard</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div class="toast" id="toast">
+      <span id="toastIcon"><i class="ri-checkbox-circle-line" aria-hidden="true"></i></span>
+      <span id="toastMessage">Operation successful</span>
+    </div>
+
+    <script src="/assets/bootstrap-5.3.8-dist/js/bootstrap.bundle.min.js"></script>
+    <script type="module">
+      import '/controllers/pos/index.js';
+
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', async () => {
+          try {
+            await navigator.serviceWorker.register('/sw-pos.js');
+          } catch (err) {
+            console.error('POS service worker registration failed', err);
+          }
+        });
+      }
+    </script>
+  </body>
+</html>

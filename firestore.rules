@@ -1,0 +1,63 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function role() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && role() == "admin";
+    }
+
+    function isWorker() {
+      return isSignedIn() && (role() in ["admin", "staff"]);
+    }
+
+    // Users can read their own profile; only admins can write roles for others.
+    match /users/{uid} {
+      allow read: if isSignedIn() && (request.auth.uid == uid || isAdmin());
+      allow create: if isSignedIn() && (request.auth.uid == uid || isAdmin());
+      allow update, delete: if isAdmin();
+    }
+
+    match /inventory/{docId} {
+      allow read: if isWorker();
+      allow write: if isAdmin();
+    }
+
+    match /menu/{docId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /staff/{docId} {
+      allow read: if isWorker();
+      allow write: if isAdmin();
+    }
+
+    match /schedule/{docId} {
+      allow read: if isWorker();
+      allow write: if isAdmin();
+    }
+
+    match /orders/{docId} {
+      allow create: if isWorker();
+      allow read, update, delete: if isAdmin();
+    }
+
+    match /resets/{dateId} {
+      allow read, write: if isAdmin();
+
+      match /orders/{orderDocId} {
+        allow read, write: if isAdmin();
+      }
+    }
+  }
+}
+
