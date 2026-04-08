@@ -10,6 +10,28 @@ import { renderAdminMenu } from "../../views/menuView.js";
 import { renderStaffList, renderScheduleEditor, readScheduleFromDOM } from "../../views/staffView.js";
 import { navigateTo } from "../utils/routes.js";
 
+const ModalUtils = window.ModalUtils || {
+  async confirm(title, message) {
+    const prompt = `${String(title || "Confirm")}\n\n${String(message || "")}`.replace(/<[^>]*>/g, "");
+    return window.confirm(prompt) ? 1 : 0;
+  },
+  async success(title, message) {
+    const prompt = `${String(title || "Success")}\n\n${String(message || "")}`.replace(/<[^>]*>/g, "");
+    window.alert(prompt);
+    return 0;
+  },
+  async warning(title, message) {
+    const prompt = `${String(title || "Warning")}\n\n${String(message || "")}`.replace(/<[^>]*>/g, "");
+    window.alert(prompt);
+    return 0;
+  },
+  async error(title, message) {
+    const prompt = `${String(title || "Error")}\n\n${String(message || "")}`.replace(/<[^>]*>/g, "");
+    window.alert(prompt);
+    return 0;
+  },
+};
+
 const state = {
   page: "dashboard",
   menuItems: [],

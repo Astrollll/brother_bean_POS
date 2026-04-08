@@ -18,6 +18,8 @@ const ModalUtils = (() => {
    */
   const show = (options = {}) => {
     return new Promise((resolve) => {
+      let myModal = { overlay: null, modal: null, onClose: null, isClosing: false, cleanup: null };
+      
       const {
         type = 'info',
         title = 'Notice',
@@ -28,8 +30,9 @@ const ModalUtils = (() => {
 
       // Close existing modal if any
       if (activeModal) {
-        close(true);
+        close(true, activeModal);
       }
+      let docCaptureHandler = null;
 
       // Create overlay
       const overlay = document.createElement('div');
@@ -69,26 +72,64 @@ const ModalUtils = (() => {
       const footer = document.createElement('div');
       footer.className = 'modal-custom-footer';
 
+      let actionHandled = false;
+
+      const handleAction = (btn, index) => {
+        if (actionHandled) return;
+        actionHandled = true;
+
+        try {
+          if (btn.callback) btn.callback();
+        } catch (error) {
+          console.error("[ModalUtils] Button callback failed:", error);
+        }
+
+        resolve(index);
+
+        // Close cancel-style actions immediately to avoid visible flicker.
+        const isCancelAction = index === 0 && (buttons.length > 1 || String(btn.type || '').includes('secondary') || String(btn.text || '').toLowerCase() === 'cancel');
+        close(isCancelAction, myModal);
+      };
+
+      const activateFromTarget = (target) => {
+        const actionButton = target?.closest?.("button[data-modal-btn-index]");
+        if (!actionButton) return false;
+        const index = Number(actionButton.dataset.modalBtnIndex || "-1");
+        if (!Number.isInteger(index) || index < 0 || index >= buttons.length) return false;
+        handleAction(buttons[index], index);
+        return true;
+      };
+
       buttons.forEach((btn, index) => {
         const button = document.createElement('button');
         button.type = 'button';
+        button.disabled = false;
+        button.dataset.modalBtnIndex = String(index);
         button.className = `modal-custom-btn ${btn.type || 'secondary'}`;
         button.textContent = btn.text;
 
         button.addEventListener('click', (event) => {
           event.preventDefault();
           event.stopPropagation();
+          handleAction(btn, index);
+        });
 
-          if (btn.callback) btn.callback();
-          resolve(index);
-
-          // Close cancel-style actions immediately to avoid visible flicker.
-          const isCancelAction = index === 0 && (buttons.length > 1 || String(btn.type || '').includes('secondary') || String(btn.text || '').toLowerCase() === 'cancel');
-          close(isCancelAction);
+        button.addEventListener('keydown', (event) => {
+          if (event.key !== 'Enter' && event.key !== ' ') return;
+          event.preventDefault();
+          event.stopPropagation();
+          handleAction(btn, index);
         });
 
         footer.appendChild(button);
       });
+
+      if (buttons.length === 1) {
+        footer.addEventListener('click', (event) => {
+          if (event.target?.closest?.('button[data-modal-btn-index]')) return;
+          handleAction(buttons[0], 0);
+        });
+      }
 
       // Assemble modal
       modal.appendChild(header);
@@ -98,7 +139,11 @@ const ModalUtils = (() => {
 
       // Add to DOM
       document.body.appendChild(overlay);
-      activeModal = { overlay, modal, onClose, isClosing: false };
+      myModal.overlay = overlay;
+      myModal.modal = modal;
+      myModal.onClose = onClose;
+      
+      activeModal = myModal;
 
       // Trigger animation
       setTimeout(() => {
@@ -108,28 +153,51 @@ const ModalUtils = (() => {
 
       // Close on overlay click
       overlay.addEventListener('click', (e) => {
+        if (activateFromTarget(e.target)) return;
         if (e.target === overlay) {
           resolve(-1);
-          close(true);
+          close(true, myModal);
         }
       });
+
+      // Some environments can suppress synthetic click on custom-styled buttons.
+      // Capture pointer-up as a fallback to guarantee button activation.
+      overlay.addEventListener('pointerup', (e) => {
+        activateFromTarget(e.target);
+      });
+      docCaptureHandler = (event) => {
+        // Capture-phase fallback for environments where bubbling click handlers are disrupted.
+        if (!myModal || activeModal !== myModal || myModal.overlay !== overlay) return;
+        if (!overlay.contains(event.target)) return;
+        activateFromTarget(event.target);
+      };
+      document.addEventListener('click', docCaptureHandler, true);
+      myModal.cleanup = () => {
+        if (docCaptureHandler) {
+          document.removeEventListener('click', docCaptureHandler, true);
+          docCaptureHandler = null;
+        }
+      };
     });
   };
 
   /**
    * Close the active modal
    */
-  const close = (immediate = false) => {
-    if (!activeModal) return;
+  const close = (immediate = false, targetModal = activeModal) => {
+    if (!targetModal) return;
 
-    const { overlay, modal, onClose, isClosing } = activeModal;
+    const { overlay, modal, onClose, isClosing, cleanup } = targetModal;
     if (isClosing) return;
-    activeModal.isClosing = true;
+    targetModal.isClosing = true;
 
     const finalizeClose = () => {
-      if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+      if (typeof cleanup === 'function') cleanup();
+      if (overlay && overlay.parentNode) overlay.parentNode.removeChild(overlay);
       if (typeof onClose === 'function') onClose();
-      activeModal = null;
+      if (activeModal === targetModal) {
+        activeModal = null;
+      }
     };
 
     if (immediate) {
@@ -137,8 +205,8 @@ const ModalUtils = (() => {
       return;
     }
 
-    overlay.style.animation = 'fadeOut 150ms ease-out';
-    modal.style.animation = 'fadeOut 150ms ease-out';
+    if (overlay) overlay.style.animation = 'fadeOut 150ms ease-out';
+    if (modal) modal.style.animation = 'fadeOut 150ms ease-out';
 
     setTimeout(finalizeClose, 150);
   };
@@ -229,3 +297,8 @@ const ModalUtils = (() => {
     confirm,
   };
 })();
+
+// Make modal helpers available to module scripts and inline handlers.
+if (typeof window !== "undefined") {
+  window.ModalUtils = ModalUtils;
+}

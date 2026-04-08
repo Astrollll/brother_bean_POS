@@ -2382,6 +2382,8 @@ input:checked + .tslider::before {
   padding: 16px 20px;
   border-top: 1px solid var(--border-color);
   background: #fafbfc;
+  position: relative;
+  z-index: 1;
 }
 
 .modal-custom-btn {
@@ -2393,6 +2395,10 @@ input:checked + .tslider::before {
   cursor: pointer;
   transition: all 200ms ease-out;
   font-family: 'DM Sans', sans-serif;
+  position: relative;
+  z-index: 2;
+  pointer-events: auto;
+  touch-action: manipulation;
 }
 
 .modal-custom-btn.primary {
