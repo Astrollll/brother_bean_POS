@@ -28,8 +28,10 @@ const ModalUtils = (() => {
         onClose = null,
       } = options;
 
+      let hadPreviousModal = false;
       // Close existing modal if any
       if (activeModal) {
+        hadPreviousModal = true;
         close(true, activeModal);
       }
       let docCaptureHandler = null;
@@ -147,8 +149,13 @@ const ModalUtils = (() => {
 
       // Trigger animation
       setTimeout(() => {
-        overlay.style.animation = 'fadeIn 200ms ease-out';
-        modal.style.animation = 'slideUp 300ms cubic-bezier(0.16, 1, 0.3, 1)';
+        if (overlay) {
+          overlay.style.animation = hadPreviousModal ? 'none' : 'fadeIn 200ms ease-out forwards';
+          if (hadPreviousModal) overlay.style.opacity = '1';
+        }
+        if (modal) {
+          modal.style.animation = 'slideUp 300ms cubic-bezier(0.16, 1, 0.3, 1) forwards';
+        }
       }, 10);
 
       // Close on overlay click
@@ -205,8 +212,14 @@ const ModalUtils = (() => {
       return;
     }
 
-    if (overlay) overlay.style.animation = 'fadeOut 150ms ease-out';
-    if (modal) modal.style.animation = 'fadeOut 150ms ease-out';
+    if (overlay) {
+      overlay.style.animation = 'fadeOut 150ms ease-out forwards';
+      overlay.style.opacity = '0';
+    }
+    if (modal) {
+      modal.style.animation = 'fadeOut 150ms ease-out forwards';
+      modal.style.opacity = '0';
+    }
 
     setTimeout(finalizeClose, 150);
   };
