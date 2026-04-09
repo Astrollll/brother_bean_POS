@@ -1,7 +1,10 @@
 // ── POS CONTROLLER ──
 // Connects models (data) to views (UI) for the POS/cashier page
 
-import { getMenuItems, watchMenuItems, defaultMenu }  from "../models/menuModel.js";
+import { getMenuItems, watchMenuItems }  from "../models/menuModel.js";
+import { getCategories } from "../models/categoryModel.js";
+import { getCategoryIconForName } from "../models/categoryModel.js";
+import { isDefaultTemplateMenuItem } from "../models/defaultSeedData.js";
 import { saveOrder, syncQueuedOrders, getPendingOrderCount } from "../models/orderModel.js";
 import { watchAuth, getCurrentUser, logout as authLogout } from "./auth/firebaseAuth.js";
 import { getUserProfile, getUserRole } from "../models/userModel.js";
@@ -20,6 +23,7 @@ import {
 
 // ── STATE ──
 let menuItems        = [];
+let globalCategories = [];
 let cart             = [];
 let currentCategory  = "all";
 let currentPayMethod = "cash";
@@ -41,7 +45,20 @@ const CART_DENSITY_STORAGE_KEY = "bb-pos-cart-density";
 document.addEventListener("DOMContentLoaded", async () => {
   let initialized = false;
 
-  const persistPosState = () => saveToStorage(salesHistory, dailyStats, menuItems);
+  const persistPosState = () => saveToStorage(salesHistory, dailyStats);
+
+  getCategories()
+    .then((categories) => {
+      globalCategories = Array.isArray(categories) ? categories : [];
+      if (initialized) {
+        renderCategoryControls();
+        renderProducts(currentCategory);
+      }
+    })
+    .catch((error) => {
+      console.warn("[POS] Category load failed; using fallback labels.", error);
+      globalCategories = [];
+    });
 
   closeSidebar();
   setMainView("menu");
@@ -62,7 +79,12 @@ document.addEventListener("DOMContentLoaded", async () => {
       return;
     }
 
-    const profile = await getUserProfile(user.uid);
+    const [profileResult, roleResult] = await Promise.allSettled([
+      getUserProfile(user.uid),
+      getUserRole(user.uid),
+    ]);
+
+    const profile = profileResult.status === "fulfilled" ? profileResult.value : null;
     if (String(profile?.status || "active").toLowerCase() === "suspended") {
       await authLogout();
       alert("Your account is suspended. Please contact an administrator.");
@@ -70,7 +92,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       return;
     }
 
-    const role = await getUserRole(user.uid);
+    const role = roleResult.status === "fulfilled" ? roleResult.value : null;
     if (role && !["admin", "staff"].includes(role)) {
       navigateTo("login", { replace: true });
       return;
@@ -90,14 +112,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       persistPosState();
     }
 
-    menuItems = Array.isArray(storageData.menuItems) && storageData.menuItems.length > 0
-      ? storageData.menuItems
-      : await getMenuItems();
-
-    if (!Array.isArray(menuItems) || menuItems.length === 0) {
-      menuItems = defaultMenu.slice();
-      showToast("Loaded default POS menu locally", "info");
-    }
+    menuItems = sanitizePosMenuItems(await getMenuItems());
 
     persistPosState();
     renderCategoryControls();
@@ -110,9 +125,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     // Live update POS menu whenever Firestore changes
     watchMenuItems((items) => {
       if (Array.isArray(items) && items.length > 0) {
-        menuItems = items;
-      } else if (!menuItems.length) {
-        menuItems = defaultMenu.slice();
+        menuItems = sanitizePosMenuItems(items);
+      } else {
+        menuItems = [];
       }
       persistPosState();
       renderCategoryControls();
@@ -137,6 +152,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         closeDrawerModal();
         closeLogoutModal();
         closeSalesDashboard();
+        closePendingOrdersModal();
       }
     });
 
@@ -146,6 +162,12 @@ document.addEventListener("DOMContentLoaded", async () => {
       updateConnectivityStatus();
       if (result.synced > 0) {
         showToast(`Synced ${result.synced} pending order(s)`, "success");
+      }
+      if (Number(result?.syncedAlerts || 0) > 0) {
+        showToast(`${result.syncedAlerts} ingredient stock item(s) reached zero after sync.`, "warning");
+      }
+      if (Number(result?.deductionFailures || 0) > 0) {
+        showToast(`${result.deductionFailures} synced order(s) were saved but inventory deduction failed. Please contact admin.`, "warning");
       }
     });
 
@@ -168,145 +190,143 @@ export function renderProducts(filter = "all") {
   const grid       = document.getElementById("productsGrid");
   const searchTerm = document.getElementById("searchInput").value.toLowerCase();
 
-  let filtered = menuItems.filter(p => normalizeCategory(p.category, p.subcategory) !== "addons");
-  if (filter !== "all") filtered = filtered.filter(p => normalizeCategory(p.category, p.subcategory) === normalizeCategory(filter));
+  let filtered = menuItems.filter(p => (p.category || "").toLowerCase() !== "addons");
+  if (filter !== "all") {
+    filtered = filtered.filter(p => (p.category || "").toLowerCase() === filter.toLowerCase());
+  }
+
   if (searchTerm) {
     filtered = filtered.filter(p =>
       p.name.toLowerCase().includes(searchTerm) ||
-      p.subcategory.toLowerCase().includes(searchTerm)
+      (p.category || '').toLowerCase().includes(searchTerm)
     );
   }
 
   const grouped = filtered.reduce((acc, item) => {
-    if (!acc[item.subcategory]) acc[item.subcategory] = [];
-    acc[item.subcategory].push(item);
+    const cat = item.category || 'Uncategorized';
+    if (!acc[cat]) acc[cat] = [];
+    acc[cat].push(item);
     return acc;
   }, {});
 
-  let html = "";
-  for (const [subcategory, items] of Object.entries(grouped)) {
-    html += `<div style="grid-column:1/-1;font-weight:700;color:var(--primary);margin-top:10px;margin-bottom:5px;font-size:14px;text-transform:uppercase;letter-spacing:1px;">${subcategory}</div>`;
-    html += items.map(p => buildProductCard(p)).join("");
+  if (!Object.keys(grouped).length) {
+    grid.innerHTML = '<div style="text-align:center;padding:40px;color:var(--gray);">No items found</div>';
+    return;
   }
 
-  grid.innerHTML = html || '<div style="grid-column:1/-1;text-align:center;padding:40px;color:var(--gray);">No items found</div>';
+  let html = "";
+  const sortedGroups = Object.entries(grouped)
+    .map(([category, items]) => ({ category, items }))
+    .sort((a, b) => getCategoryMeta(a.category).name.localeCompare(getCategoryMeta(b.category).name));
+
+  sortedGroups.forEach((group) => {
+    const { category } = group;
+    const items = [...group.items].sort((a, b) => String(a?.name || "").localeCompare(String(b?.name || "")));
+    const catData = getCategoryMeta(category);
+    html += `
+      <section class="products-category-section">
+        <div class="products-category-heading"><span class="products-category-icon">${catData.icon}</span><span>${escapeHtml(catData.name)}</span></div>
+        <div class="products-category-items">${items.map(p => buildProductCard(p)).join("")}</div>
+      </section>
+    `;
+  });
+
+  grid.innerHTML = html;
 }
 
-const MENU_CATEGORY_ORDER = [
-  "coffee",
-  "oat series",
-  "coconut series",
-  "matcha series",
-  "non-dairy specials",
-  "non-coffee",
-  "starter",
-  "rice meals",
-  "pasta",
-  "sandwiches",
-  "pastries",
-  "addons",
-];
+function getCategoryDisplay(catParam) {
+  if (catParam === 'all') return '<span class="category-chip-icon-wrap"><span class="category-chip-icon">📑</span></span><span class="category-chip-label">All Items</span>';
+  const c = getCategoryMeta(catParam);
+  const icon = c.icon;
+  const name = c.name;
+  return `<span class="category-chip-icon-wrap"><span class="category-chip-icon">${icon}</span></span><span class="category-chip-label">${name}</span>`;
+}
 
-const CATEGORY_LABELS = {
-  "coffee": "Coffee",
-  "oat series": "Oat Series",
-  "coconut series": "Coconut Series",
-  "matcha series": "Matcha Series",
-  "non-dairy specials": "Non-Dairy Specials",
-  "non-coffee": "Non-Coffee",
-  "starter": "Starter",
-  "rice meals": "Rice Meals",
-  "pasta": "Pasta",
-  "sandwiches": "Sandwiches",
-  "pastries": "Pastries",
-  "addons": "Add-ons",
-};
+function getCategoryOptionLabel(catParam) {
+  if (catParam === "all") return "All Items";
+  return getCategoryMeta(catParam).name;
+}
 
-function normalizeCategory(category, subcategory) {
-  const cat = String(category || "").trim().toLowerCase();
-  const sub = String(subcategory || "").trim().toLowerCase();
-  const aliases = {
-    "food": "rice meals",
-    "rice-meals": "rice meals",
-    "noncoffee": "non-coffee",
-    "non coffee": "non-coffee",
-    "add-ons": "addons",
-    "add ons": "addons",
-    "starters": "starter",
-    "starter": "starter",
-    "sides": "starter",
-    "signature": "oat series",
-    "pasta": "pasta",
-    "past": "pasta",
-    "sandwich": "sandwiches",
-    "pastry": "pastries",
+function getCategoryMeta(catParam) {
+  const raw = String(catParam || "").trim();
+  if (!raw) return { name: "Uncategorized", icon: "📦" };
+
+  const normalized = normalizeCategoryKey(raw);
+  const category = globalCategories.find((entry) => {
+    const idMatch = String(entry?.id || "").trim().toLowerCase() === normalized;
+    const name = String(entry?.name || "").trim();
+    const nameNormalized = normalizeCategoryKey(name);
+    return idMatch || nameNormalized === normalized || nameNormalized.includes(normalized) || normalized.includes(nameNormalized);
+  });
+
+  if (category) {
+    return {
+      name: category.name || raw,
+      icon: category.icon || getCategoryIconForName(category.name || raw),
+    };
+  }
+
+  return {
+    name: toTitleCase(raw),
+    icon: getCategoryIconForName(raw),
   };
-  if (cat === "signature") {
-    if (sub.includes("coconut")) return "coconut series";
-    if (sub.includes("oat")) return "oat series";
-    return "oat series";
-  }
-  if (cat === "food") {
-    if (sub === "rice meals") return "rice meals";
-    if (sub === "sandwiches") return "sandwiches";
-    if (sub === "pastries") return "pastries";
-    if (sub === "starter" || sub === "starters") return "starter";
-  }
-  if (aliases[cat]) return aliases[cat];
-  return cat;
 }
 
 function getMenuCategories() {
-  const discoveredSet = new Set(
-    (menuItems || [])
-      .map(item => normalizeCategory(item.category, item.subcategory))
-      .filter(cat => cat && cat !== "addons")
+  const available = new Set(
+    menuItems
+      .map((item) => String(item?.category || "").trim())
+      .filter((category) => category && category.toLowerCase() !== "addons")
   );
-  return MENU_CATEGORY_ORDER.filter(cat => discoveredSet.has(cat));
+
+  const ordered = [];
+  for (const category of globalCategories) {
+    const match = Array.from(available).find((value) => normalizeCategoryKey(getCategoryMeta(value).name) === normalizeCategoryKey(getCategoryMeta(category.id || category.name).name));
+    if (match && !ordered.includes(match)) {
+      ordered.push(match);
+      available.delete(match);
+    }
+  }
+
+  return ordered.concat(Array.from(available).sort((a, b) => a.localeCompare(b)));
 }
 
-function toTitleCase(text) {
-  return String(text)
-    .replace(/[-_]+/g, " ")
-    .replace(/\b\w/g, m => m.toUpperCase());
+function canonicalizeCategorySelection(category, categories = getMenuCategories()) {
+  const raw = String(category || "").trim();
+  if (!raw || normalizeCategoryKey(raw) === "all") return "all";
+
+  const exactMatch = categories.find((value) => normalizeCategoryKey(value) === normalizeCategoryKey(raw));
+  return exactMatch || raw;
 }
 
-function getCategoryIconUrl(cat) {
-  const key = String(cat || "").trim().toLowerCase();
-  const iconBase = "https://cdn.jsdelivr.net/gh/hfg-gmuend/openmoji/color/svg";
-  const iconMap = {
-    all: `${iconBase}/1F4DD.svg`,
-    coffee: `${iconBase}/2615.svg`,
-    "oat series": `${iconBase}/2615.svg`,
-    "coconut series": `${iconBase}/2615.svg`,
-    "matcha series": `${iconBase}/1F343.svg`,
-    "non-dairy specials": `${iconBase}/1F379.svg`,
-    "non-coffee": `${iconBase}/1F9CB.svg`,
-    starter: `${iconBase}/1F35F.svg`,
-    "rice meals": `${iconBase}/1F35A.svg`,
-    pasta: `${iconBase}/1F35D.svg`,
-    sandwiches: `${iconBase}/1F96A.svg`,
-    pastries: `${iconBase}/1F9C1.svg`,
-    addons: `${iconBase}/2795.svg`,
-  };
-  return iconMap[key] || `${iconBase}/1F37D.svg`;
+function isSameCategory(left, right) {
+  return normalizeCategoryKey(left) === normalizeCategoryKey(right);
 }
 
-function getCategoryDisplay(cat) {
-  const key = String(cat || "").trim().toLowerCase();
-  const baseLabel = key === "all" ? "All Items" : CATEGORY_LABELS[key] || toTitleCase(cat);
-  return `
-    <span class="category-chip-icon-wrap">
-      <img class="category-chip-icon" src="${getCategoryIconUrl(key)}" alt="" aria-hidden="true" loading="lazy" decoding="async" />
-    </span>
-    <span class="category-chip-label">${baseLabel}</span>
-  `;
+function normalizeCategoryKey(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[_\s]+/g, " ")
+    .replace(/\s*[-–—]\s*/g, "-")
+    .replace(/\s+/g, " ");
 }
 
-function getCategoryOptionLabel(cat) {
-  const key = String(cat || "").trim().toLowerCase();
-  if (key === "all") return "All Items";
-  return CATEGORY_LABELS[key] || toTitleCase(cat);
+function toTitleCase(value) {
+  return String(value || "")
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ") || "Uncategorized";
+}
+
+function escapeHtml(value) {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }
 
 function updateCategorySelectLabel(cat) {
@@ -319,7 +339,7 @@ function updateCategorySelectLabel(cat) {
 
 function syncCategorySelectionUi(cat) {
   document.querySelectorAll("#categories .category-chip").forEach(chip => {
-    chip.classList.toggle("active", chip.dataset.category === cat);
+    chip.classList.toggle("active", isSameCategory(chip.dataset.category, cat));
   });
 }
 
@@ -330,16 +350,15 @@ function renderCategoryControls() {
   if (!categoriesHost || !quickButton || !quickMenu) return;
 
   const categories = getMenuCategories();
-  const available = ["all", ...categories];
-  if (!available.includes(currentCategory)) currentCategory = "all";
+  currentCategory = canonicalizeCategorySelection(currentCategory, categories);
 
   categoriesHost.innerHTML = ["all", ...categories]
-    .map(cat => `<button type="button" class="category-chip ${cat === currentCategory ? "active" : ""}" data-category="${cat}" onclick="selectCategory('${cat}', this)">${getCategoryDisplay(cat)}</button>`)
+    .map(cat => `<button type="button" class="category-chip ${isSameCategory(cat, currentCategory) ? "active" : ""}" data-category="${cat}" onclick="selectCategory('${cat}', this)">${getCategoryDisplay(cat)}</button>`)
     .join("");
 
   quickButton.innerHTML = getCategoryDisplay(currentCategory);
   quickMenu.innerHTML = ["all", ...categories]
-    .map(cat => `<button type="button" class="category-quick-menu-item${cat === currentCategory ? " is-selected" : ""}" onclick="selectCategory('${cat}')">${getCategoryDisplay(cat)}</button>`)
+    .map(cat => `<button type="button" class="category-quick-menu-item${isSameCategory(cat, currentCategory) ? " is-selected" : ""}" onclick="selectCategory('${cat}')">${getCategoryDisplay(cat)}</button>`)
     .join("");
 }
 
@@ -366,14 +385,12 @@ window.addEventListener("click", (event) => {
 });
 
 window.selectCategory = function(cat, chipEl = null) {
-  currentCategory = cat;
-  syncCategorySelectionUi(cat);
-  if (chipEl) {
-    document.querySelectorAll("#categories .category-chip").forEach(c => c.classList.remove("active"));
-    chipEl.classList.add("active");
-  }
-  renderProducts(cat);
-  updateCategorySelectLabel(cat);
+  currentCategory = canonicalizeCategorySelection(cat);
+  // Rebuild controls so the quick-menu selected row stays in sync with the header button.
+  renderCategoryControls();
+  syncCategorySelectionUi(currentCategory);
+  renderProducts(currentCategory);
+  updateCategorySelectLabel(currentCategory);
 };
 
 window.scrollCategories = function(direction = 1) {
@@ -383,23 +400,28 @@ window.scrollCategories = function(direction = 1) {
 };
 function buildProductCard(product) {
   const badge = product.bestseller ? "BEST" : product.popular ? "POP" : "";
-  const iconUrl = getCategoryIconUrl(product.category);
-  return `<div class="product-card" onclick="openMenuItemModal(${product.id})">
-    <div class="product-header">
-      <div class="product-meta">
-        <img class="product-icon" src="${iconUrl}" alt="" aria-hidden="true" loading="lazy" decoding="async">
-        <div class="product-name">${product.name}${product.note ? `<span style="font-size:10px;color:var(--gray);display:block;">${product.note}</span>` : ""}</div>
-      </div>
+  const productMeta = getCategoryMeta(product.category);
+  const productIdLiteral = JSON.stringify(String(product.id ?? ""));
+  return `<div class="product-card" onclick='openMenuItemModal(${productIdLiteral})'>
+    <div class="product-card-top">
+      <div class="product-icon-badge">${productMeta.icon}</div>
       ${badge ? `<span class="product-badge">${badge}</span>` : ""}
     </div>
-    <div class="product-price">₱${product.price.toFixed(2)}</div>
-    <div class="product-category">${product.subcategory}</div>
+    <div class="product-name">${escapeHtml(product.name)}${product.note ? `<span class="product-note">${escapeHtml(product.note)}</span>` : ""}</div>
+    <div class="product-price">₱${Number(product.price || 0).toFixed(2)}</div>
+    <div class="product-category">${escapeHtml(productMeta.name)}</div>
   </div>`;
+}
+
+function sanitizePosMenuItems(items) {
+  if (!Array.isArray(items)) return [];
+  return items.filter((item) => !isDefaultTemplateMenuItem(item) && item?.previewOnly !== true && item?.templateOnly !== true);
 }
 
 // ── MENU ITEM MODAL ──
 window.openMenuItemModal = function(productId) {
-  const product = menuItems.find(p => p.id === productId);
+  const normalizedId = String(productId ?? "");
+  const product = menuItems.find((p) => String(p.id ?? "") === normalizedId);
   if (!product) return;
 
   activeProductId = productId;
@@ -425,13 +447,35 @@ window.closeMenuItemModal = function() {
 };
 
 function getEligibleAddons(product) {
+  if (Array.isArray(product?.addons) && product.addons.length > 0) {
+    const normalizedAddons = product.addons
+      .map((addon, index) => ({
+        id: String(addon?.id || `addon-${product.id || "item"}-${index}`),
+        name: String(addon?.name || "").trim(),
+        price: Number(addon?.price || 0),
+        recipe: Array.isArray(addon?.recipe)
+          ? addon.recipe
+              .map((ingredient) => ({
+                inventoryId: String(ingredient?.inventoryId || "").trim(),
+                name: String(ingredient?.name || "").trim(),
+                quantity: Number(ingredient?.quantity || 0),
+                unit: String(ingredient?.unit || "").trim(),
+              }))
+              .filter((ingredient) => ingredient.inventoryId && ingredient.quantity > 0)
+          : [],
+      }))
+      .filter((addon) => addon.name);
+
+    return { label: "Add-ons", addons: normalizedAddons };
+  }
+
   const drinkAddons = menuItems.filter(i =>
-    i.subcategory === "Add-ons Drink" || i.subcategory === "Add-ons"
+    i.category === "addons" || i.category === "Add-ons" || i.category === "Add-ons Drink"
   );
   const foodAddons = menuItems.filter(i =>
-    i.subcategory === "Add-ons Food" || i.subcategory === "Add-ons"
+    i.category === "addons" || i.category === "Add-ons" || i.category === "Add-ons Food"
   );
-  const productCategory = normalizeCategory(product.category, product.subcategory);
+  const productCategory = product.category;
   const drinkCats = ["coffee", "oat series", "coconut series", "matcha series", "non-dairy specials", "non-coffee"];
 
   if (drinkCats.includes(productCategory)) {
@@ -493,13 +537,16 @@ function renderMenuItemModal() {
     <div class="bb-field">
       <div class="bb-field-label">Add-ons <span class="bb-field-hint">(optional)</span></div>
       <div class="bb-addon-grid">
-        ${addons.map(a => `
-          <button class="bb-addon ${selectedAddons.some(x => x.id === a.id) ? "is-selected" : ""}" type="button"
-            onclick="toggleMenuAddon(${a.id})">
+        ${addons.map((a) => {
+          const addonIdLiteral = JSON.stringify(String(a.id ?? ""));
+          return `
+          <button class="bb-addon ${selectedAddons.some(x => String(x.id ?? "") === String(a.id ?? "")) ? "is-selected" : ""}" type="button"
+            onclick='toggleMenuAddon(${addonIdLiteral})'>
             <span class="bb-addon-name">${a.name}</span>
             <span class="bb-addon-price">+₱${Number(a.price).toFixed(2)}</span>
           </button>
-        `).join("")}
+        `;
+        }).join("")}
       </div>
     </div>
   ` : "";
@@ -519,11 +566,11 @@ function renderMenuItemModal() {
             <div class="bb-step-value">${selectedQty}</div>
             <button class="bb-step" type="button" onclick="changeMenuQty(1)">+</button>
           </div>
-          <div class="bb-mini-note">${product.subcategory || ""}</div>
+          <div class="bb-mini-note">${product.category || ""}</div>
         </div>
 
         <div class="bb-recap">
-          <div class="bb-recap-row"><span>Base</span><span>₱${(selectedVariant ? selectedVariant.price : product.price).toFixed(2)}</span></div>
+          <div class="bb-recap-row"><span>Retail</span><span>₱${(selectedVariant ? selectedVariant.price : product.price).toFixed(2)}</span></div>
           <div class="bb-recap-row"><span>Add-ons</span><span>₱${selectedAddons.reduce((s,a)=>s+a.price,0).toFixed(2)}</span></div>
           <div class="bb-recap-row bb-recap-strong"><span>Total</span><span>₱${computeActiveItemTotal(product).toFixed(2)}</span></div>
         </div>
@@ -547,9 +594,11 @@ window.selectMenuTemp = function(temp) {
 };
 
 window.toggleMenuAddon = function(addonId) {
-  const addon = menuItems.find(i => i.id === addonId);
+  const product = menuItems.find((p) => String(p.id ?? "") === String(activeProductId ?? ""));
+  const { addons: eligibleAddons } = getEligibleAddons(product || {});
+  const addon = eligibleAddons.find((i) => String(i.id ?? "") === String(addonId ?? ""));
   if (!addon) return;
-  const idx = selectedAddons.findIndex(a => a.id === addonId);
+  const idx = selectedAddons.findIndex(a => String(a.id ?? "") === String(addonId ?? ""));
   if (idx > -1) selectedAddons.splice(idx, 1);
   else selectedAddons.push(addon);
   renderMenuItemModal();
@@ -583,7 +632,31 @@ window.confirmMenuItem = function() {
   if (existingIdx > -1) {
     cart[existingIdx].quantity += qtyToAdd;
   } else {
-    cart.push({ id: product.id, name: product.name, price, variant, temperature: temp, addons, quantity: qtyToAdd, discountPercent: 0 });
+    const baseRecipe = Array.isArray(product.recipe)
+      ? product.recipe.map((ing) => ({
+          inventoryId: ing.inventoryId,
+          name: ing.name || "",
+          quantity: Number(ing.quantity || 0),
+          unit: String(ing.unit || "").trim(),
+        }))
+      : [];
+
+    const addonRecipe = selectedAddons.flatMap((addon) =>
+      Array.isArray(addon?.recipe)
+        ? addon.recipe.map((ing) => ({
+            inventoryId: ing.inventoryId,
+            name: ing.name || addon.name || "",
+            quantity: Number(ing.quantity || 0),
+            unit: String(ing.unit || "").trim(),
+          }))
+        : []
+    );
+
+    const recipe = [...baseRecipe, ...addonRecipe].filter(
+      (ing) => String(ing.inventoryId || "").trim() && Number(ing.quantity || 0) > 0
+    );
+
+    cart.push({ id: product.id, name: product.name, price, variant, temperature: temp, addons, quantity: qtyToAdd, discountPercent: 0, recipe });
   }
 
   selectedVariant   = null;
@@ -708,17 +781,6 @@ window.toggleDiscount = function() {
   updateCart();
 };
 
-window.selectCategory = function(cat, chipEl = null) {
-  currentCategory = cat;
-  syncCategorySelectionUi(cat);
-  if (chipEl) {
-    document.querySelectorAll("#categories .category-chip").forEach(c => c.classList.remove("active"));
-    chipEl.classList.add("active");
-  }
-  renderProducts(cat);
-  updateCategorySelectLabel(cat);
-};
-
 window.searchProducts = function() {
   renderProducts(currentCategory);
 };
@@ -807,7 +869,7 @@ window.completePayment = async function() {
   dailyStats.totalSales += total;
   if (isPwdSenior) dailyStats.discountsApplied++;
   salesHistory.push(sale);
-  saveToStorage(salesHistory, dailyStats, menuItems);
+  saveToStorage(salesHistory, dailyStats);
 
   // Generate receipt
   generateReceipt({ ...sale, items: cart, amountTendered, change: amountTendered - total });
@@ -825,9 +887,16 @@ window.completePayment = async function() {
   document.getElementById("receiptModal").classList.add("active");
   updateConnectivityStatus();
   showToast(sale.queued ? "Payment saved offline and queued for sync." : "Payment successful! Thank you!", "success");
+  if (!sale.queued && sale.inventoryDeductionError) {
+    showToast("Order saved, but inventory deduction failed. Please contact admin.", "warning");
+  }
+  if (Array.isArray(sale.inventoryAlerts) && sale.inventoryAlerts.length > 0) {
+    const alertNames = sale.inventoryAlerts.slice(0, 2).map((entry) => entry.name).join(", ");
+    const suffix = sale.inventoryAlerts.length > 2 ? "..." : "";
+    showToast(`Stock reached zero: ${alertNames}${suffix}`, "warning");
+  }
 };
 
-// ── RECEIPT ──
 function generateReceipt(sale) {
   const formatMoney = (n) => `₱${(Number(n) || 0).toFixed(2)}`;
   const orderShort = sale.orderId ? String(sale.orderId).slice(-6) : "—";
@@ -877,13 +946,13 @@ function generateReceipt(sale) {
                 ${(meta.length || addons.length) ? `
                   <div class="receipt-item-details">
                     ${meta.map(m => `<span>${m}</span>`).join("")}
-                    <span>Base: ${formatMoney(basePrice)}</span>
+                    <span>Retail: ${formatMoney(basePrice)}</span>
                     ${addons.map(a => `<span>+ ${a.name}: ${formatMoney(a.price)}</span>`).join("")}
                     ${qty > 1 ? `<span>Unit: ${formatMoney(unitPrice)} × ${qty}</span>` : `<span>Unit: ${formatMoney(unitPrice)}</span>`}
                   </div>
                 ` : `
                   <div class="receipt-item-details">
-                    <span>Base: ${formatMoney(basePrice)}</span>
+                    <span>Retail: ${formatMoney(basePrice)}</span>
                     <span>Unit: ${formatMoney(unitPrice)}</span>
                   </div>
                 `}
@@ -1377,6 +1446,21 @@ function getPendingOrders() {
   return getKitchenOrders();
 }
 
+window.openPendingOrdersModal = function() {
+  const modal = document.getElementById("pendingOrdersModal");
+  if (!modal) return;
+  renderPendingOrdersList();
+  modal.classList.add("active");
+  modal.setAttribute("aria-hidden", "false");
+};
+
+window.closePendingOrdersModal = function() {
+  const modal = document.getElementById("pendingOrdersModal");
+  if (!modal) return;
+  modal.classList.remove("active");
+  modal.setAttribute("aria-hidden", "true");
+};
+
 window.refreshPendingOrders = function() {
   renderPendingOrdersList();
   updateConnectivityStatus();
@@ -1392,7 +1476,7 @@ window.markPendingOrderPrepared = function(orderId) {
 
 function renderPendingOrdersList() {
   const pending = getPendingOrders();
-  const listEl = document.getElementById("sidebarPendingList");
+  const listEl = document.getElementById("pendingOrdersModalList");
   if (!listEl) return;
 
   if (!pending.length) {
@@ -1419,16 +1503,19 @@ function renderPendingOrdersList() {
 
 function updateConnectivityStatus() {
   const indicator = document.getElementById("storageStatus");
-  const pending = getPendingOrderCount();
+  const pendingKitchenOrders = getPendingOrders();
+  const pendingKitchenCount = Array.isArray(pendingKitchenOrders) ? pendingKitchenOrders.length : 0;
+  const pendingSyncCount = getPendingOrderCount();
   const pendingEl = document.getElementById("pendingOrdersSidebar");
-  if (pendingEl) pendingEl.textContent = String(pending);
+  if (pendingEl) pendingEl.textContent = String(pendingKitchenCount);
+  const pendingModalCountEl = document.getElementById("pendingOrdersOpenCount");
+  if (pendingModalCountEl) pendingModalCountEl.textContent = String(pendingKitchenCount);
 
   if (!indicator) return;
   const savedCount = getStorageCount();
-  const netLabel = isOnline ? "Online" : "Offline";
-  const queueLabel = pending > 0 ? ` | ${pending} pending sync order(s)` : "";
-  const localLabel = savedCount > 0 ? ` | ${savedCount} local` : "";
-  indicator.textContent = `${netLabel}${queueLabel}${localLabel}`;
+  const cloudLabel = isOnline ? "Online" : "Offline";
+  indicator.innerHTML = `<i class="ri-wifi-line" aria-hidden="true"></i><span>Cloud: ${cloudLabel}</span><span class="storage-dot" aria-hidden="true">•</span><span>Queue: ${pendingSyncCount}</span><span class="storage-dot" aria-hidden="true">•</span><span>Local: ${savedCount}</span>`;
+  indicator.setAttribute("title", `Cloud ${cloudLabel}; ${pendingSyncCount} order(s) waiting sync; ${savedCount} local record(s)`);
   renderPendingOrdersList();
 }
 

@@ -28,23 +28,34 @@ const ModalUtils = (() => {
         onClose = null,
       } = options;
 
-      let hadPreviousModal = false;
-      // Close existing modal if any
-      if (activeModal) {
-        hadPreviousModal = true;
-        close(true, activeModal);
-      }
+      let overlay = document.getElementById('modal-overlay');
+      let modal = document.getElementById('modal-custom');
       let docCaptureHandler = null;
 
-      // Create overlay
-      const overlay = document.createElement('div');
-      overlay.className = 'modal-overlay-custom';
-      overlay.id = 'modal-overlay';
-
-      // Create modal
-      const modal = document.createElement('div');
-      modal.className = 'modal-custom';
-      modal.id = 'modal-custom';
+      let isReused = false;
+      if (activeModal && overlay && modal) {
+        isReused = true;
+        // Clean up previous modal's events
+        if (typeof activeModal.cleanup === 'function') activeModal.cleanup();
+        clearTimeout(activeModal.closeTimer); // Stop it from closing if it was fading out
+        if (typeof activeModal.onClose === 'function') activeModal.onClose();
+        
+        // Remove old animations so it doesn't jump
+        overlay.style.animation = 'none';
+        modal.style.animation = 'none';
+        
+        // Clear children to prepare new content
+        modal.innerHTML = '';
+      } else {
+        // Create new overlay and modal
+        overlay = document.createElement('div');
+        overlay.className = 'modal-overlay-custom';
+        overlay.id = 'modal-overlay';
+        
+        modal = document.createElement('div');
+        modal.className = 'modal-custom';
+        modal.id = 'modal-custom';
+      }
 
       // Create header
       const header = document.createElement('div');
@@ -52,7 +63,7 @@ const ModalUtils = (() => {
 
       const icon = document.createElement('div');
       icon.className = `modal-custom-icon ${type}`;
-      icon.textContent = getIconForType(type);
+      icon.innerHTML = getIconForType(type);
 
       const titleWrap = document.createElement('div');
       titleWrap.className = 'modal-custom-title-wrap';
@@ -137,24 +148,33 @@ const ModalUtils = (() => {
       modal.appendChild(header);
       modal.appendChild(body);
       modal.appendChild(footer);
-      overlay.appendChild(modal);
+      if (!isReused) {
+        overlay.appendChild(modal);
+        // Apply initial opacity to prevent pre-animation flicker on first load
+        overlay.style.opacity = '0';
+        modal.style.opacity = '0';
+        document.body.appendChild(overlay);
+      } else {
+        // If reused, ensure we have opacity 1 to transition back
+        overlay.style.opacity = '1';
+        modal.style.opacity = '1';
+        // Reset transform to trigger smooth popIn
+        modal.style.transform = 'scale(0.95)';
+      }
 
-      // Add to DOM
-      document.body.appendChild(overlay);
-      myModal.overlay = overlay;
-      myModal.modal = modal;
-      myModal.onClose = onClose;
-      
+      myModal = { overlay, modal, onClose, isClosing: false, closeTimer: null, cleanup: null };
       activeModal = myModal;
 
-      // Trigger animation
+      // Ensure proper timing before firing CSS animations (only necessary if new or changing states)
       setTimeout(() => {
-        if (overlay) {
-          overlay.style.animation = hadPreviousModal ? 'none' : 'fadeIn 200ms ease-out forwards';
-          if (hadPreviousModal) overlay.style.opacity = '1';
-        }
-        if (modal) {
+        if (!isReused) {
+          overlay.style.animation = 'fadeIn 150ms ease-out forwards';
           modal.style.animation = 'slideUp 300ms cubic-bezier(0.16, 1, 0.3, 1) forwards';
+        } else {
+          // Add a subtle pop internally for content change, but keep overlay fixed
+          modal.style.animation = 'none'; // reset
+          void modal.offsetWidth; // force reflow
+          modal.style.animation = 'popIn 150ms cubic-bezier(0.16, 1, 0.3, 1) forwards';
         }
       }, 10);
 
@@ -208,6 +228,7 @@ const ModalUtils = (() => {
     };
 
     if (immediate) {
+      if (targetModal.closeTimer) clearTimeout(targetModal.closeTimer);
       finalizeClose();
       return;
     }
@@ -221,7 +242,7 @@ const ModalUtils = (() => {
       modal.style.opacity = '0';
     }
 
-    setTimeout(finalizeClose, 150);
+    targetModal.closeTimer = setTimeout(finalizeClose, 150);
   };
 
   /**
@@ -229,10 +250,10 @@ const ModalUtils = (() => {
    */
   const getIconForType = (type) => {
     const icons = {
-      info: 'ℹ️',
-      success: '✅',
-      warning: '⚠️',
-      error: '❌',
+      info: '<i class="ri-information-line"></i>',
+      success: '<i class="ri-checkbox-circle-line"></i>',
+      warning: '<i class="ri-error-warning-line"></i>',
+      error: '<i class="ri-close-circle-line"></i>',
     };
     return icons[type] || icons.info;
   };

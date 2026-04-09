@@ -5,16 +5,14 @@ const STORAGE_KEYS = {
   salesHistory:  "brotherBean_salesHistory",
   dailyStats:    "brotherBean_dailyStats", 
   lastResetDate: "brotherBean_lastResetDate",
-  menuConfig:    "brotherBean_menuConfig",
   orderOutbox:   "brotherBean_orderOutbox",
   kitchenOrders: "brotherBean_kitchenOrders"
 };
 
-export function saveToStorage(salesHistory, dailyStats, menuItems) {
+export function saveToStorage(salesHistory, dailyStats) {
   try {
     localStorage.setItem(STORAGE_KEYS.salesHistory, JSON.stringify(salesHistory));
     localStorage.setItem(STORAGE_KEYS.dailyStats, JSON.stringify(dailyStats));
-    localStorage.setItem(STORAGE_KEYS.menuConfig, JSON.stringify(menuItems));
     localStorage.setItem(STORAGE_KEYS.lastResetDate, new Date().toDateString());
     return true;
   } catch (e) {
@@ -27,16 +25,14 @@ export function loadFromStorage() {
   try {
     const history = localStorage.getItem(STORAGE_KEYS.salesHistory);
     const stats   = localStorage.getItem(STORAGE_KEYS.dailyStats);
-    const menu    = localStorage.getItem(STORAGE_KEYS.menuConfig);
     
     return {
       salesHistory: history ? JSON.parse(history) : [],
       dailyStats:   stats ? JSON.parse(stats) : { orders: 0, totalSales: 0, discountsApplied: 0 },
-      menuItems:    menu ? JSON.parse(menu) : null
     };
   } catch (e) {
     console.error("Storage load failed:", e);
-    return { salesHistory: [], dailyStats: { orders: 0, totalSales: 0, discountsApplied: 0 }, menuItems: null };
+    return { salesHistory: [], dailyStats: { orders: 0, totalSales: 0, discountsApplied: 0 } };
   }
 }
 

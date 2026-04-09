@@ -22,7 +22,7 @@
       href="https://cdn.jsdelivr.net/npm/remixicon@4.6.0/fonts/remixicon.css"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="/assets/adminstyle.css?v=20260408f" />
+    <link rel="stylesheet" href="/assets/adminstyle.css?v=20260409A" />
   </head>
   <body>
     <div
@@ -84,7 +84,7 @@
             AD
           </div>
           <span class="topbar-uname">Admin</span>
-          <button class="topbar-logout" onclick="window.logout()">
+          <button class="topbar-logout" type="button" onclick="window.logout()">
             Sign out
           </button>
         </div>
@@ -118,6 +118,7 @@
               ><i class="ri-cup-line" aria-hidden="true"></i></span
             >Menu
           </div>
+          
           <div
             class="nav-item"
             onclick="window.showPage('inventory', this, 'Inventory')"
@@ -439,6 +440,21 @@
                 Manage your shop's menu items and categories.
               </div>
             </div>
+
+<div class="card" style="margin-bottom:20px;">
+              <div class="card-head" style="border:none; padding-bottom:0; display:flex; justify-content:space-between; align-items:center;">
+                <span class="card-title">All Categories</span>
+                <button
+                  style="background:var(--primary);color:#fff;border:none;padding:8px 16px;border-radius:12px;font-size:14px;cursor:pointer;"
+                  onclick="window._adminAddCategory && window._adminAddCategory()"
+                >
+                  <i class="ri-add-line" style="margin-right:6px;"></i>New Category
+                </button>
+              </div>
+              <div id="adminCategoriesList" style="padding: 16px; display:flex; flex-direction:column; gap:12px;"></div>
+            </div>
+
+
             <div id="menuContent">
               <div style="color: var(--muted); font-size: 13px">
                 Loading menu data...
@@ -482,16 +498,47 @@
                 </div>
                 <div>
                   <div class="ls-label">Unit</div>
-                  <input
+                  <select
                     id="invUnit"
                     class="ls-input"
-                    placeholder="kg / pcs / bottle"
                     style="margin-bottom: 0"
                     required
-                  />
+                  >
+                    <option value="" disabled selected>Select unit of measure</option>
+                    <optgroup label="Count">
+                      <option value="pcs">pcs - pieces</option>
+                      <option value="pack">pack - package</option>
+                      <option value="box">box - boxed item</option>
+                      <option value="tray">tray - tray unit</option>
+                      <option value="bottle">bottle - bottled item</option>
+                      <option value="can">can - canned item</option>
+                      <option value="jar">jar - jar unit</option>
+                      <option value="sachet">sachet - single-use packet</option>
+                    </optgroup>
+                    <optgroup label="Weight">
+                      <option value="g">g - grams</option>
+                      <option value="kg">kg - kilograms</option>
+                      <option value="oz">oz - ounces</option>
+                      <option value="lb">lb - pounds</option>
+                    </optgroup>
+                    <optgroup label="Volume">
+                      <option value="ml">ml - milliliters</option>
+                      <option value="L">L - liters</option>
+                      <option value="fl oz">fl oz - fluid ounces</option>
+                      <option value="gal">gal - gallons</option>
+                    </optgroup>
+                    <optgroup label="Preparation / Service">
+                      <option value="shot">shot - espresso shot</option>
+                      <option value="cup">cup - cup serving</option>
+                      <option value="serving">serving - serving size</option>
+                      <option value="portion">portion - portion size</option>
+                      <option value="slice">slice - sliced serving</option>
+                      <option value="set">set - grouped set</option>
+                    </optgroup>
+                  </select>
                 </div>
                 <div>
-                  <div class="ls-label">Quantity</div>
+                  <div class="ls-label">Current Stock</div>
                   <input
                     id="invQuantity"
                     type="number"
@@ -504,7 +551,7 @@
                   />
                 </div>
                 <div>
-                  <div class="ls-label">Reorder Level</div>
+                  <div class="ls-label">Restock Alert Level</div>
                   <input
                     id="invReorder"
                     type="number"
@@ -512,6 +559,22 @@
                     step="0.01"
                     class="ls-input"
                     placeholder="0"
+                    style="margin-bottom: 0"
+                    required
+                  />
+                  <div style="margin-top:6px;font-size:12px;color:var(--text-muted);">
+                    We will mark this item as low stock when current stock reaches this number.
+                  </div>
+                </div>
+                <div>
+                  <div class="ls-label">Price (Per Unit)</div>
+                  <input
+                    id="invPrice"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    class="ls-input"
+                    placeholder="0.00"
                     style="margin-bottom: 0"
                     required
                   />
@@ -546,8 +609,13 @@
                       window.refreshInventory && window.refreshInventory()
                     "
                     >Refresh</span
-                  >
-                </div>
+                  >                  <span
+                    class="card-action text-danger"
+                    id="btnClearInventory"
+                    onclick="window.clearAllInventory && window.clearAllInventory()"
+                    style="color: var(--red); cursor: pointer;"
+                    >Clear all</span
+                  >                </div>
               </div>
               <div id="inventoryAlertStrip" class="inventory-alert-strip"></div>
               <div id="inventoryListWrap"></div>
@@ -555,22 +623,20 @@
           </div>
 
           <!-- ── STAFF ── -->
-          <div id="staff" class="page">
+          <div id="staff" class="page staff-page">
             <div class="page-header">
               <div class="page-title">Staff</div>
               <div class="page-sub">Manage your team and weekly schedule</div>
             </div>
 
-            <!-- Add Staff -->
-            <div class="card" style="margin-bottom: 14px">
+            <div class="staff-grid">
+            <!-- Staff Members -->
+            <div class="card staff-card">
               <div class="card-head">
-                <span class="card-title">Staff Members</span
-                ><span class="card-action" onclick="window.showAddStaff()"
-                  >+ Add Staff</span
-                >
+                <span class="card-title">Staff Members</span>
               </div>
               <div id="staffList">
-                <div style="color: var(--muted); font-size: 13px">
+                <div class="staff-loading">
                   Loading...
                 </div>
               </div>
@@ -578,21 +644,14 @@
 
             <!-- Add Staff Form (hidden by default) -->
             <div
-              class="card"
+              class="card staff-card"
               id="addStaffForm"
-              style="margin-bottom: 14px; display: none"
+              style="display: none"
             >
               <div class="card-head">
                 <span class="card-title">Add New Staff</span>
               </div>
-              <div
-                style="
-                  display: grid;
-                  grid-template-columns: 1fr 1fr;
-                  gap: 12px;
-                  margin-bottom: 12px;
-                "
-              >
+              <div class="staff-add-form-grid">
                 <div>
                   <div class="ls-label">Full Name</div>
                   <input
@@ -612,36 +671,19 @@
                   />
                 </div>
               </div>
-              <div style="display: flex; gap: 10px">
+              <div class="staff-form-actions">
                 <button
+                  class="orders-btn"
                   onclick="window.addStaff()"
-                  style="
-                    background: var(--brown);
-                    color: white;
-                    border: none;
-                    padding: 10px 20px;
-                    border-radius: 8px;
-                    font-size: 13px;
-                    cursor: pointer;
-                    font-family: &quot;DM Sans&quot;, sans-serif;
-                  "
                 >
+                  <i class="ri-user-add-line" aria-hidden="true"></i>
                   Save Staff
                 </button>
                 <button
+                  class="orders-btn ghost"
                   onclick="
                     document.getElementById('addStaffForm').style.display =
                       'none'
-                  "
-                  style="
-                    background: transparent;
-                    color: var(--muted);
-                    border: 1px solid var(--border);
-                    padding: 10px 20px;
-                    border-radius: 8px;
-                    font-size: 13px;
-                    cursor: pointer;
-                    font-family: &quot;DM Sans&quot;, sans-serif;
                   "
                 >
                   Cancel
@@ -650,30 +692,22 @@
             </div>
 
             <!-- Weekly Schedule -->
-            <div class="card">
+            <div class="card staff-card staff-schedule-card">
               <div class="card-head">
                 <span class="card-title">Weekly Schedule</span>
                 <button
+                  class="orders-btn"
                   onclick="window.saveSchedule()"
-                  style="
-                    background: var(--brown);
-                    color: white;
-                    border: none;
-                    padding: 6px 16px;
-                    border-radius: 20px;
-                    font-size: 12px;
-                    cursor: pointer;
-                    font-family: &quot;DM Sans&quot;, sans-serif;
-                  "
                 >
                   <i class="ri-save-line" aria-hidden="true"></i> Save Schedule
                 </button>
               </div>
               <div id="scheduleEditor">
-                <div style="color: var(--muted); font-size: 13px">
+                <div class="staff-loading">
                   Loading schedule...
                 </div>
               </div>
+            </div>
             </div>
           </div>
 
@@ -827,6 +861,54 @@
     </div>
     <!-- /app -->
 
+    <div
+      class="modal-overlay-custom"
+      id="logoutConfirmModal"
+      aria-hidden="true"
+      style="display: none"
+      onclick="if (event.target === this) closeLogoutModal()"
+    >
+      <div
+        class="modal-custom admin-logout-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="logoutConfirmTitle"
+        aria-describedby="logoutConfirmDesc"
+      >
+        <div class="modal-custom-header">
+          <div class="modal-custom-icon logout" aria-hidden="true">
+            <i class="ri-logout-circle-r-line" aria-hidden="true"></i>
+          </div>
+          <div class="modal-custom-title-wrap">
+            <div class="modal-custom-title" id="logoutConfirmTitle">
+              Confirm logout
+            </div>
+          </div>
+        </div>
+
+        <div class="modal-custom-body" id="logoutConfirmDesc">
+          You are about to end your admin session and return to the login screen.
+        </div>
+
+        <div class="modal-custom-footer">
+          <button
+            class="modal-custom-btn secondary"
+            type="button"
+            onclick="closeLogoutModal()"
+          >
+            Cancel
+          </button>
+          <button
+            class="modal-custom-btn primary error"
+            type="button"
+            onclick="confirmLogout()"
+          >
+            Sign out
+          </button>
+        </div>
+      </div>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js"></script>
     <script>
       (function () {
@@ -868,10 +950,10 @@
         }, 30000);
       })();
     </script>
-    <script src="/controllers/utils/modalUtils.js?v=20260408f"></script>
+    <script src="/controllers/utils/modalUtils.js?v=20260408L"></script>
     <script
       type="module"
-      src="/controllers/admin/adminPortalController.js?v=20260408f"
+      src="/controllers/admin/adminPortalController.js?v=20260409A"
     ></script>
   </body>
 </html>

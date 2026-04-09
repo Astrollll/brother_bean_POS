@@ -38,3 +38,17 @@ export async function setUserRole(uid, role, email = "") {
   );
 }
 
+export async function ensureAdminAccessProfile(uid, profile = {}) {
+  const fullName = String(profile.fullName || profile.displayName || profile.email || "Admin").trim();
+  const email = String(profile.email || "").trim();
+  const status = String(profile.status || "active").trim() || "active";
+
+  await setUserProfile(uid, {
+    fullName,
+    email: email || undefined,
+    role: "admin",
+    status,
+    isDefaultAdmin: !!profile.isDefaultAdmin,
+  });
+}
+

@@ -7,12 +7,24 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    function userDocPath() {
+      return /databases/$(database)/documents/users/$(request.auth.uid);
+    }
+
+    function userDocExists() {
+      return exists(userDocPath());
+    }
+
     function role() {
-      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+      return userDocExists() ? get(userDocPath()).data.role : null;
+    }
+
+    function isLegacyAdmin() {
+      return isSignedIn() && (!userDocExists() || role() == null);
     }
 
     function isAdmin() {
-      return isSignedIn() && role() == "admin";
+      return isSignedIn() && (role() == "admin" || isLegacyAdmin());
     }
 
     function isWorker() {
@@ -28,10 +40,26 @@ service cloud.firestore {
 
     match /inventory/{docId} {
       allow read: if isWorker();
-      allow write: if isAdmin();
+      allow create, delete: if isAdmin();
+      allow update: if isAdmin() || (
+        isWorker() &&
+        request.resource.data.id == resource.data.id &&
+        request.resource.data.name == resource.data.name &&
+        request.resource.data.category == resource.data.category &&
+        request.resource.data.unit == resource.data.unit &&
+        request.resource.data.reorderLevel == resource.data.reorderLevel &&
+        request.resource.data.price == resource.data.price &&
+        request.resource.data.quantity is number &&
+        request.resource.data.updatedAtMs is number
+      );
     }
 
     match /menu/{docId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /categories/{docId} {
       allow read: if true;
       allow write: if isAdmin();
     }

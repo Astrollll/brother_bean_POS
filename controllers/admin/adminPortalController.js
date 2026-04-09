@@ -1,12 +1,15 @@
 import { logout as authLogout, watchAuth, createAuthUserByAdmin, getCurrentUser } from "../auth/firebaseAuth.js";
-import { getUserRole, getUserProfile, listUsers, setUserRole, setUserProfile } from "../../models/userModel.js";
+import { getUserRole, getUserProfile, listUsers, setUserRole, setUserProfile, ensureAdminAccessProfile } from "../../models/userModel.js";
 import { getMenuItems, saveMenuItem, deleteMenuItem, clearMenuItems } from "../../models/menuModel.js";
+import { getCategories, saveCategory, deleteCategory, getCategoryIconForName } from "../../models/categoryModel.js";
 import { getTodayOrders, getAllOrders, deleteOrder, clearAllOrders } from "../../models/orderModel.js";
 import { resetDay as archiveResetDay } from "../../models/resetModel.js";
-import { getInventoryItems, saveInventoryItem, deleteInventoryItem } from "../../models/inventoryModel.js";
-import { getAllStaff as getStaff, getSchedule, addStaff, removeStaff, removeStaffByName, saveSchedule } from "../../models/staffModel.js";
+import { getInventoryItems, saveInventoryItem, deleteInventoryItem, clearInventoryItems, convertQuantityBetweenUnits, normalizeUnit } from "../../models/inventoryModel.js";
+import { inventorySeedItems } from "../../models/defaultSeedData.js";
+import { adminMenuPreviewExample, isDefaultTemplateMenuItem } from "../../models/defaultSeedData.js";
+import { getAllStaff as getStaff, getSchedule, getOnDutyNowFromSchedule, addStaff, removeStaff, removeStaffByName, removeStaffByAccountUid, updateStaffAccountLink, saveSchedule } from "../../models/staffModel.js";
 import { renderStats, renderRecentOrders, renderTopItems, renderStaffOnDuty } from "../../views/dashboardView.js";
-import { renderAdminMenu } from "../../views/menuView.js";
+import { renderAdminMenu, renderDefaultMenuPreview } from "../../views/menuView.js";
 import { renderStaffList, renderScheduleEditor, readScheduleFromDOM } from "../../views/staffView.js";
 import { navigateTo } from "../utils/routes.js";
 
@@ -14,6 +17,11 @@ const ModalUtils = window.ModalUtils || {
   async confirm(title, message) {
     const prompt = `${String(title || "Confirm")}\n\n${String(message || "")}`.replace(/<[^>]*>/g, "");
     return window.confirm(prompt) ? 1 : 0;
+  },
+  async show(options) {
+    const prompt = `${String(options?.title || "Message")}\n\n${String(options?.message || "")}`.replace(/<[^>]*>/g, "");
+    window.alert(prompt);
+    return 0;
   },
   async success(title, message) {
     const prompt = `${String(title || "Success")}\n\n${String(message || "")}`.replace(/<[^>]*>/g, "");
@@ -34,6 +42,7 @@ const ModalUtils = window.ModalUtils || {
 
 const state = {
   page: "dashboard",
+  categories: [],
   menuItems: [],
   ordersToday: [],
   allOrders: [],
@@ -45,7 +54,11 @@ const state = {
   lastAccountsSyncMs: 0,
   staff: [],
   schedule: {},
+  orderStockExpanded: {},
 };
+
+const DASHBOARD_SYNC_INTERVAL_MS = 60_000;
+let dashboardSyncInProgress = false;
 
 const orderFilters = {
   search: "",
@@ -64,6 +77,128 @@ const accountFilters = {
   sortBy: "recent",
 };
 
+function normalizeProvisionKey(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/^seed[-_\s]*/i, "")
+    .replace(/[-_]+/g, " ")
+    .replace(/\s+/g, " ");
+}
+
+async function ensureOfficialCappuccinoSetup(menuItems = [], inventoryItems = []) {
+  const nextMenuItems = Array.isArray(menuItems) ? [...menuItems] : [];
+  let nextInventoryItems = Array.isArray(inventoryItems) ? [...inventoryItems] : [];
+
+  const requiredInventory = [
+    { id: "seed-arabica-beans", name: "Arabica Coffee Beans", category: "Coffee", unit: "kg", quantity: 16, reorderLevel: 8, price: 500 },
+    { id: "seed-fresh-milk", name: "Fresh Milk", category: "Dairy", unit: "L", quantity: 30, reorderLevel: 14, price: 90 },
+    { id: "seed-caramel-syrup", name: "Caramel Syrup", category: "Syrup", unit: "L", quantity: 10, reorderLevel: 4, price: 200 },
+    { id: "seed-whipped-cream", name: "Whipped Cream", category: "Dairy", unit: "L", quantity: 8, reorderLevel: 3, price: 180 },
+  ];
+
+  const hasInventoryMatch = (item, target) => {
+    const candidateKeys = [
+      normalizeProvisionKey(item?.id),
+      normalizeProvisionKey(item?.name),
+    ];
+    return candidateKeys.includes(normalizeProvisionKey(target.id)) || candidateKeys.includes(normalizeProvisionKey(target.name));
+  };
+
+  let inventoryUpdated = false;
+  for (const needed of requiredInventory) {
+    const exists = nextInventoryItems.some((item) => hasInventoryMatch(item, needed));
+    if (!exists) {
+      await saveInventoryItem(needed);
+      inventoryUpdated = true;
+    }
+  }
+
+  if (inventoryUpdated) {
+    nextInventoryItems = await getInventoryItems();
+  }
+
+  const findInventoryId = (targets) => {
+    const values = Array.isArray(targets) ? targets : [targets];
+    for (const target of values) {
+      const match = nextInventoryItems.find((item) => hasInventoryMatch(item, { id: target, name: target }));
+      if (match?.id) return String(match.id);
+    }
+    return "";
+  };
+
+  const beansId = findInventoryId(["seed-arabica-beans", "arabica coffee beans"]);
+  const milkId = findInventoryId(["seed-fresh-milk", "fresh milk"]);
+  const caramelId = findInventoryId(["seed-caramel-syrup", "caramel syrup"]);
+  const whippedCreamId = findInventoryId(["seed-whipped-cream", "whipped cream"]);
+
+  const cappuccinoExists = nextMenuItems.some((item) => {
+    const name = normalizeProvisionKey(item?.name);
+    const category = normalizeProvisionKey(item?.category);
+    return name === "cappuccino" && category === "coffee";
+  });
+
+  const legacySimpleCoffeeItems = nextMenuItems.filter((item) => normalizeProvisionKey(item?.name) === "simple coffee");
+  if (legacySimpleCoffeeItems.length) {
+    await Promise.all(
+      legacySimpleCoffeeItems
+        .map((item) => String(item?.id || item?.firestoreId || ""))
+        .filter(Boolean)
+        .map((id) => deleteMenuItem(id))
+    );
+    nextMenuItems = nextMenuItems.filter((item) => normalizeProvisionKey(item?.name) !== "simple coffee");
+  }
+
+  if (!cappuccinoExists && beansId && milkId) {
+    const cappuccinoPayload = {
+      id: "menu-cappuccino",
+      name: "Cappuccino",
+      price: 135,
+      category: "coffee",
+      hasVariant: false,
+      hasTemp: true,
+      popular: true,
+      bestseller: false,
+      note: "Espresso with steamed milk foam",
+      recipe: [
+        { inventoryId: beansId, name: "Arabica Coffee Beans", quantity: 18, unit: "g" },
+        { inventoryId: milkId, name: "Fresh Milk", quantity: 140, unit: "ml" },
+      ],
+      addons: [
+        {
+          id: "addon-cappuccino-extra-shot",
+          name: "Extra Shot",
+          price: 25,
+          recipe: [
+            { inventoryId: beansId, name: "Arabica Coffee Beans", quantity: 8, unit: "g" },
+          ],
+        },
+        {
+          id: "addon-cappuccino-caramel-drizzle",
+          name: "Caramel Drizzle",
+          price: 20,
+          recipe: caramelId
+            ? [{ inventoryId: caramelId, name: "Caramel Syrup", quantity: 10, unit: "ml" }]
+            : [],
+        },
+        {
+          id: "addon-cappuccino-whipped-cream",
+          name: "Whipped Cream",
+          price: 18,
+          recipe: whippedCreamId
+            ? [{ inventoryId: whippedCreamId, name: "Whipped Cream", quantity: 15, unit: "ml" }]
+            : [],
+        },
+      ],
+    };
+
+    await saveMenuItem(cappuccinoPayload);
+    nextMenuItems.push(cappuccinoPayload);
+  }
+
+  return { menuItems: nextMenuItems, inventoryItems: nextInventoryItems };
+}
+
 function showLogin() {
   window.__bbAuthSettled = true;
   navigateTo("login", { replace: true });
@@ -75,6 +210,15 @@ function showApp() {
   const app = document.getElementById("app");
   if (loading) loading.style.display = "none";
   if (app) app.style.display = "flex";
+}
+
+function setAuthLoadingState(message = "Loading dashboard...") {
+  const loading = document.getElementById("auth-loading");
+  const text = document.getElementById("auth-loading-text");
+  const app = document.getElementById("app");
+  if (text) text.textContent = message;
+  if (loading) loading.style.display = "flex";
+  if (app) app.style.display = "none";
 }
 
 function setTopbarTitle(title) {
@@ -102,67 +246,7 @@ function setupTopbarDate() {
   window.setInterval(updateDate, 60000);
 }
 
-const MENU_CATEGORY_ORDER = [
-  "coffee",
-  "oat series",
-  "coconut series",
-  "matcha series",
-  "non-dairy specials",
-  "non-coffee",
-  "starter",
-  "rice meals",
-  "pasta",
-  "sandwiches",
-  "pastries",
-  "addons",
-];
 
-const CATEGORY_LABELS = {
-  "coffee": "Coffee",
-  "oat series": "Oat Series",
-  "coconut series": "Coconut Series",
-  "matcha series": "Matcha Series",
-  "non-dairy specials": "Non-Dairy Specials",
-  "non-coffee": "Non-Coffee",
-  "starter": "Starter",
-  "rice meals": "Rice Meals",
-  "pasta": "Pasta",
-  "sandwiches": "Sandwiches",
-  "pastries": "Pastries",
-  "addons": "Add-ons",
-};
-
-function normalizeMenuCategory(category, subcategory) {
-  const cat = String(category || "").trim().toLowerCase();
-  const sub = String(subcategory || "").trim().toLowerCase();
-
-  const aliases = {
-    "food": "rice meals",
-    "rice-meals": "rice meals",
-    "noncoffee": "non-coffee",
-    "non coffee": "non-coffee",
-    "add-ons": "addons",
-    "add ons": "addons",
-    "starters": "starter",
-    "starter": "starter",
-    "sides": "starter",
-    "signature": "oat series",
-    "pasta": "pasta",
-    "past": "pasta",
-    "sandwich": "sandwiches",
-    "pastry": "pastries",
-  };
-
-  if (cat === "food") {
-    if (sub === "rice meals") return "rice meals";
-    if (sub === "sandwiches") return "sandwiches";
-    if (sub === "pastries") return "pastries";
-    if (sub === "starter" || sub === "starters") return "starter";
-  }
-
-  if (aliases[cat]) return aliases[cat];
-  return CATEGORY_LABELS[cat] ? cat : cat;
-}
 
 function closeAdminMenuDropdowns() {
   document.querySelectorAll(".ls-dropdown-list.show").forEach((el) => el.classList.remove("show"));
@@ -254,6 +338,87 @@ function escapeHtml(value) {
     .replaceAll("'", "&#39;");
 }
 
+function renderSectionState(message, tone = "muted") {
+  const safeTone = ["muted", "warning", "error"].includes(tone) ? tone : "muted";
+  return `<div class="section-state ${safeTone}">${escapeHtml(message || "")}</div>`;
+}
+
+function normalizeIdentityToken(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+async function backfillStaffAccountLinks(staff, users) {
+  const staffList = Array.isArray(staff) ? staff : [];
+  const userList = Array.isArray(users) ? users : [];
+  if (!staffList.length || !userList.length) {
+    return { linked: 0, ambiguous: 0, skipped: 0 };
+  }
+
+  const usedAccountUids = new Set(
+    staffList
+      .map((entry) => String(entry?.accountUid || "").trim())
+      .filter(Boolean)
+  );
+
+  const eligibleUsers = userList.filter((user) => {
+    const role = normalizeIdentityToken(user?.role);
+    const deleted = !!user?.deleted || Number(user?.deletedAtMs || 0) > 0;
+    return role === "staff" && !deleted;
+  });
+
+  let linked = 0;
+  let ambiguous = 0;
+  let skipped = 0;
+
+  for (const member of staffList) {
+    const staffId = String(member?.id || "").trim();
+    const currentUid = String(member?.accountUid || "").trim();
+    if (!staffId || currentUid) continue;
+
+    const byEmailKey = normalizeIdentityToken(member?.email);
+    const byNameKey = normalizeIdentityToken(member?.name);
+
+    let candidates = [];
+    if (byEmailKey) {
+      candidates = eligibleUsers.filter((user) => normalizeIdentityToken(user?.email) === byEmailKey);
+    }
+
+    if (!candidates.length && byNameKey) {
+      candidates = eligibleUsers.filter((user) => normalizeIdentityToken(user?.fullName) === byNameKey);
+    }
+
+    const uniqueCandidates = candidates.filter((user) => {
+      const uid = String(user?.uid || "").trim();
+      return uid && !usedAccountUids.has(uid);
+    });
+
+    if (uniqueCandidates.length !== 1) {
+      if (uniqueCandidates.length > 1) {
+        ambiguous += 1;
+      } else {
+        skipped += 1;
+      }
+      continue;
+    }
+
+    const match = uniqueCandidates[0];
+    const accountUid = String(match?.uid || "").trim();
+    if (!accountUid) {
+      skipped += 1;
+      continue;
+    }
+
+    await updateStaffAccountLink(staffId, {
+      accountUid,
+      email: String(match?.email || member?.email || "").trim(),
+    });
+    usedAccountUids.add(accountUid);
+    linked += 1;
+  }
+
+  return { linked, ambiguous, skipped };
+}
+
 async function loadDashboard() {
   const [menuItems, ordersToday, staff, schedule] = await Promise.all([
     getMenuItems(),
@@ -287,15 +452,8 @@ async function loadDashboard() {
   }));
   const best = Object.entries(soldMap).sort((a, b) => b[1] - a[1])[0];
 
-  // Staff on duty (based on schedule doc for today's day name)
-  const dayName = new Date().toLocaleDateString("en-US", { weekday: "long" });
-  const onDuty = staff
-    .map(s => {
-      const sched = (schedule || {})[s.id]?.[dayName];
-      if (!sched?.onDuty) return null;
-      return { name: s.name, role: s.role, shift: sched.shift || "" };
-    })
-    .filter(Boolean);
+  // Staff on duty should be time-aware, not just checkbox-based.
+  const { onDuty } = getOnDutyNowFromSchedule(staff, schedule, new Date());
 
   renderStats({
     totalSales,
@@ -311,10 +469,74 @@ async function loadDashboard() {
   renderStaffOnDuty(onDuty);
 }
 
+function startDashboardAutoSync() {
+  window.setInterval(async () => {
+    if (state.page !== "dashboard") return;
+    if (dashboardSyncInProgress) return;
+
+    dashboardSyncInProgress = true;
+    try {
+      await loadDashboard();
+    } catch (error) {
+      console.warn("[Dashboard] Auto-sync failed:", error);
+    } finally {
+      dashboardSyncInProgress = false;
+    }
+  }, DASHBOARD_SYNC_INTERVAL_MS);
+}
+
 async function loadMenuPage() {
-  const [menuItems, ordersToday] = await Promise.all([getMenuItems(), getTodayOrders()]);
-  state.menuItems = menuItems;
+  const [menuItems, ordersToday, inventoryItems] = await Promise.all([
+    getMenuItems(),
+    getTodayOrders(),
+    getInventoryItems().catch((error) => {
+      console.warn("[Menu] Inventory prefetch failed:", error);
+      return state.inventoryItems || [];
+    }),
+  ]);
+  let provisionedMenuItems = menuItems || [];
+  let provisionedInventoryItems = inventoryItems || [];
+  try {
+    const provisioned = await ensureOfficialCappuccinoSetup(provisionedMenuItems, provisionedInventoryItems);
+    provisionedMenuItems = provisioned.menuItems;
+    provisionedInventoryItems = provisioned.inventoryItems;
+  } catch (provisionError) {
+    console.warn("[Menu] Cappuccino provisioning skipped:", provisionError);
+  }
+
+  const removableTemplateItems = (provisionedMenuItems || []).filter((item) => isDefaultTemplateMenuItem(item));
+  if (removableTemplateItems.length > 0) {
+    const deleteTargets = removableTemplateItems.map((item) => String(item?.id || item?.firestoreId || "")).filter(Boolean);
+    try {
+      await Promise.all(deleteTargets.map((id) => deleteMenuItem(id)));
+      console.info(`[Menu] Removed ${deleteTargets.length} default template item(s) from live admin menu.`);
+    } catch (removeError) {
+      console.warn("[Menu] Failed to remove one or more default template items:", removeError);
+    }
+  }
+  state.menuItems = (provisionedMenuItems || []).filter((item) => !isDefaultTemplateMenuItem(item));
   state.ordersToday = ordersToday;
+  state.inventoryItems = provisionedInventoryItems;
+
+  // Load Categories into the dedicated section above the menu items
+  const categoriesListEl = document.getElementById("adminCategoriesList");
+  if (categoriesListEl) {
+     const hasCachedCategories = Array.isArray(state.categories) && state.categories.length > 0;
+     if (hasCachedCategories) {
+       renderAdminCategories();
+     } else {
+       categoriesListEl.innerHTML = renderSectionState("Loading categories...");
+     }
+     try {
+       state.categories = await getCategories();
+       renderAdminCategories();
+     } catch (err) {
+       console.error(err);
+       if (!hasCachedCategories) {
+         categoriesListEl.innerHTML = renderSectionState("Failed to load categories.", "error");
+       }
+     }
+  }
 
   // sold map for today
   const soldMap = {};
@@ -337,14 +559,6 @@ async function loadMenuPage() {
             style="background:var(--brown,#6B4423);color:white;border:none;padding:8px 14px;border-radius:12px;font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif;">
             + Add item
           </button>
-          <button id="btnQuickAddDrink"
-            style="background:rgba(107,68,35,0.08);color:var(--brown,#6B4423);border:1px solid rgba(107,68,35,0.22);padding:8px 14px;border-radius:12px;font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif;">
-            + Quick Drink
-          </button>
-          <button id="btnQuickAddFood"
-            style="background:rgba(107,68,35,0.08);color:var(--brown,#6B4423);border:1px solid rgba(107,68,35,0.22);padding:8px 14px;border-radius:12px;font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif;">
-            + Quick Food
-          </button>
           <button id="btnClearMenu"
             style="background:rgba(239,68,68,0.12);color:#991B1B;border:1px solid rgba(239,68,68,0.3);padding:8px 14px;border-radius:12px;font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif;">
             Clear all
@@ -356,28 +570,44 @@ async function loadMenuPage() {
         </div>
       </div>
       <div id="menuEditorSlot"></div>
+      <div id="defaultMenuSlot" style="padding-top:12px;"></div>
       <div style="padding-top:12px;" id="menuListSlot"></div>
     </div>
   `;
+
+  const defaultMenuSlot = document.getElementById("defaultMenuSlot");
+  if (defaultMenuSlot) {
+    defaultMenuSlot.innerHTML = renderDefaultMenuPreview([adminMenuPreviewExample], state.inventoryItems || [], state.categories || []);
+  }
 
   const listSlot = document.getElementById("menuListSlot");
   listSlot.innerHTML = `<div id="menuListInner"></div>`;
   const inner = document.getElementById("menuListInner");
   inner.innerHTML = "";
-  // renderAdminMenu writes into #menuContent, so temporarily swap target
+// renderAdminMenu writes into #menuContent, so temporarily swap target
   const original = document.getElementById("menuContent");
   if (original) {
     original.id = "menuContent__tmp";
     inner.id = "menuContent";
     try {
-      renderAdminMenu(menuItems, soldMap);
+      renderAdminMenu(state.menuItems || [], state.soldMap || {}, state.inventoryItems || [], state.categories || []);
     } finally {
       inner.id = "menuListInner";
       original.id = "menuContent";
     }
+  } else {
+    // If not found, create a temporary one
+    inner.id = "menuContent";
+    try {
+      renderAdminMenu(state.menuItems || [], state.soldMap || {}, state.inventoryItems || [], state.categories || []);
+    } finally {
+      inner.id = "menuListInner";
+    }
   }
 
   window._adminEditMenuItem = (id) => openMenuEditor(id);
+  window._adminEditDefaultMenuItem = undefined;
+  window._adminDeleteDefaultMenuItem = undefined;
   window._adminDeleteMenuItem = async (id) => {
     try {
       const choice = await ModalUtils.confirm("Delete Item", "Are you sure you want to delete this menu item? This action cannot be undone.");
@@ -392,14 +622,6 @@ async function loadMenuPage() {
   };
 
   document.getElementById("btnAddMenuItem")?.addEventListener("click", () => openMenuEditor(null));
-  document.getElementById("btnQuickAddDrink")?.addEventListener("click", () => openMenuEditor(null, {
-    category: "coffee",
-    subcategory: "Coffee",
-  }));
-  document.getElementById("btnQuickAddFood")?.addEventListener("click", () => openMenuEditor(null, {
-    category: "rice meals",
-    subcategory: "Rice Meals",
-  }));
   document.getElementById("btnClearMenu")?.addEventListener("click", async () => {
     try {
       const confirmed = await ModalUtils.confirm("Clear all menu items", "This will permanently remove every menu item. Are you sure you want to continue?");
@@ -417,15 +639,88 @@ async function loadMenuPage() {
 
 async function loadStaffPage() {
   const [staff, schedule] = await Promise.all([getStaff(), getSchedule()]);
-  state.staff = staff;
+
+  let nextStaff = staff;
+  try {
+    const users = await listUsers();
+    const backfill = await backfillStaffAccountLinks(staff, users);
+    if (backfill.linked > 0) {
+      nextStaff = await getStaff();
+      console.info(
+        `[Staff] Backfilled account links: ${backfill.linked} linked, ${backfill.ambiguous} ambiguous, ${backfill.skipped} skipped.`
+      );
+    }
+  } catch (backfillError) {
+    console.warn("[Staff] Backfill skipped due to account fetch/update issue:", backfillError);
+  }
+
+  state.staff = nextStaff;
   state.schedule = schedule;
 
-  renderStaffList(staff, async (id) => {
+  renderStaffList(nextStaff, async (id) => {
+    const member = state.staff.find((entry) => entry.id === id);
+    if (!member) return;
+
+    const confirmed = await ModalUtils.confirm(
+      "Remove Staff",
+      `Remove ${escapeHtml(member.name || "this staff member")} from staff list? This will also deactivate linked staff account access.`
+    );
+    if (confirmed !== 1) return;
+
     await removeStaff(id);
+
+    let deactivatedCount = 0;
+    try {
+      const users = await listUsers();
+      const targetUid = String(member?.accountUid || "").trim();
+      let matchedStaffAccounts = [];
+
+      if (targetUid) {
+        const linked = users.find((user) => String(user?.uid || "").trim() === targetUid);
+        if (linked) matchedStaffAccounts = [linked];
+      }
+
+      if (!matchedStaffAccounts.length) {
+        const targetName = String(member.name || "").trim().toLowerCase();
+        matchedStaffAccounts = users.filter((user) => {
+          const fullName = String(user?.fullName || "").trim().toLowerCase();
+          const role = String(user?.role || "").trim().toLowerCase();
+          const deleted = !!user?.deleted || Number(user?.deletedAtMs || 0) > 0;
+          return fullName && fullName === targetName && role === "staff" && !deleted;
+        });
+      }
+
+      const firedAtMs = Date.now();
+      await Promise.all(matchedStaffAccounts.map((user) =>
+        setUserProfile(user.uid, {
+          status: "suspended",
+          deleted: true,
+          firedAtMs,
+          deletedAtMs: firedAtMs,
+          updatedAtMs: firedAtMs,
+        })
+      ));
+      deactivatedCount = matchedStaffAccounts.length;
+    } catch (accountError) {
+      console.warn("[Staff] Removed staff record, but account deactivation failed:", accountError);
+    }
+
     await loadStaffPage();
+
+    if (deactivatedCount > 0) {
+      await ModalUtils.success(
+        "Staff Removed",
+        `${escapeHtml(member.name || "Staff member")} was removed and ${deactivatedCount} account(s) were deactivated.`
+      );
+    } else {
+      await ModalUtils.success(
+        "Staff Removed",
+        `${escapeHtml(member.name || "Staff member")} was removed from the staff list.`
+      );
+    }
   });
 
-  renderScheduleEditor(staff, schedule);
+  renderScheduleEditor(nextStaff, schedule);
 }
 
 async function loadOrdersPage() {
@@ -506,6 +801,96 @@ function sortOrders(orders, sortBy) {
   return next;
 }
 
+function formatInventoryQty(value) {
+  const num = Number(value || 0);
+  if (!Number.isFinite(num)) return "0";
+  if (Math.abs(num - Math.round(num)) < 0.000001) return String(Math.round(num));
+  return num.toFixed(2);
+}
+
+function summarizeInventoryDeductions(auditRows) {
+  const source = Array.isArray(auditRows) ? auditRows : [];
+  const byInventory = new Map();
+
+  source.forEach((entry) => {
+    const inventoryId = String(entry?.inventoryId || "").trim() || String(entry?.name || "unknown").trim() || `unknown-${byInventory.size + 1}`;
+    const existing = byInventory.get(inventoryId) || {
+      inventoryId,
+      name: String(entry?.name || inventoryId),
+      unit: String(entry?.unit || ""),
+      totalDeducted: 0,
+      remainingQty: Number(entry?.remainingQty || 0),
+    };
+
+    existing.totalDeducted += Number(entry?.deductedQty || 0);
+    existing.remainingQty = Number(entry?.remainingQty || existing.remainingQty || 0);
+    byInventory.set(inventoryId, existing);
+  });
+
+  return Array.from(byInventory.values()).sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")));
+}
+
+function summarizeOrderRecipeUsage(order) {
+  const byInventory = new Map();
+  const items = Array.isArray(order?.items) ? order.items : [];
+
+  items.forEach((soldItem) => {
+    const quantity = Number(soldItem?.quantity || 1);
+    const recipeItems = Array.isArray(soldItem?.recipe) ? soldItem.recipe : [];
+
+    recipeItems.forEach((ingredient) => {
+      const inventoryId = String(ingredient?.inventoryId || "").trim() || String(ingredient?.name || "").trim();
+      const deductedQty = Number(ingredient?.quantity || 0) * quantity;
+      if (!inventoryId || !Number.isFinite(deductedQty) || deductedQty <= 0) return;
+
+      const existing = byInventory.get(inventoryId) || {
+        inventoryId,
+        name: String(ingredient?.name || inventoryId),
+        unit: String(ingredient?.unit || ""),
+        totalDeducted: 0,
+        remainingQty: null,
+      };
+
+      existing.totalDeducted += deductedQty;
+      if (!existing.unit && ingredient?.unit) {
+        existing.unit = String(ingredient.unit || "");
+      }
+      byInventory.set(inventoryId, existing);
+    });
+  });
+
+  return Array.from(byInventory.values()).sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")));
+}
+
+function getOrderInventorySummary(order) {
+  const recordedSummary = summarizeInventoryDeductions(order?.inventoryDeductions);
+  if (recordedSummary.length) {
+    return { summary: recordedSummary, recorded: true };
+  }
+
+  const derivedSummary = summarizeOrderRecipeUsage(order);
+  return { summary: derivedSummary, recorded: false };
+}
+
+function buildInventoryPreview(summary) {
+  if (!Array.isArray(summary) || !summary.length) return "";
+  const preview = summary.slice(0, 2).map((entry) => `${entry.name} (${formatInventoryQty(entry.totalDeducted)} ${entry.unit || "unit"})`).join(", ");
+  return summary.length > 2 ? `${preview}...` : preview;
+}
+
+function findOrderByKey(orderKey) {
+  const key = String(orderKey || "").trim();
+  return state.allOrders.find((order) => String(order.id || order.orderId || "") === key);
+}
+
+function toggleOrderStockDetails(orderKey) {
+  const key = String(orderKey || "").trim();
+  if (!key) return;
+  const next = { ...(state.orderStockExpanded || {}) };
+  next[key] = !next[key];
+  state.orderStockExpanded = next;
+}
+
 function renderOrdersPagination(totalPages) {
   const pager = document.getElementById("ordersPagination");
   if (!pager) return;
@@ -568,41 +953,94 @@ function renderOrdersTable(orders) {
       ? `<span class="badge b-orange">PWD</span>`
       : `<span class="badge b-green">Done</span>`;
     const orderKey = String(order.id || order.orderId || "");
+    const { summary: stockSummary, recorded: stockRecorded } = getOrderInventorySummary(order);
+    const stockPreview = buildInventoryPreview(stockSummary);
+    const stockExpanded = !!state.orderStockExpanded?.[orderKey];
+    const stockCountLabel = stockSummary.length ? `${stockSummary.length} item(s)` : "—";
+    const stockCell = stockSummary.length
+      ? `<div class="orders-stock-cell">
+          <div class="orders-stock-summary" title="${escapeHtml(stockRecorded ? stockPreview : `${stockPreview} (estimated)`)}">${escapeHtml(stockPreview)}</div>
+          ${stockRecorded ? "" : `<div class="orders-stock-empty-note">Estimated from recipe</div>`}
+          <button class="orders-btn ghost inventory-mini-btn order-stock-btn" type="button" data-order-action="toggle-stock" data-order-id="${escapeHtml(orderKey)}" title="${stockExpanded ? "Hide stock used" : "Show stock used"}" aria-label="${stockExpanded ? "Hide stock used" : "Show stock used"}">${stockExpanded ? "Hide" : "View"}</button>
+        </div>`
+      : `<span class="orders-stock-empty">—</span>`;
+    const detailRow = stockSummary.length
+      ? `<tr class="orders-stock-detail-row-wrap ${stockExpanded ? "is-open" : ""}" data-order-stock-detail="${escapeHtml(orderKey)}">
+          <td colspan="8">
+            <div class="orders-stock-detail-panel">
+              <div class="orders-stock-detail-card">
+                <div class="orders-stock-detail-meta">${stockRecorded ? "Recorded audit" : "Estimated from recipe"}</div>
+                <div class="orders-stock-detail-items">${escapeHtml(items || "-")}</div>
+                <div class="orders-stock-detail-meta" style="margin-top:6px;">${escapeHtml(stockCountLabel)} used</div>
+                ${stockRecorded ? "" : `<div class="orders-stock-empty-note">Estimated from recipe. No audit record available.</div>`}
+              </div>
+              <div class="orders-stock-detail-list">
+                ${stockSummary.map((entry) => `
+                  <div class="orders-stock-detail-row">
+                    <div>
+                      <div class="orders-stock-detail-name">${escapeHtml(entry.name)}</div>
+                      <div class="orders-stock-detail-meta">${entry.remainingQty === null || entry.remainingQty === undefined
+                        ? "Remaining stock not recorded"
+                        : `Remaining stock: ${escapeHtml(formatInventoryQty(entry.remainingQty))} ${escapeHtml(entry.unit || "unit")}`
+                      }</div>
+                    </div>
+                    <div class="orders-stock-detail-value">− ${escapeHtml(formatInventoryQty(entry.totalDeducted))} ${escapeHtml(entry.unit || "unit")}</div>
+                  </div>
+                `).join("")}
+              </div>
+            </div>
+          </td>
+        </tr>`
+      : "";
 
-    return `<tr>
+    return `
+      <tr>
       <td>#${shortId}</td>
       <td>${items || "-"}</td>
       <td>${type}</td>
       <td>${time}</td>
       <td>₱${total}</td>
       <td>${status}</td>
+      <td>${stockCell}</td>
       <td>
         <button class="orders-btn ghost inventory-mini-btn danger order-delete-btn" type="button" data-order-action="delete" data-order-id="${escapeHtml(orderKey)}" title="Delete transaction" aria-label="Delete transaction"><i class="ri-delete-bin-line" aria-hidden="true"></i></button>
       </td>
-    </tr>`;
+    </tr>
+    ${detailRow}`;
   }).join("");
 
   wrap.innerHTML = `<table>
-    <tr><th>#</th><th>Items</th><th>Type</th><th>Time</th><th>Amount</th><th>Status</th><th>Action</th></tr>
+    <tr><th>#</th><th>Items</th><th>Type</th><th>Time</th><th>Amount</th><th>Status</th><th>Stock Used</th><th>Action</th></tr>
     ${rows}
   </table>`;
 
-  wrap.querySelectorAll("button[data-order-action='delete']").forEach((btn) => {
+  wrap.querySelectorAll("button[data-order-action]").forEach((btn) => {
     btn.addEventListener("click", async (event) => {
       event.preventDefault();
       event.stopPropagation();
 
       const orderId = btn.dataset.orderId;
-      if (!orderId) return;
-      const confirmed = await ModalUtils.confirm("Delete Transaction", "This will permanently delete this transaction. Continue?");
-      if (confirmed !== 1) return;
+      const action = btn.dataset.orderAction;
+      const order = findOrderByKey(orderId);
+      if (!order) return;
 
-      try {
-        await deleteOrder(orderId);
-        await ModalUtils.success("Transaction Deleted", "The transaction has been removed successfully.");
-        await loadOrdersPage();
-      } catch (error) {
-        await ModalUtils.error("Delete Failed", error?.message || "Unable to delete transaction.");
+      if (action === "toggle-stock") {
+        toggleOrderStockDetails(orderId);
+        renderOrdersTable(state.pagedOrders);
+        return;
+      }
+
+      if (action === "delete") {
+        const confirmed = await ModalUtils.confirm("Delete Transaction", "This will permanently delete this transaction. Continue?");
+        if (confirmed !== 1) return;
+
+        try {
+          await deleteOrder(orderId);
+          await ModalUtils.success("Transaction Deleted", "The transaction has been removed successfully.");
+          await loadOrdersPage();
+        } catch (error) {
+          await ModalUtils.error("Delete Failed", error?.message || "Unable to delete transaction.");
+        }
       }
     });
   });
@@ -762,7 +1200,7 @@ async function loadInventoryPage() {
   const hasCached = Array.isArray(state.inventoryItems) && state.inventoryItems.length > 0;
 
   if (!hasCached && listWrap) {
-    listWrap.innerHTML = `<div style="color:var(--text-muted);font-size:13px;padding:10px 0;">Loading inventory...</div>`;
+    listWrap.innerHTML = renderSectionState("Loading inventory...");
   }
 
   if (hasCached) {
@@ -776,7 +1214,7 @@ async function loadInventoryPage() {
   } catch (error) {
     console.error("[Inventory] Failed to load inventory items:", error);
     if (!hasCached && listWrap) {
-      listWrap.innerHTML = `<div style="color:var(--red);font-size:13px;padding:10px 0;">Unable to load inventory right now. Please try again.</div>`;
+      listWrap.innerHTML = renderSectionState("Unable to load inventory right now. Please try again.", "error");
     }
   }
 
@@ -788,6 +1226,7 @@ function inventoryStatus(item) {
   const reorderLevel = Number(item.reorderLevel || 0);
   const criticalMark = reorderLevel * 0.5;
 
+  if (quantity <= 0) return "out";
   if (quantity <= criticalMark) return "critical";
   if (quantity <= reorderLevel) return "low";
   return "good";
@@ -806,16 +1245,18 @@ function renderInventorySection() {
 
   if (!state.inventoryItems.length) {
     strip.innerHTML = `<span class="badge b-blue">No inventory items yet. Add your first item above.</span>`;
-    listWrap.innerHTML = `<div style="color:var(--text-muted);font-size:13px;padding:10px 0;">No inventory items found.</div>`;
+    listWrap.innerHTML = renderSectionState("No inventory items found.", "warning");
     if (pageSub) pageSub.textContent = `Track your ingredients and supplies${syncText}`;
     return;
   }
 
   const low = state.inventoryItems.filter((i) => inventoryStatus(i) === "low").length;
   const critical = state.inventoryItems.filter((i) => inventoryStatus(i) === "critical").length;
-  if (pageSub) pageSub.textContent = `${critical} critical, ${low} low stock item(s)${syncText}`;
+  const out = state.inventoryItems.filter((i) => inventoryStatus(i) === "out").length;
+  if (pageSub) pageSub.textContent = `${out} out, ${critical} critical, ${low} low stock item(s)${syncText}`;
 
   strip.innerHTML = `
+    <span class="badge b-red">Out: ${out}</span>
     <span class="badge b-red">Critical: ${critical}</span>
     <span class="badge b-orange">Low: ${low}</span>
     <span class="badge b-green">Total: ${state.inventoryItems.length}</span>
@@ -824,9 +1265,12 @@ function renderInventorySection() {
   listWrap.innerHTML = state.inventoryItems.map((item) => {
     const quantity = Number(item.quantity || 0);
     const reorderLevel = Math.max(1, Number(item.reorderLevel || 1));
+    const price = Number(item.price || 0).toFixed(2);
     const percent = Math.max(5, Math.min(100, Math.round((quantity / (reorderLevel * 2)) * 100)));
     const status = inventoryStatus(item);
-    const statusBadge = status === "critical"
+    const statusBadge = status === "out"
+      ? `<span class="badge b-red">Out</span>`
+      : status === "critical"
       ? `<span class="badge b-red">Critical</span>`
       : status === "low"
         ? `<span class="badge b-orange">Low</span>`
@@ -838,7 +1282,7 @@ function renderInventorySection() {
         <div class="inv-cat">${escapeHtml(item.category)}</div>
       </div>
       <div class="inv-bar-col">
-        <div class="inv-qty">${quantity} ${escapeHtml(item.unit)} remaining (reorder at ${reorderLevel})</div>
+        <div class="inv-qty">Stock: ${quantity} ${escapeHtml(item.unit)} &middot; Restock alert at: ${reorderLevel} &middot; Cost: ₱${price}/unit</div>
         <div class="inv-bar-bg"><div class="inv-bar ${status === "critical" ? "crit" : status === "low" ? "low" : ""}" style="width:${percent}%"></div></div>
       </div>
       ${statusBadge}
@@ -860,14 +1304,24 @@ function renderInventorySection() {
       const unitEl = document.getElementById("invUnit");
       const qtyEl = document.getElementById("invQuantity");
       const reorderEl = document.getElementById("invReorder");
+      const priceEl = document.getElementById("invPrice");
       const saveBtn = document.getElementById("invSaveBtn");
 
       if (idEl) idEl.value = item.id;
       if (nameEl) nameEl.value = item.name || "";
       if (catEl) catEl.value = item.category || "";
-      if (unitEl) unitEl.value = item.unit || "";
+      if (unitEl) {
+        const nextUnit = String(item.unit || "").trim();
+        if (nextUnit) {
+          ensureInventoryUnitOption(unitEl, nextUnit);
+          unitEl.value = nextUnit;
+        } else {
+          unitEl.value = "";
+        }
+      }
       if (qtyEl) qtyEl.value = String(item.quantity || 0);
       if (reorderEl) reorderEl.value = String(item.reorderLevel || 0);
+      if (priceEl) priceEl.value = String(item.price || 0);
       if (saveBtn) saveBtn.textContent = "Update Item";
     });
   });
@@ -885,29 +1339,30 @@ function renderInventorySection() {
   });
 }
 
+function ensureInventoryUnitOption(selectEl, unitValue) {
+  if (!selectEl || !unitValue) return;
+  const exists = Array.from(selectEl.options || []).some((option) => option.value === unitValue);
+  if (exists) return;
+  const custom = document.createElement("option");
+  custom.value = unitValue;
+  custom.textContent = unitValue;
+  custom.dataset.dynamic = "true";
+  selectEl.appendChild(custom);
+}
+
 function clearInventoryForm() {
   const idEl = document.getElementById("invId");
   const form = document.getElementById("inventoryForm");
+  const unitEl = document.getElementById("invUnit");
   const saveBtn = document.getElementById("invSaveBtn");
   if (idEl) idEl.value = "";
   if (form) form.reset();
+  if (unitEl) {
+    unitEl.querySelectorAll("option[data-dynamic='true']").forEach((opt) => opt.remove());
+    unitEl.value = "";
+  }
   if (saveBtn) saveBtn.textContent = "Save Item";
 }
-
-const inventorySeedItems = [
-  { id: "seed-arabica-beans", name: "Arabica Coffee Beans", category: "Coffee", unit: "kg", quantity: 16, reorderLevel: 8 },
-  { id: "seed-fresh-milk", name: "Fresh Milk", category: "Dairy", unit: "L", quantity: 30, reorderLevel: 14 },
-  { id: "seed-oat-milk", name: "Oat Milk", category: "Dairy Alternative", unit: "L", quantity: 12, reorderLevel: 6 },
-  { id: "seed-matcha-powder", name: "Premium Matcha Powder", category: "Ingredients", unit: "kg", quantity: 3, reorderLevel: 1.5 },
-  { id: "seed-chocolate-sauce", name: "Chocolate Sauce", category: "Syrup", unit: "bottles", quantity: 10, reorderLevel: 4 },
-  { id: "seed-caramel-syrup", name: "Caramel Syrup", category: "Syrup", unit: "bottles", quantity: 10, reorderLevel: 4 },
-  { id: "seed-cups-12oz", name: "Paper Cups (12oz)", category: "Packaging", unit: "pcs", quantity: 600, reorderLevel: 250 },
-  { id: "seed-cup-lids", name: "Cup Lids (12oz)", category: "Packaging", unit: "pcs", quantity: 600, reorderLevel: 250 },
-  { id: "seed-cup-sleeves", name: "Cup Sleeves", category: "Packaging", unit: "pcs", quantity: 350, reorderLevel: 150 },
-  { id: "seed-sugar-syrup", name: "Sugar Syrup", category: "Ingredients", unit: "L", quantity: 14, reorderLevel: 6 },
-  { id: "seed-croissant", name: "Croissant", category: "Pastry", unit: "pcs", quantity: 28, reorderLevel: 12 },
-  { id: "seed-cheesecake-slice", name: "Cheesecake Slice", category: "Pastry", unit: "pcs", quantity: 16, reorderLevel: 8 },
-];
 
 function bindInventoryForm() {
   const form = document.getElementById("inventoryForm");
@@ -923,17 +1378,18 @@ function bindInventoryForm() {
     const unit = document.getElementById("invUnit")?.value?.trim();
     const quantity = Number(document.getElementById("invQuantity")?.value || 0);
     const reorderLevel = Number(document.getElementById("invReorder")?.value || 0);
+    const price = Number(document.getElementById("invPrice")?.value || 0);
 
     if (!name || !category || !unit) {
       await ModalUtils.warning("Validation Error", "Name, category, and unit are required.");
       return;
     }
-    if (!Number.isFinite(quantity) || quantity < 0 || !Number.isFinite(reorderLevel) || reorderLevel < 0) {
-      await ModalUtils.warning("Validation Error", "Quantity and reorder level must be valid positive values.");
+    if (!Number.isFinite(quantity) || quantity < 0 || !Number.isFinite(reorderLevel) || reorderLevel < 0 || !Number.isFinite(price) || price < 0) {
+      await ModalUtils.warning("Validation Error", "Quantity, reorder level, and price must be valid positive values.");
       return;
     }
 
-    await saveInventoryItem({ id: id || undefined, name, category, unit, quantity, reorderLevel });
+    await saveInventoryItem({ id: id || undefined, name, category, unit, quantity, reorderLevel, price });
     await ModalUtils.success("Success", "Inventory item has been saved successfully.");
     clearInventoryForm();
     await loadInventoryPage();
@@ -948,8 +1404,11 @@ async function loadAccountsPage() {
   host.innerHTML = `
     <div class="accounts-layout">
       <div class="card accounts-create-card">
-        <div class="card-head">
-          <span class="card-title">Create Account</span>
+        <div class="card-head accounts-card-head">
+          <div>
+            <span class="card-title">Create Account</span>
+            <div class="accounts-head-sub">Provision access and role in one step</div>
+          </div>
           <span class="badge b-blue">Auth + Role</span>
         </div>
         <form id="createAccountForm" class="accounts-form-grid">
@@ -987,43 +1446,47 @@ async function loadAccountsPage() {
       </div>
 
       <div class="card accounts-directory-card">
-        <div class="card-head" style="align-items:flex-start;gap:12px;">
+        <div class="card-head accounts-card-head" style="align-items:flex-start;gap:12px;">
           <div>
             <span class="card-title">Account Directory</span>
-            <div style="color:var(--text-muted);font-size:12px;margin-top:4px;" id="accountsSyncMeta">Last synced: Never</div>
+            <div class="accounts-head-sub" id="accountsSyncMeta">Last synced: Never</div>
           </div>
-          <div class="accounts-kpis" id="accountsKpis" style="margin-left:auto;"></div>
+          <div class="accounts-kpis" id="accountsKpis"></div>
         </div>
 
         <div class="accounts-toolbar">
-          <input id="accountsSearch" class="ls-input orders-filter-input" placeholder="Search by name, email, or UID" />
-          <select id="accountsRoleFilter" class="ls-input orders-filter-input">
-            <option value="all">All roles</option>
-            <option value="admin">Admin</option>
-            <option value="staff">Staff</option>
-            <option value="unassigned">Unassigned</option>
-          </select>
-          <select id="accountsStatusFilter" class="ls-input orders-filter-input">
-            <option value="all">All status</option>
-            <option value="active">Active</option>
-            <option value="suspended">Suspended</option>
-          </select>
-          <select id="accountsSortBy" class="ls-input orders-filter-input">
-            <option value="recent">Sort: Recently updated</option>
-            <option value="name_asc">Sort: Name A-Z</option>
-            <option value="email_asc">Sort: Email A-Z</option>
-            <option value="role">Sort: Role</option>
-          </select>
-          <div class="accounts-toolbar-actions">
-            <button class="orders-btn ghost" type="button" id="accountsClearFiltersBtn">Clear</button>
-            <button class="orders-btn" type="button" id="accountsRefreshBtn">Refresh</button>
+          <div class="accounts-search-row">
+            <input id="accountsSearch" class="ls-input orders-filter-input accounts-search" placeholder="Search by name, email, or UID" />
+          </div>
+          <div class="accounts-filter-row">
+            <select id="accountsRoleFilter" class="ls-input orders-filter-input">
+              <option value="all">All roles</option>
+              <option value="admin">Admin</option>
+              <option value="staff">Staff</option>
+              <option value="unassigned">Unassigned</option>
+            </select>
+            <select id="accountsStatusFilter" class="ls-input orders-filter-input">
+              <option value="all">All status</option>
+              <option value="active">Active</option>
+              <option value="suspended">Suspended</option>
+            </select>
+            <select id="accountsSortBy" class="ls-input orders-filter-input">
+              <option value="recent">Sort: Recently updated</option>
+              <option value="name_asc">Sort: Name A-Z</option>
+              <option value="email_asc">Sort: Email A-Z</option>
+              <option value="role">Sort: Role</option>
+            </select>
+            <div class="accounts-toolbar-actions">
+              <button class="orders-btn ghost" type="button" id="accountsClearFiltersBtn">Clear</button>
+              <button class="orders-btn" type="button" id="accountsRefreshBtn">Refresh</button>
+            </div>
           </div>
         </div>
 
-        <div class="tbl-wrap">
-          <table>
+        <div class="tbl-wrap accounts-table-shell">
+          <table class="accounts-table">
             <tr>
-              <th>Name</th>
+              <th>Member</th>
               <th>Email</th>
               <th>UID</th>
               <th>Role</th>
@@ -1098,6 +1561,65 @@ function isValidEmailAddress(value) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || ""));
 }
 
+function isValidShiftValue(value) {
+  const text = String(value || "").trim();
+  if (!text) return false;
+
+  const twelveOrTwentyFour = /^(\d{1,2})(?::([0-5]\d))?\s*(AM|PM)?\s*-\s*(\d{1,2})(?::([0-5]\d))?\s*(AM|PM)?$/i;
+  if (!twelveOrTwentyFour.test(text)) return false;
+
+  const match = text.match(twelveOrTwentyFour);
+  if (!match) return false;
+
+  const fromHour = Number(match[1]);
+  const toHour = Number(match[4]);
+  if (fromHour < 0 || fromHour > 24 || toHour < 0 || toHour > 24) return false;
+
+  return true;
+}
+
+function validateScheduleBeforeSave() {
+  const sched = readScheduleFromDOM();
+  const invalid = [];
+
+  document.querySelectorAll(".staff-shift-input").forEach((input) => {
+    input.classList.remove("is-invalid");
+    input.removeAttribute("title");
+  });
+
+  Object.entries(sched).forEach(([staffId, days]) => {
+    Object.entries(days || {}).forEach(([day, payload]) => {
+      if (!payload?.onDuty) return;
+      const rawShift = String(payload?.shift || "").trim();
+      const input = document.getElementById(`shift_${staffId}_${day}`);
+      if (!isValidShiftValue(rawShift)) {
+        invalid.push({ staffId, day, value: rawShift });
+        if (input) {
+          input.classList.add("is-invalid");
+          input.setAttribute("title", "Use format like 7AM-3PM or 07:00-15:00");
+        }
+      }
+    });
+  });
+
+  return { sched, invalid };
+}
+
+function summarizeSchedulePayload(sched) {
+  const schedule = sched && typeof sched === "object" ? sched : {};
+  let onDutySlots = 0;
+  let withAnyDuty = 0;
+
+  Object.values(schedule).forEach((days) => {
+    const entries = days && typeof days === "object" ? Object.values(days) : [];
+    const dutyCount = entries.filter((payload) => !!payload?.onDuty).length;
+    onDutySlots += dutyCount;
+    if (dutyCount > 0) withAnyDuty += 1;
+  });
+
+  return { onDutySlots, withAnyDuty };
+}
+
 function getFilteredAccounts() {
   const search = String(accountFilters.search || "").trim().toLowerCase();
   const role = String(accountFilters.role || "all").toLowerCase();
@@ -1162,6 +1684,13 @@ function renderAccountsTable(accounts) {
     const isAdminAccount = account.role === "admin";
     const canDeleteAccount = account.role === "staff";
     const nameDisplay = account.fullName || "-";
+    const initials = String(nameDisplay)
+      .split(" ")
+      .filter(Boolean)
+      .map((chunk) => chunk[0])
+      .join("")
+      .slice(0, 2)
+      .toUpperCase() || "U";
     const roleBadgeClass = account.role === "admin" ? "b-blue" : account.role === "staff" ? "b-green" : "b-gray";
     const statusBadgeClass = account.status === "suspended" ? "b-red" : "b-green";
     const nextRole = account.role === "admin" ? "staff" : "admin";
@@ -1174,7 +1703,15 @@ function renderAccountsTable(accounts) {
 
     return `
       <tr>
-        <td>${escapeHtml(nameDisplay)}</td>
+        <td>
+          <div class="accounts-member-cell">
+            <div class="avatar sm">${escapeHtml(initials)}</div>
+            <div class="accounts-member-meta">
+              <div class="accounts-member-name">${escapeHtml(nameDisplay)}</div>
+              <div class="accounts-member-sub">${account.role === "admin" ? "Administrator account" : "Staff account"}</div>
+            </div>
+          </div>
+        </td>
         <td>${escapeHtml(account.email || "-")}</td>
         <td><code>${escapeHtml(account.uid)}</code></td>
         <td><span class="badge ${roleBadgeClass}">${escapeHtml(account.role)}</span></td>
@@ -1213,16 +1750,26 @@ async function refreshAccountsRecords() {
     if (rowsEl) rowsEl.innerHTML = "";
     if (emptyEl) {
       emptyEl.style.display = "block";
-      emptyEl.textContent = "Unable to load accounts. Please refresh or check access permissions.";
+      emptyEl.innerHTML = renderSectionState("Unable to load accounts. Please refresh or check access permissions.", "error");
     }
     renderAccountsSyncMeta("sync failed");
   }
 }
 
+function setAccountsActionBusy(button, busy = true) {
+  if (!button) return;
+  if (busy) {
+    button.disabled = true;
+    button.dataset.busy = "1";
+  } else {
+    button.disabled = false;
+    delete button.dataset.busy;
+  }
+}
+
 function bindAccountsControls() {
   const host = document.getElementById("accountsContent");
-  if (!host || host.dataset.bound === "1") return;
-  host.dataset.bound = "1";
+  if (!host) return;
 
   const searchInput = document.getElementById("accountsSearch");
   const roleFilter = document.getElementById("accountsRoleFilter");
@@ -1273,13 +1820,19 @@ function bindAccountsControls() {
   });
 
   refreshBtn?.addEventListener("click", async () => {
-    await refreshAccountsRecords();
+    refreshBtn.disabled = true;
+    try {
+      await refreshAccountsRecords();
+    } finally {
+      refreshBtn.disabled = false;
+    }
   });
 
   clearCreateBtn?.addEventListener("click", clearCreateForm);
 
   createForm?.addEventListener("submit", async (e) => {
     e.preventDefault();
+    const submitBtn = document.getElementById("createAccountBtn");
     const fullName = document.getElementById("newAccName")?.value?.trim();
     const email = document.getElementById("newAccEmail")?.value?.trim();
     const password = document.getElementById("newAccPassword")?.value || "";
@@ -1302,6 +1855,10 @@ function bindAccountsControls() {
     }
 
     try {
+      if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = "Creating...";
+      }
       const created = await createAuthUserByAdmin(email, password);
       await setUserRole(created.uid, role, email);
       await setUserProfile(created.uid, {
@@ -1313,7 +1870,7 @@ function bindAccountsControls() {
       });
 
       if (role === "staff" && addToStaff) {
-        await addStaff(fullName, "Staff");
+        await addStaff(fullName, "Staff", { accountUid: created.uid, email });
       }
 
       clearCreateForm();
@@ -1321,17 +1878,32 @@ function bindAccountsControls() {
       await ModalUtils.success("Account Created", "New account has been created successfully.");
     } catch (error) {
       await ModalUtils.error("Account Creation Failed", `${error?.message || "Unknown error"}`);
+    } finally {
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.textContent = "Create Account";
+      }
     }
   });
 
-  host.addEventListener("click", async (e) => {
-    const actionBtn = e.target.closest("button[data-account-action]");
+  if (host.__accountsDelegatedHandler) {
+    host.removeEventListener("click", host.__accountsDelegatedHandler);
+  }
+  if (host.__accountsDelegatedPointerHandler) {
+    host.removeEventListener("pointerup", host.__accountsDelegatedPointerHandler);
+  }
+
+  const handleAccountAction = async (target) => {
+    const actionBtn = target?.closest?.("button[data-account-action]");
     if (!actionBtn) return;
+    if (actionBtn.dataset.busy === "1") return;
 
     const action = actionBtn.dataset.accountAction;
     const uid = actionBtn.dataset.accountUid;
     if (!uid) return;
 
+    setAccountsActionBusy(actionBtn, true);
+    try {
     if (action === "copy-uid") {
       try {
         await navigator.clipboard.writeText(uid);
@@ -1346,9 +1918,12 @@ function bindAccountsControls() {
       const nextRole = String(actionBtn.dataset.accountNextRole || "staff").toLowerCase();
       const account = state.accounts.find((acc) => acc.uid === uid);
       if (!account) return;
+      const confirmed = await ModalUtils.confirm("Change Role", `Change role for <strong>${escapeHtml(account.fullName || account.email || uid)}</strong> to <strong>${escapeHtml(nextRole)}</strong>?`);
+      if (confirmed !== 1) return;
       await setUserRole(uid, nextRole, account.email || "");
       await setUserProfile(uid, { role: nextRole, updatedAtMs: Date.now() });
       await refreshAccountsRecords();
+      await ModalUtils.success("Role Updated", "Account role updated successfully.");
       return;
     }
 
@@ -1361,8 +1936,14 @@ function bindAccountsControls() {
       }
 
       const nextStatus = String(actionBtn.dataset.accountNextStatus || "active").toLowerCase();
+      const confirmed = await ModalUtils.confirm(
+        nextStatus === "suspended" ? "Suspend Account" : "Activate Account",
+        `${nextStatus === "suspended" ? "Suspend" : "Activate"} <strong>${escapeHtml(account.fullName || account.email || uid)}</strong>?`
+      );
+      if (confirmed !== 1) return;
       await setUserProfile(uid, { status: nextStatus, updatedAtMs: Date.now() });
       await refreshAccountsRecords();
+      await ModalUtils.success("Status Updated", `Account is now ${nextStatus}.`);
       return;
     }
 
@@ -1385,22 +1966,39 @@ function bindAccountsControls() {
         updatedAtMs: Date.now(),
       });
 
-      if (account.fullName) {
+      const removedByUid = await removeStaffByAccountUid(uid);
+      if (account.fullName && !removedByUid) {
         await removeStaffByName(account.fullName);
       }
 
       await refreshAccountsRecords();
       await ModalUtils.success("Account Deleted", "Staff account has been deleted successfully.");
     }
-  });
+    } finally {
+      setAccountsActionBusy(actionBtn, false);
+    }
+  };
+
+  const delegatedHandler = async (e) => {
+    await handleAccountAction(e.target);
+  };
+
+  const delegatedPointerHandler = async (e) => {
+    await handleAccountAction(e.target);
+  };
+
+  host.__accountsDelegatedHandler = delegatedHandler;
+  host.__accountsDelegatedPointerHandler = delegatedPointerHandler;
+  host.addEventListener("click", delegatedHandler);
+  host.addEventListener("pointerup", delegatedPointerHandler);
 }
 
 async function loadSettingsPage() {
   const host = document.getElementById("settings");
   if (!host) return;
 
-  // Initialize settings state
-  const settings = {
+  const SETTINGS_STORAGE_KEY = "bb_admin_settings_v1";
+  const DEFAULT_SETTINGS = {
     shop: {
       name: "Brother Bean Coffee House",
       openingHours: "7:00 AM - 9:00 PM",
@@ -1408,217 +2006,266 @@ async function loadSettingsPage() {
       currency: "Philippine Peso (PHP)",
       phone: "+63 (0)2 1234 5678",
     },
-    operations: {
-      onlineOrdering: true,
-      dineIn: true,
-      loyaltyRewards: true,
+    preferences: {
       lowStockAlerts: true,
+      transactionNotifications: true,
+      orderSyncToasts: true,
+      compactTableRows: false,
     },
     notifications: {
-      emailAlerts: true,
-      transactionNotifs: false,
+      modalOnSave: true,
+      warningOnDestructive: true,
     },
   };
 
+  const deepClone = (value) => JSON.parse(JSON.stringify(value));
+  const mergeSettings = (base, incoming) => {
+    const next = deepClone(base);
+    if (!incoming || typeof incoming !== "object") return next;
+
+    Object.keys(next).forEach((section) => {
+      if (!incoming[section] || typeof incoming[section] !== "object") return;
+      Object.keys(next[section]).forEach((key) => {
+        if (incoming[section][key] === undefined) return;
+        next[section][key] = incoming[section][key];
+      });
+    });
+
+    return next;
+  };
+
+  const loadSavedSettings = () => {
+    try {
+      const raw = localStorage.getItem(SETTINGS_STORAGE_KEY);
+      if (!raw) return deepClone(DEFAULT_SETTINGS);
+      return mergeSettings(DEFAULT_SETTINGS, JSON.parse(raw));
+    } catch {
+      return deepClone(DEFAULT_SETTINGS);
+    }
+  };
+
+  const settings = loadSavedSettings();
+
+  const persistSettings = () => {
+    localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settings));
+  };
+
   host.innerHTML = `
-    <div class="page-header">
+    <div class="page-header settings-page-header">
       <div class="page-title">Settings</div>
-      <div class="page-sub">Manage your shop preferences and configuration</div>
-      <div style="margin-top:10px;display:flex;gap:8px;">
-        <button onclick="window.showPage('accounts', document.querySelector('.nav-item[onclick*=\"accounts\"]'), 'Accounts')" style="background:var(--primary-light);color:white;border:none;padding:8px 14px;border-radius:20px;font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif;">
-          → Manage Accounts
-        </button>
-        <button id="resetSettingsBtn" style="background:var(--border-color);color:var(--text-primary);border:none;padding:8px 14px;border-radius:20px;font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif;">
-          ↻ Reset to Defaults
-        </button>
+      <div class="page-sub">System controls and preferences based on what this build currently supports.</div>
+      <div class="settings-header-actions">
+        <button id="resetSettingsBtn" class="orders-btn ghost" type="button">Reset to Defaults</button>
+        <button id="exportDataBtn" class="orders-btn" type="button">Export Settings</button>
       </div>
+      <div id="settingsSavedHint" class="settings-save-hint">Changes are stored in this browser.</div>
     </div>
 
-    <div class="grid-2">
-      <!-- Left Column -->
-      <div>
-        <!-- Shop Info Card -->
-        <div class="card" style="margin-bottom:14px;">
-          <div class="card-head">
-            <span class="card-title">Shop Information</span>
+    <div class="settings-layout">
+      <div class="settings-main-col">
+        <div class="card settings-card">
+          <div class="card-head settings-card-head">
+            <div>
+              <span class="card-title">Shop Information</span>
+              <div class="settings-card-sub">Used in receipts and admin references.</div>
+            </div>
             <span class="card-action" id="toggleShopEdit">Edit</span>
           </div>
+
           <div id="shopInfoDisplay">
-            <div class="setting-row">
-              <div><div class="setting-label">Shop Name</div><div class="setting-desc" id="displayShopName">${settings.shop.name}</div></div>
-            </div>
-            <div class="setting-row">
-              <div><div class="setting-label">Location</div><div class="setting-desc" id="displayLocation">${settings.shop.location}</div></div>
-            </div>
-            <div class="setting-row">
-              <div><div class="setting-label">Opening Hours</div><div class="setting-desc" id="displayHours">${settings.shop.openingHours}</div></div>
-            </div>
-            <div class="setting-row">
-              <div><div class="setting-label">Phone Number</div><div class="setting-desc" id="displayPhone">${settings.shop.phone}</div></div>
-            </div>
-            <div class="setting-row">
-              <div><div class="setting-label">Currency</div><div class="setting-desc" id="displayCurrency">${settings.shop.currency}</div></div>
-            </div>
+            <div class="setting-row"><div><div class="setting-label">Shop Name</div><div class="setting-desc" id="displayShopName"></div></div></div>
+            <div class="setting-row"><div><div class="setting-label">Location</div><div class="setting-desc" id="displayLocation"></div></div></div>
+            <div class="setting-row"><div><div class="setting-label">Opening Hours</div><div class="setting-desc" id="displayHours"></div></div></div>
+            <div class="setting-row"><div><div class="setting-label">Phone Number</div><div class="setting-desc" id="displayPhone"></div></div></div>
+            <div class="setting-row"><div><div class="setting-label">Currency</div><div class="setting-desc" id="displayCurrency"></div></div></div>
           </div>
+
           <form id="shopInfoForm" style="display:none;">
             <div class="accounts-form-grid">
               <div>
                 <div class="ls-label">Shop Name</div>
-                <input class="ls-input" id="inputShopName" value="${settings.shop.name}" style="margin-bottom:0;" required>
+                <input class="ls-input" id="inputShopName" style="margin-bottom:0;" required>
               </div>
               <div>
                 <div class="ls-label">Location</div>
-                <input class="ls-input" id="inputLocation" value="${settings.shop.location}" style="margin-bottom:0;" required>
+                <input class="ls-input" id="inputLocation" style="margin-bottom:0;" required>
               </div>
               <div>
                 <div class="ls-label">Opening Hours</div>
-                <input class="ls-input" id="inputHours" value="${settings.shop.openingHours}" placeholder="e.g. 7:00 AM - 9:00 PM" style="margin-bottom:0;" required>
+                <input class="ls-input" id="inputHours" placeholder="e.g. 7:00 AM - 9:00 PM" style="margin-bottom:0;" required>
               </div>
               <div>
                 <div class="ls-label">Phone Number</div>
-                <input class="ls-input" id="inputPhone" value="${settings.shop.phone}" type="tel" style="margin-bottom:0;" required>
+                <input class="ls-input" id="inputPhone" type="tel" style="margin-bottom:0;" required>
               </div>
-              <div class="accounts-form-actions" style="grid-column: 1/-1;">
+              <div class="settings-form-actions">
                 <button type="button" class="orders-btn ghost" id="cancelShopEdit">Cancel</button>
-                <button type="submit" class="orders-btn">Save Changes</button>
+                <button type="submit" class="orders-btn" id="saveShopInfoBtn">Save Changes</button>
               </div>
             </div>
           </form>
         </div>
 
-        <!-- Operations Card -->
-        <div class="card">
-          <div class="card-head"><span class="card-title">Shop Operations</span></div>
-          <div class="setting-row">
+        <div class="card settings-card">
+          <div class="card-head settings-card-head">
             <div>
-              <div class="setting-label">Online Ordering</div>
-              <div class="setting-desc">Accept orders via delivery apps</div>
+              <span class="card-title">Operational Preferences</span>
+              <div class="settings-card-sub">These affect local UI behavior for admins.</div>
             </div>
-            <label class="toggle">
-              <input type="checkbox" class="setting-toggle" data-setting="operations.onlineOrdering" ${settings.operations.onlineOrdering ? 'checked' : ''}>
-              <span class="tslider"></span>
-            </label>
           </div>
-          <div class="setting-row">
-            <div>
-              <div class="setting-label">Dine-in Available</div>
-              <div class="setting-desc">Allow customers to eat in the shop</div>
-            </div>
-            <label class="toggle">
-              <input type="checkbox" class="setting-toggle" data-setting="operations.dineIn" ${settings.operations.dineIn ? 'checked' : ''}>
-              <span class="tslider"></span>
-            </label>
-          </div>
-          <div class="setting-row">
-            <div>
-              <div class="setting-label">Loyalty Rewards</div>
-              <div class="setting-desc">Enable stamp card system</div>
-            </div>
-            <label class="toggle">
-              <input type="checkbox" class="setting-toggle" data-setting="operations.loyaltyRewards" ${settings.operations.loyaltyRewards ? 'checked' : ''}>
-              <span class="tslider"></span>
-            </label>
-          </div>
+
           <div class="setting-row">
             <div>
               <div class="setting-label">Low Stock Alerts</div>
-              <div class="setting-desc">Notify when ingredients run low</div>
+              <div class="setting-desc">Keep inventory warning badges and summaries visible.</div>
             </div>
             <label class="toggle">
-              <input type="checkbox" class="setting-toggle" data-setting="operations.lowStockAlerts" ${settings.operations.lowStockAlerts ? 'checked' : ''}>
+              <input type="checkbox" class="setting-toggle" data-setting="preferences.lowStockAlerts">
+              <span class="tslider"></span>
+            </label>
+          </div>
+
+          <div class="setting-row">
+            <div>
+              <div class="setting-label">Transaction Notifications</div>
+              <div class="setting-desc">Show transaction update confirmations in admin flows.</div>
+            </div>
+            <label class="toggle">
+              <input type="checkbox" class="setting-toggle" data-setting="preferences.transactionNotifications">
+              <span class="tslider"></span>
+            </label>
+          </div>
+
+          <div class="setting-row">
+            <div>
+              <div class="setting-label">Order Sync Toasts</div>
+              <div class="setting-desc">Show sync result toasts after queued orders are processed.</div>
+            </div>
+            <label class="toggle">
+              <input type="checkbox" class="setting-toggle" data-setting="preferences.orderSyncToasts">
+              <span class="tslider"></span>
+            </label>
+          </div>
+
+          <div class="setting-row">
+            <div>
+              <div class="setting-label">Compact Table Rows</div>
+              <div class="setting-desc">Use tighter row density on management tables.</div>
+            </div>
+            <label class="toggle">
+              <input type="checkbox" class="setting-toggle" data-setting="preferences.compactTableRows">
               <span class="tslider"></span>
             </label>
           </div>
         </div>
       </div>
 
-      <!-- Right Column -->
-      <div>
-        <!-- Notifications Card -->
-        <div class="card" style="margin-bottom:14px;">
-          <div class="card-head"><span class="card-title">Notifications</span></div>
-          <div class="setting-row">
+      <div class="settings-side-col">
+        <div class="card settings-card" style="margin-bottom:14px;">
+          <div class="card-head settings-card-head">
             <div>
-              <div class="setting-label">Email Alerts</div>
-              <div class="setting-desc">Get notified on suspicious activity</div>
+              <span class="card-title">Current System Capabilities</span>
+              <div class="settings-card-sub">What this version can do right now.</div>
             </div>
-            <label class="toggle">
-              <input type="checkbox" class="setting-toggle" data-setting="notifications.emailAlerts" ${settings.notifications.emailAlerts ? 'checked' : ''}>
-              <span class="tslider"></span>
-            </label>
           </div>
-          <div class="setting-row">
-            <div>
-              <div class="setting-label">Transaction Notifications</div>
-              <div class="setting-desc">Notify on every new transaction</div>
-            </div>
-            <label class="toggle">
-              <input type="checkbox" class="setting-toggle" data-setting="notifications.transactionNotifs" ${settings.notifications.transactionNotifs ? 'checked' : ''}>
-              <span class="tslider"></span>
-            </label>
+
+          <div class="settings-capability-list">
+            <div class="settings-capability-item"><span>Menu and Categories Management</span><span class="badge b-green">Supported</span></div>
+            <div class="settings-capability-item"><span>Inventory Tracking and Stock Depletion</span><span class="badge b-green">Supported</span></div>
+            <div class="settings-capability-item"><span>Staff Scheduling and Account Linking</span><span class="badge b-green">Supported</span></div>
+            <div class="settings-capability-item"><span>Account Role, Status, and Deactivation</span><span class="badge b-green">Supported</span></div>
+            <div class="settings-capability-item"><span>Offline Order Queue and Sync</span><span class="badge b-green">Supported</span></div>
+            <div class="settings-capability-item"><span>Delivery Platform Integrations</span><span class="badge b-orange">Not in this build</span></div>
+            <div class="settings-capability-item"><span>Email/SMS Notification Delivery</span><span class="badge b-orange">Not in this build</span></div>
           </div>
         </div>
 
-        <!-- System Info Card -->
-        <div class="card">
-          <div class="card-head"><span class="card-title">System Information</span></div>
+        <div class="card settings-card">
+          <div class="card-head settings-card-head">
+            <div>
+              <span class="card-title">Maintenance</span>
+              <div class="settings-card-sub">Local admin maintenance tools.</div>
+            </div>
+          </div>
+
           <div class="setting-row">
             <div>
-              <div class="setting-label">Admin Account</div>
-              <div class="setting-desc">admin</div>
+              <div class="setting-label">Persistence</div>
+              <div class="setting-desc">Settings are saved to browser local storage.</div>
             </div>
           </div>
           <div class="setting-row">
             <div>
-              <div class="setting-label">Database</div>
-              <div class="setting-desc">Firestore (Real-time)</div>
+              <div class="setting-label">Backend Stack</div>
+              <div class="setting-desc">Firebase Auth + Firestore</div>
             </div>
           </div>
-          <div class="setting-row">
-            <div>
-              <div class="setting-label">Authentication</div>
-              <div class="setting-desc">Firebase Auth</div>
-            </div>
-          </div>
-          <div class="setting-row">
-            <div>
-              <div class="setting-label">Version</div>
-              <div class="setting-desc">v1.0.0</div>
-            </div>
-          </div>
-          <button id="clearCacheBtn" class="orders-btn" style="width:100%;margin-top:12px;padding:10px;">Clear Local Cache</button>
-          <button id="exportDataBtn" class="orders-btn" style="width:100%;margin-top:8px;padding:10px;">Export Settings</button>
+
+          <button id="clearCacheBtn" class="orders-btn ghost settings-block-btn" type="button">Clear App Cache</button>
         </div>
       </div>
     </div>
   `;
 
-  // Event Listeners
+  const savedHint = document.getElementById("settingsSavedHint");
+  const showSavedHint = (message = "Saved.") => {
+    if (!savedHint) return;
+    savedHint.textContent = message;
+    savedHint.classList.add("saved");
+    window.setTimeout(() => savedHint.classList.remove("saved"), 1200);
+  };
+
   const toggleDisplay = document.getElementById("shopInfoDisplay");
   const toggleForm = document.getElementById("shopInfoForm");
   const toggleEditBtn = document.getElementById("toggleShopEdit");
-
   const shopForm = document.getElementById("shopInfoForm");
   const cancelShopEditBtn = document.getElementById("cancelShopEdit");
+  const saveShopInfoBtn = document.getElementById("saveShopInfoBtn");
 
-  // Toggle shop info edit mode
-  function toggleShopEditMode() {
+  const applyShopView = () => {
+    document.getElementById("displayShopName").textContent = settings.shop.name;
+    document.getElementById("displayLocation").textContent = settings.shop.location;
+    document.getElementById("displayHours").textContent = settings.shop.openingHours;
+    document.getElementById("displayPhone").textContent = settings.shop.phone;
+    document.getElementById("displayCurrency").textContent = settings.shop.currency;
+
+    document.getElementById("inputShopName").value = settings.shop.name;
+    document.getElementById("inputLocation").value = settings.shop.location;
+    document.getElementById("inputHours").value = settings.shop.openingHours;
+    document.getElementById("inputPhone").value = settings.shop.phone;
+  };
+
+  const applyToggleState = () => {
+    document.querySelectorAll(".setting-toggle").forEach((toggle) => {
+      const setting = String(toggle.dataset.setting || "");
+      const [section, key] = setting.split(".");
+      if (!section || !key) return;
+      if (!settings[section]) return;
+      toggle.checked = !!settings[section][key];
+    });
+  };
+
+  const toggleShopEditMode = () => {
     const isEditing = toggleForm.style.display !== "none";
     if (isEditing) {
       toggleForm.style.display = "none";
       toggleDisplay.style.display = "block";
       toggleEditBtn.textContent = "Edit";
-    } else {
-      toggleForm.style.display = "block";
-      toggleDisplay.style.display = "none";
-      toggleEditBtn.textContent = "Cancel";
+      return;
     }
-  }
 
-  toggleEditBtn.addEventListener("click", toggleShopEditMode);
+    applyShopView();
+    toggleForm.style.display = "block";
+    toggleDisplay.style.display = "none";
+    toggleEditBtn.textContent = "Cancel";
+  };
+
+  applyShopView();
+  applyToggleState();
+
+  toggleEditBtn?.addEventListener("click", toggleShopEditMode);
   cancelShopEditBtn?.addEventListener("click", toggleShopEditMode);
 
-  // Save shop info
   shopForm?.addEventListener("submit", async (e) => {
     e.preventDefault();
     const name = document.getElementById("inputShopName")?.value?.trim();
@@ -1627,90 +2274,87 @@ async function loadSettingsPage() {
     const phone = document.getElementById("inputPhone")?.value?.trim();
 
     if (!name || !location || !hours || !phone) {
-      await ModalUtils.warning("Validation Error", "All fields are required.");
+      await ModalUtils.warning("Validation Error", "All shop information fields are required.");
       return;
     }
 
-    settings.shop.name = name;
-    settings.shop.location = location;
-    settings.shop.openingHours = hours;
-    settings.shop.phone = phone;
+    try {
+      if (saveShopInfoBtn) {
+        saveShopInfoBtn.disabled = true;
+        saveShopInfoBtn.textContent = "Saving...";
+      }
+      settings.shop.name = name;
+      settings.shop.location = location;
+      settings.shop.openingHours = hours;
+      settings.shop.phone = phone;
 
-    document.getElementById("displayShopName").textContent = name;
-    document.getElementById("displayLocation").textContent = location;
-    document.getElementById("displayHours").textContent = hours;
-    document.getElementById("displayPhone").textContent = phone;
-
-    toggleShopEditMode();
-    await ModalUtils.success("Settings Updated", "Shop information has been saved successfully.");
+      persistSettings();
+      applyShopView();
+      toggleShopEditMode();
+      showSavedHint("Shop information saved.");
+      await ModalUtils.success("Settings Updated", "Shop information has been saved successfully.");
+    } finally {
+      if (saveShopInfoBtn) {
+        saveShopInfoBtn.disabled = false;
+        saveShopInfoBtn.textContent = "Save Changes";
+      }
+    }
   });
 
-  // Toggle switches
   document.querySelectorAll(".setting-toggle").forEach((toggle) => {
-    toggle.addEventListener("change", async (e) => {
-      const setting = e.target.dataset.setting;
-      const value = e.target.checked;
-      
-      const parts = setting.split(".");
-      if (parts.length === 2) {
-        settings[parts[0]][parts[1]] = value;
-      }
+    toggle.addEventListener("change", () => {
+      const setting = String(toggle.dataset.setting || "");
+      const [section, key] = setting.split(".");
+      if (!section || !key) return;
+      if (!settings[section]) return;
 
-      const settingName = parts[parts.length - 1]
-        .replace(/([A-Z])/g, " $1")
-        .replace(/^./, (str) => str.toUpperCase());
-      
-      await ModalUtils.success(
-        "Setting Updated",
-        `${settingName} has been ${value ? "enabled" : "disabled"}.`
-      );
+      settings[section][key] = !!toggle.checked;
+      persistSettings();
+      showSavedHint("Preference updated.");
     });
   });
 
-  // Reset to defaults
   document.getElementById("resetSettingsBtn")?.addEventListener("click", async () => {
     const confirmed = await ModalUtils.confirm(
       "Reset to Defaults",
-      "This will restore all settings to their default values. Continue?"
+      "This will restore settings on this page to default values. Continue?"
     );
     if (confirmed !== 1) return;
 
-    settings.operations.onlineOrdering = true;
-    settings.operations.dineIn = true;
-    settings.operations.loyaltyRewards = true;
-    settings.operations.lowStockAlerts = true;
-    settings.notifications.emailAlerts = true;
-    settings.notifications.transactionNotifs = false;
+    const reset = deepClone(DEFAULT_SETTINGS);
+    Object.keys(settings).forEach((section) => {
+      settings[section] = reset[section];
+    });
 
-    document
-      .querySelectorAll(".setting-toggle")
-      .forEach((toggle) => {
-        const setting = toggle.dataset.setting;
-        const parts = setting.split(".");
-        toggle.checked = settings[parts[0]][parts[1]];
-      });
-
-    await ModalUtils.success("Settings Reset", "All settings have been restored to defaults.");
+    persistSettings();
+    applyShopView();
+    applyToggleState();
+    showSavedHint("Defaults restored.");
+    await ModalUtils.success("Settings Reset", "All settings were restored to default values.");
   });
 
-  // Clear cache
   document.getElementById("clearCacheBtn")?.addEventListener("click", async () => {
     const confirmed = await ModalUtils.confirm(
-      "Clear Cache",
-      "This will clear all cached data from your browser. The app will reload fresh data on next use."
+      "Clear App Cache",
+      "Clear local cache entries used by this app? This does not delete cloud data."
     );
     if (confirmed !== 1) return;
 
     try {
-      localStorage.clear();
+      const keys = Object.keys(localStorage);
+      keys
+        .filter((key) => key.startsWith("bb_") || key.startsWith("brother-bean"))
+        .forEach((key) => localStorage.removeItem(key));
       sessionStorage.clear();
-      await ModalUtils.success("Cache Cleared", "Local cache has been cleared successfully.");
+
+      localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(DEFAULT_SETTINGS));
+      await ModalUtils.success("Cache Cleared", "App cache was cleared. Settings were reset to defaults.");
+      await loadSettingsPage();
     } catch (error) {
       await ModalUtils.error("Clear Cache Failed", error?.message || "Unable to clear cache.");
     }
   });
 
-  // Export settings
   document.getElementById("exportDataBtn")?.addEventListener("click", async () => {
     try {
       const dataStr = JSON.stringify(settings, null, 2);
@@ -1718,7 +2362,7 @@ async function loadSettingsPage() {
       const url = URL.createObjectURL(dataBlob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = `brother-bean-settings-${new Date().toISOString().split("T")[0]}.json`;
+      link.download = `brother-bean-settings-${new Date().toISOString().slice(0, 10)}.json`;
       link.click();
       URL.revokeObjectURL(url);
       await ModalUtils.success("Export Complete", "Settings have been exported successfully.");
@@ -1741,6 +2385,7 @@ window.showPage = async function (pageId, navEl, title) {
   if (pageId === "inventory") await loadInventoryPage();
   if (pageId === "staff") await loadStaffPage();
   if (pageId === "accounts") await loadAccountsPage();
+  if (pageId === "categories") await loadCategoriesPage();
   if (pageId === "settings") await loadSettingsPage();
 };
 
@@ -1750,6 +2395,28 @@ window.refreshOrders = async function () {
 
 window.refreshInventory = async function () {
   await loadInventoryPage();
+};
+
+window.clearAllInventory = async function () {
+  const hasExisting = Array.isArray(state.inventoryItems) && state.inventoryItems.length > 0;
+  if (!hasExisting) {
+    await ModalUtils.info("Nothing to Clear", "Inventory is already empty.");
+    return;
+  }
+  
+  const confirmed = await ModalUtils.confirm(
+    "Clear All Inventory",
+    "This will permanently delete every item in your inventory database. This cannot be undone."
+  );
+  if (confirmed !== 1) return;
+
+  try {
+    const result = await clearInventoryItems();
+    await ModalUtils.success("Inventory Cleared", `Deleted ${result.count || 0} inventory item(s).`);
+    await loadInventoryPage();
+  } catch (error) {
+    await ModalUtils.error("Clear Failed", error?.message || "Unable to clear inventory.");
+  }
 };
 
 window.seedInventory = async function () {
@@ -1805,9 +2472,33 @@ window.showAddStaff = function () {
 };
 
 window.saveSchedule = async function () {
-  const sched = readScheduleFromDOM();
+  const { sched, invalid } = validateScheduleBeforeSave();
+  if (invalid.length > 0) {
+    const first = invalid[0];
+    await ModalUtils.warning(
+      "Invalid Shift Format",
+      `Please fix ${invalid.length} invalid shift entr${invalid.length > 1 ? "ies" : "y"}. Example issue: ${escapeHtml(first.day)} has an invalid value.`
+    );
+    return;
+  }
+
   await saveSchedule(sched);
+  const summary = summarizeSchedulePayload(sched);
   await loadStaffPage();
+  await ModalUtils.show({
+    type: "success",
+    title: "Schedule Saved",
+    message: `
+      <div style="display:grid;gap:8px;">
+        <div>Weekly schedule has been updated successfully.</div>
+        <div style="display:grid;gap:4px;padding:10px;border:1px solid rgba(16,185,129,0.25);border-radius:10px;background:rgba(16,185,129,0.08);font-size:13px;">
+          <div><strong>${summary.onDutySlots}</strong> on-duty slot${summary.onDutySlots === 1 ? "" : "s"} saved</div>
+          <div><strong>${summary.withAnyDuty}</strong> team member${summary.withAnyDuty === 1 ? "" : "s"} assigned this week</div>
+        </div>
+      </div>
+    `,
+    buttons: [{ text: "Done", type: "primary success" }],
+  });
 };
 
 window.resetDay = async function () {
@@ -1823,17 +2514,58 @@ window.resetDay = async function () {
   await loadDashboard();
 };
 
-window.logout = async function () {
-  await authLogout();
+window.openLogoutModal = function () {
+  const modal = document.getElementById("logoutConfirmModal");
+  if (!modal) return;
+  modal.style.display = "flex";
+  modal.setAttribute("aria-hidden", "false");
+  const cancelButton = modal.querySelector(".modal-custom-btn.secondary");
+  if (cancelButton && typeof cancelButton.focus === "function") {
+    window.setTimeout(() => cancelButton.focus(), 0);
+  }
 };
+
+window.closeLogoutModal = function () {
+  const modal = document.getElementById("logoutConfirmModal");
+  if (!modal) return;
+  modal.style.display = "none";
+  modal.setAttribute("aria-hidden", "true");
+  const trigger = document.querySelector(".topbar-logout");
+  if (trigger && typeof trigger.focus === "function") {
+    trigger.focus();
+  }
+};
+
+window.logout = function () {
+  window.openLogoutModal();
+};
+
+window.confirmLogout = async function () {
+  try {
+    await authLogout();
+    window.closeLogoutModal();
+    navigateTo("login", { replace: true });
+  } catch (error) {
+    console.error("[Auth] Logout failed:", error);
+    await ModalUtils.error("Logout Failed", error?.message || "Unable to sign out right now.");
+  }
+};
+
+window.addEventListener("keydown", (event) => {
+  if (event.key !== "Escape") return;
+  const modal = document.getElementById("logoutConfirmModal");
+  if (!modal || modal.style.display === "none") return;
+  window.closeLogoutModal();
+});
 
 document.addEventListener("DOMContentLoaded", async () => {
   setupTopbarDate();
   setupTopbarActions();
+  startDashboardAutoSync();
 
   let authSettled = false;
   let nullUserTimerId = null;
-  const authTimeoutMs = 15000;
+  const authTimeoutMs = 5000;
   const authTimeoutId = window.setTimeout(() => {
     if (authSettled) return;
     const fallbackUser = getCurrentUser();
@@ -1871,7 +2603,7 @@ document.addEventListener("DOMContentLoaded", async () => {
           authSettled = true;
           window.clearTimeout(authTimeoutId);
           showLogin();
-        }, 3500);
+        }, 1000);
         return;
       }
 
@@ -1897,6 +2629,21 @@ document.addEventListener("DOMContentLoaded", async () => {
         role = await getUserRole(activeUser.uid);
       } catch (roleError) {
         console.warn("[Auth] Unable to read user role; defaulting to admin access path.", roleError);
+      }
+
+      if (!role) {
+        try {
+          await ensureAdminAccessProfile(activeUser.uid, {
+            fullName: profile?.fullName || activeUser.displayName || activeUser.email || "Admin",
+            displayName: profile?.displayName || activeUser.displayName || activeUser.email || "Admin",
+            email: activeUser.email || profile?.email || "",
+            status: profile?.status || "active",
+            isDefaultAdmin: profile?.isDefaultAdmin === true,
+          });
+          role = "admin";
+        } catch (seedError) {
+          console.warn("[Auth] Unable to backfill admin profile; continuing with admin UI fallback.", seedError);
+        }
       }
 
       if (role && role !== "admin") {
@@ -1931,83 +2678,140 @@ function openMenuEditor(itemId, preset = {}) {
   const existing = state.menuItems.find(i => i.id === itemId);
   const isNew = !existing;
   const nextId = Math.max(0, ...state.menuItems.map(i => Number(i.id) || 0)) + 1;
-  const item = existing ? { ...existing } : {
-    id: nextId,
-    name: "",
-    price: 0,
-    category: String(preset.category || "coffee"),
-    subcategory: String(preset.subcategory || "Coffee"),
-    hasVariant: false,
-    hasTemp: false,
-    popular: false,
-    bestseller: false,
-    note: "",
-    variants: [],
-  };
+  const presetItem = preset && typeof preset === "object" ? preset : {};
+  const item = existing
+    ? { ...presetItem, ...existing }
+    : {
+        id: presetItem.id || nextId,
+        name: String(presetItem.name || ""),
+        price: Number(presetItem.price || 0),
+        category: String(presetItem.category || ""),
+        hasVariant: !!presetItem.hasVariant,
+        hasTemp: !!presetItem.hasTemp,
+        popular: !!presetItem.popular,
+        bestseller: !!presetItem.bestseller,
+        note: String(presetItem.note || ""),
+        variants: Array.isArray(presetItem.variants) ? presetItem.variants.map((variant) => ({ ...variant })) : [],
+        addons: Array.isArray(presetItem.addons) ? presetItem.addons.map((addon) => ({ ...addon })) : [],
+        recipe: Array.isArray(presetItem.recipe) ? presetItem.recipe.map((ingredient) => ({ ...ingredient })) : [],
+      };
 
   const initialVariants = Array.isArray(item.variants) && item.variants.length
     ? item.variants
     : [{ name: "", price: Number(item.price) || 0 }];
 
+  const initialAddons = Array.isArray(item.addons)
+    ? item.addons
+        .map((addon, index) => ({
+          id: String(addon?.id || `addon-${item.id || "item"}-${index}`),
+          name: String(addon?.name || "").trim(),
+          price: Number(addon?.price || 0),
+          recipe: Array.isArray(addon?.recipe) ? addon.recipe.map((ingredient) => ({ ...ingredient })) : [],
+        }))
+        .filter((addon) => addon.name)
+    : [];
+
+  const normalizedCurrentCategory = String(item.category || "").trim();
+  const hasCurrentCategoryOption = state.categories.some(
+    (c) => String(c?.name || "").trim().toLowerCase() === normalizedCurrentCategory.toLowerCase()
+  );
+  const categoryOptionsHtml = state.categories
+    .map((c) => {
+      const value = String(c?.name || "").trim();
+      if (!value) return "";
+      const selected = value.toLowerCase() === normalizedCurrentCategory.toLowerCase() ? "selected" : "";
+      return `<option value="${escapeHtml(value)}" ${selected}>${escapeHtml(value)}</option>`;
+    })
+    .join("");
+  const customCategoryOption =
+    normalizedCurrentCategory && !hasCurrentCategoryOption
+      ? `<option value="${escapeHtml(normalizedCurrentCategory)}" selected>${escapeHtml(normalizedCurrentCategory)}</option>`
+      : "";
+  const shouldSelectPlaceholder = !normalizedCurrentCategory;
+
   slot.innerHTML = `
-    <div class="card" style="margin:14px 0;">
-      <div class="card-head">
-        <span class="card-title">${isNew ? "Add menu item" : "Edit menu item"}</span>
+    <div class="card mm-menu-editor" style="margin:14px 0;border:1px solid rgba(107,68,35,0.12);border-radius:18px;box-shadow:0 12px 34px rgba(30,20,12,0.08);overflow:hidden;background:linear-gradient(180deg,#ffffff 0%,#fdfaf6 100%);">
+      <div class="card-head" style="padding:14px 16px;border-bottom:1px solid rgba(107,68,35,0.12);background:linear-gradient(135deg,rgba(107,68,35,0.08) 0%,rgba(221,184,146,0.16) 100%);">
+        <div style="display:flex;flex-direction:column;gap:4px;">
+          <span class="card-title" style="font-size:15px;letter-spacing:0.04em;text-transform:uppercase;color:#5f3c1f;">${isNew ? (presetItem.id ? "Customize default menu item" : "Add menu item") : "Edit menu item"}</span>
+          <span style="font-size:12px;color:#7b6652;">Set details, recipe, and pricing before saving.</span>
+        </div>
       </div>
-      <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;">
-        <div>
+      <div class="mm-menu-editor-grid" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;padding:14px;">
+        <div ${isNew && !presetItem.id ? 'style="display:none;"' : 'style="grid-column:1/-1;"'}>
           <div class="ls-label">ID</div>
-          <input class="ls-input" id="mm_id" value="${item.id}" ${isNew ? "readonly" : "readonly"} style="margin-bottom:0;">
+          <input class="ls-input" id="mm_id" value="${isNew && !presetItem.id ? 'Auto-generated' : item.id}" readonly style="margin-bottom:0;">
+        </div>
+        <div>
+          <div class="ls-label">Name</div>
+          <input class="ls-input" id="mm_name" value="${(item.name || "").replaceAll('"', "&quot;")}" style="margin-bottom:0;" aria-label="Menu item name">
+          <div id="mm_name_error" class="mm-field-error" aria-live="polite"></div>
         </div>
         <div>
           <div class="ls-label">Price</div>
-          <input class="ls-input" id="mm_price" type="number" step="0.25" value="${Number(item.price) || 0}" style="margin-bottom:0;">
-        </div>
-        <div style="grid-column:1/-1;">
-          <div class="ls-label">Name</div>
-          <input class="ls-input" id="mm_name" value="${(item.name || "").replaceAll('"', "&quot;")}" style="margin-bottom:0;">
+          <input class="ls-input" id="mm_price" type="number" step="0.25" min="0" value="${Number(item.price) || 0}" style="margin-bottom:0;" aria-label="Menu item price">
+          <div id="mm_price_error" class="mm-field-error" aria-live="polite"></div>
         </div>
         <div>
           <div class="ls-label">Category</div>
-          <div class="ls-dropdown-field">
-            <input class="ls-input" id="mm_category" value="${item.category || ""}" placeholder="Coffee / Oat Series / Coconut Series / ..." style="margin-bottom:0;">
-            <button type="button" class="ls-dropdown-toggle" data-target="mm_category_list" aria-label="Open category list">▾</button>
-            <ul id="mm_category_list" class="ls-dropdown-list"></ul>
-          </div>
-        </div>
-        <div>
-          <div class="ls-label">Subcategory</div>
-          <div class="ls-dropdown-field">
-            <input class="ls-input" id="mm_subcategory" value="${item.subcategory || ""}" placeholder="Coffee / Rice Meals / Add-ons / ..." style="margin-bottom:0;">
-            <button type="button" class="ls-dropdown-toggle" data-target="mm_subcategory_list" aria-label="Open subcategory list">▾</button>
-            <ul id="mm_subcategory_list" class="ls-dropdown-list"></ul>
-          </div>
+          <select class="ls-input" id="mm_category" style="margin-bottom:0;" aria-label="Menu item category">
+            <option value="" disabled ${shouldSelectPlaceholder ? "selected" : ""}>Select a category...</option>
+            ${customCategoryOption}
+            ${categoryOptionsHtml}
+          </select>
+          <div id="mm_category_error" class="mm-field-error" aria-live="polite"></div>
         </div>
         <div style="grid-column:1/-1;">
           <div class="ls-label">Note (optional)</div>
           <input class="ls-input" id="mm_note" value="${(item.note || "").replaceAll('"', "&quot;")}" style="margin-bottom:0;">
         </div>
-        <div style="display:flex;gap:12px;align-items:center;">
-          <label style="display:flex;gap:8px;align-items:center;font-size:13px;color:var(--text-secondary);font-weight:600;">
+        <div style="display:flex;gap:12px;align-items:center;background:rgba(107,68,35,0.06);border:1px solid rgba(107,68,35,0.14);padding:8px 10px;border-radius:12px;">
+          <label style="display:flex;gap:8px;align-items:center;font-size:13px;color:var(--text-secondary);font-weight:600;cursor:pointer;">
             <input type="checkbox" id="mm_hasTemp" ${item.hasTemp ? "checked" : ""}> Has temperature
           </label>
         </div>
-        <div style="display:flex;gap:12px;align-items:center;">
-          <label style="display:flex;gap:8px;align-items:center;font-size:13px;color:var(--text-secondary);font-weight:600;">
+        <div style="display:flex;gap:12px;align-items:center;background:rgba(107,68,35,0.06);border:1px solid rgba(107,68,35,0.14);padding:8px 10px;border-radius:12px;">
+          <label style="display:flex;gap:8px;align-items:center;font-size:13px;color:var(--text-secondary);font-weight:600;cursor:pointer;">
             <input type="checkbox" id="mm_hasVariant" ${item.hasVariant ? "checked" : ""}> Has variants
           </label>
         </div>
-        <div style="display:flex;gap:12px;align-items:center;">
-          <label style="display:flex;gap:8px;align-items:center;font-size:13px;color:var(--text-secondary);font-weight:600;">
+        <div style="display:flex;gap:12px;align-items:center;background:rgba(107,68,35,0.06);border:1px solid rgba(107,68,35,0.14);padding:8px 10px;border-radius:12px;">
+          <label style="display:flex;gap:8px;align-items:center;font-size:13px;color:var(--text-secondary);font-weight:600;cursor:pointer;">
             <input type="checkbox" id="mm_popular" ${item.popular ? "checked" : ""}> Popular
           </label>
         </div>
-        <div style="display:flex;gap:12px;align-items:center;">
-          <label style="display:flex;gap:8px;align-items:center;font-size:13px;color:var(--text-secondary);font-weight:600;">
+        <div style="display:flex;gap:12px;align-items:center;background:rgba(107,68,35,0.06);border:1px solid rgba(107,68,35,0.14);padding:8px 10px;border-radius:12px;">
+          <label style="display:flex;gap:8px;align-items:center;font-size:13px;color:var(--text-secondary);font-weight:600;cursor:pointer;">
             <input type="checkbox" id="mm_bestseller" ${item.bestseller ? "checked" : ""}> Bestseller
           </label>
         </div>
-        <div id="mm_variantsSection" style="grid-column:1/-1;${item.hasVariant ? "" : "display:none;"}">
+
+        <!-- Recipe Section -->
+        <div id="mm_recipeSection" style="grid-column:1/-1;border-top:1px solid var(--border-color);padding-top:12px;margin-top:4px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px;">
+            <div class="ls-label" style="margin:0;">Recipe / Ingredients</div>
+            <button type="button" id="mm_addRecipeIngredient" style="background:transparent;border:1px solid var(--border-color);padding:6px 10px;border-radius:10px;font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif;">+ Add Ingredient</button>
+          </div>
+          <div id="mm_recipeRows" style="display:grid;gap:8px;"></div>
+          <div id="mm_recipeWarnings" style="display:none;margin-top:8px;padding:8px 10px;border-radius:8px;background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.28);color:#991B1B;font-size:12px;" aria-live="polite"></div>
+          <div style="display:flex;justify-content:space-between;margin-top:12px;padding:8px;background:rgba(0,0,0,0.02);border-radius:8px;">
+            <div style="font-size:13px;color:var(--text-secondary);font-weight:600;">Calculated Base Cost:</div>
+            <div id="mm_basePriceDisplay" style="font-size:14px;font-weight:bold;color:var(--text-main);" aria-live="polite">₱0.00</div>
+          </div>
+        </div>
+
+        <!-- Add-ons Section -->
+        <div id="mm_addonsSection" style="grid-column:1/-1;border-top:1px solid var(--border-color);padding-top:12px;margin-top:4px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px;">
+            <div class="ls-label" style="margin:0;">Add-ons (Optional)</div>
+            <button type="button" id="mm_addAddon" style="background:transparent;border:1px solid var(--border-color);padding:6px 10px;border-radius:10px;font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif;">+ Add Add-on</button>
+          </div>
+          <div id="mm_addonsRows" style="display:grid;gap:8px;"></div>
+          <div style="font-size:11px;color:var(--text-muted);margin-top:6px;">Each add-on can have extra price and optional inventory usage for stock deduction.</div>
+        </div>
+
+        <!-- Variants Section -->
+        <div id="mm_variantsSection" style="grid-column:1/-1;border-top:1px solid var(--border-color);padding-top:12px;margin-top:4px;${item.hasVariant ? "" : "display:none;"}">
           <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px;">
             <div class="ls-label" style="margin:0;">Variants</div>
             <button type="button" id="mm_addVariant" style="background:transparent;border:1px solid var(--border-color);padding:6px 10px;border-radius:10px;font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif;">+ Add variant</button>
@@ -2016,9 +2820,10 @@ function openMenuEditor(itemId, preset = {}) {
           <div style="font-size:11px;color:var(--text-muted);margin-top:6px;">Add each size/option as a row (example: Small - 120, Large - 150)</div>
         </div>
       </div>
-      <div style="display:flex;gap:10px;margin-top:14px;justify-content:flex-end;">
-        <button id="mm_cancel" type="button" style="background:transparent;border:1px solid var(--border-color);padding:10px 16px;border-radius:12px;font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif;">Cancel</button>
-        <button id="mm_save" type="button" style="background:var(--brown,#6B4423);color:white;border:none;padding:10px 16px;border-radius:12px;font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif;">Save</button>
+      <div style="display:flex;gap:10px;padding:14px;justify-content:flex-end;border-top:1px solid rgba(107,68,35,0.12);background:rgba(255,252,248,0.95);">
+        <div id="mm_formHint" class="mm-form-hint" aria-live="polite"></div>
+        <button id="mm_cancel" type="button" style="background:white;border:1px solid rgba(107,68,35,0.24);padding:10px 16px;border-radius:12px;font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif;color:#5f3c1f;font-weight:600;">Cancel</button>
+        <button id="mm_save" type="button" style="background:linear-gradient(135deg,#7c4e28 0%,#5f3c1f 100%);color:white;border:none;padding:10px 18px;border-radius:12px;font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif;font-weight:700;box-shadow:0 8px 18px rgba(95,60,31,0.25);" aria-label="Save menu item">Save</button>
       </div>
     </div>
   `;
@@ -2029,21 +2834,20 @@ function openMenuEditor(itemId, preset = {}) {
     nameInput.select();
   }
 
-  const categoryOptions = MENU_CATEGORY_ORDER.map(cat => CATEGORY_LABELS[cat] || cat);
-  const subcategoryOptions = [
-    ...categoryOptions,
-    "Add-ons Drink",
-    "Add-ons Food",
-  ];
-
-  setupAdminMenuDropdownField("mm_category", "mm_category_list", categoryOptions);
-  setupAdminMenuDropdownField("mm_subcategory", "mm_subcategory_list", subcategoryOptions);
-  attachAdminMenuDropdownsOutsideClickListener();
-
   const hasVariantInput = document.getElementById("mm_hasVariant");
   const variantsSection = document.getElementById("mm_variantsSection");
   const variantsRows = document.getElementById("mm_variantsRows");
   const addVariantBtn = document.getElementById("mm_addVariant");
+  const addonsRows = document.getElementById("mm_addonsRows");
+  const addAddonBtn = document.getElementById("mm_addAddon");
+  const nameField = document.getElementById("mm_name");
+  const priceField = document.getElementById("mm_price");
+  const categoryField = document.getElementById("mm_category");
+  const saveBtn = document.getElementById("mm_save");
+  const formHint = document.getElementById("mm_formHint");
+  const inventorySelectOptionsHtml = state.inventoryItems
+    .map((inv) => `<option value="${escapeHtml(inv.id)}" data-unit="${escapeHtml(inv.unit)}">${escapeHtml(inv.name)} (${escapeHtml(inv.unit)})</option>`)
+    .join("");
 
   function appendVariantRow(variant = { name: "", price: 0 }) {
     if (!variantsRows) return;
@@ -2073,6 +2877,83 @@ function openMenuEditor(itemId, preset = {}) {
 
   addVariantBtn?.addEventListener("click", () => appendVariantRow());
 
+  function appendAddonRow(addon = { id: "", name: "", price: 0, recipe: [] }) {
+    if (!addonsRows) return;
+    const addonRecipe = Array.isArray(addon.recipe) && addon.recipe.length ? addon.recipe[0] : {};
+    const selectedInventoryId = String(addonRecipe.inventoryId || "").trim();
+    const selectedUnit = normalizeUnit(addonRecipe.unit || "") || "";
+    const selectedQty = Number(addonRecipe.quantity || 0);
+    const row = document.createElement("div");
+    row.className = "mm-addon-row";
+    row.style.display = "grid";
+    row.style.gridTemplateColumns = "1.3fr 0.9fr 1.3fr 0.8fr 0.9fr auto";
+    row.style.gap = "8px";
+    row.innerHTML = `
+      <input class="ls-input mm-addon-name" placeholder="Add-on name (e.g. Extra shot)" value="${String(addon.name || "").replaceAll('"', '&quot;')}" style="margin-bottom:0;" />
+      <input class="ls-input mm-addon-price" type="number" step="0.25" min="0" placeholder="Price" value="${Number(addon.price) || 0}" style="margin-bottom:0;" />
+      <select class="ls-input mm-addon-inv" style="margin-bottom:0;">
+        <option value="" ${!selectedInventoryId ? "selected" : ""}>No stock mapping</option>
+        ${inventorySelectOptionsHtml}
+      </select>
+      <input class="ls-input mm-addon-qty" type="number" step="0.01" min="0" placeholder="Qty" value="${Number.isFinite(selectedQty) && selectedQty > 0 ? selectedQty : ''}" style="margin-bottom:0;" />
+      <select class="ls-input mm-addon-unit" style="margin-bottom:0;">
+        <option value="" ${!selectedUnit ? "selected" : ""}>Unit</option>
+        <option value="g" ${selectedUnit === "g" ? "selected" : ""}>g</option>
+        <option value="kg" ${selectedUnit === "kg" ? "selected" : ""}>kg</option>
+        <option value="oz" ${selectedUnit === "oz" ? "selected" : ""}>oz</option>
+        <option value="lb" ${selectedUnit === "lb" ? "selected" : ""}>lb</option>
+        <option value="ml" ${selectedUnit === "ml" ? "selected" : ""}>ml</option>
+        <option value="L" ${selectedUnit === "L" ? "selected" : ""}>L</option>
+        <option value="fl oz" ${selectedUnit === "fl oz" ? "selected" : ""}>fl oz</option>
+        <option value="gal" ${selectedUnit === "gal" ? "selected" : ""}>gal</option>
+        <option value="pcs" ${selectedUnit === "pcs" ? "selected" : ""}>pcs</option>
+        <option value="pack" ${selectedUnit === "pack" ? "selected" : ""}>pack</option>
+        <option value="box" ${selectedUnit === "box" ? "selected" : ""}>box</option>
+        <option value="tray" ${selectedUnit === "tray" ? "selected" : ""}>tray</option>
+        <option value="bottle" ${selectedUnit === "bottle" ? "selected" : ""}>bottle</option>
+        <option value="can" ${selectedUnit === "can" ? "selected" : ""}>can</option>
+        <option value="jar" ${selectedUnit === "jar" ? "selected" : ""}>jar</option>
+        <option value="sachet" ${selectedUnit === "sachet" ? "selected" : ""}>sachet</option>
+        <option value="shot" ${selectedUnit === "shot" ? "selected" : ""}>shot</option>
+        <option value="cup" ${selectedUnit === "cup" ? "selected" : ""}>cup</option>
+        <option value="serving" ${selectedUnit === "serving" ? "selected" : ""}>serving</option>
+        <option value="portion" ${selectedUnit === "portion" ? "selected" : ""}>portion</option>
+        <option value="slice" ${selectedUnit === "slice" ? "selected" : ""}>slice</option>
+        <option value="set" ${selectedUnit === "set" ? "selected" : ""}>set</option>
+      </select>
+      <button type="button" class="mm-remove-addon" style="background:transparent;border:1px solid var(--border-color);padding:8px 10px;border-radius:10px;font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif;">Remove</button>
+    `;
+
+    const invSelect = row.querySelector(".mm-addon-inv");
+    if (selectedInventoryId) {
+      invSelect.value = selectedInventoryId;
+    }
+
+    invSelect?.addEventListener("change", () => {
+      const unitEl = row.querySelector(".mm-addon-unit");
+      const selectedOption = invSelect.options[invSelect.selectedIndex];
+      const invUnit = normalizeUnit(selectedOption?.dataset?.unit || "") || "";
+      if (unitEl && !unitEl.value && invUnit) {
+        unitEl.value = invUnit;
+      }
+    });
+
+    addonsRows.appendChild(row);
+  }
+
+  if (addonsRows) {
+    initialAddons.forEach((addon) => appendAddonRow(addon));
+    addonsRows.addEventListener("click", (event) => {
+      const removeBtn = event.target.closest(".mm-remove-addon");
+      if (!removeBtn) return;
+      const row = removeBtn.closest(".mm-addon-row");
+      if (!row) return;
+      row.remove();
+    });
+  }
+
+  addAddonBtn?.addEventListener("click", () => appendAddonRow({ name: "", price: 0 }));
+
   const syncVariantVisibility = () => {
     if (!variantsSection || !hasVariantInput) return;
     variantsSection.style.display = hasVariantInput.checked ? "block" : "none";
@@ -2084,6 +2965,256 @@ function openMenuEditor(itemId, preset = {}) {
   hasVariantInput?.addEventListener("change", syncVariantVisibility);
   syncVariantVisibility();
 
+  // Recipe logic
+  const addRecipeBtn = document.getElementById("mm_addRecipeIngredient");
+  const recipeRows = document.getElementById("mm_recipeRows");
+  const basePriceDisplay = document.getElementById("mm_basePriceDisplay");
+  const recipeWarnings = document.getElementById("mm_recipeWarnings");
+  
+  const recipeUnitOptionsHtml = [
+    ["g", "g - grams"],
+    ["kg", "kg - kilograms"],
+    ["oz", "oz - ounces"],
+    ["lb", "lb - pounds"],
+    ["ml", "ml - milliliters"],
+    ["L", "L - liters"],
+    ["fl oz", "fl oz - fluid ounces"],
+    ["gal", "gal - gallons"],
+    ["pcs", "pcs - pieces"],
+    ["pack", "pack - package"],
+    ["box", "box - boxed item"],
+    ["tray", "tray - tray unit"],
+    ["bottle", "bottle - bottled item"],
+    ["can", "can - canned item"],
+    ["jar", "jar - jar unit"],
+    ["sachet", "sachet - packet"],
+    ["shot", "shot - espresso shot"],
+    ["cup", "cup - cup serving"],
+    ["serving", "serving - serving size"],
+    ["portion", "portion - portion size"],
+    ["slice", "slice - sliced serving"],
+    ["set", "set - grouped set"],
+  ].map(([value, label]) => `<option value="${value}">${label}</option>`).join("");
+
+  const calculateBasePrice = () => {
+    let base = 0;
+    const incompatibleRows = [];
+    const rows = recipeRows?.querySelectorAll(".mm-recipe-row") || [];
+    rows.forEach((r, rowIndex) => {
+       const invSelect = r.querySelector(".mm-recipe-inv");
+       const selectedOption = invSelect?.options?.[invSelect.selectedIndex];
+       const invId = invSelect?.value;
+       const qty = Number(r.querySelector(".mm-recipe-qty")?.value) || 0;
+       const recipeUnit = r.querySelector(".mm-recipe-unit")?.value || "";
+       const invItem = state.inventoryItems.find(i => i.id === invId);
+       r.style.boxShadow = "none";
+
+       if (invItem && qty > 0) {
+           const fromUnit = normalizeUnit(recipeUnit || invItem.unit) || String(recipeUnit || invItem.unit || "").trim();
+           const toUnit = normalizeUnit(invItem.unit) || String(invItem.unit || "").trim();
+           const convertedQty = convertQuantityBetweenUnits(qty, fromUnit, toUnit);
+           if (convertedQty !== null && Number.isFinite(convertedQty)) {
+             base += (Number(invItem.price || 0) * convertedQty);
+           } else {
+             incompatibleRows.push({
+               index: rowIndex + 1,
+               ingredient: String(invItem.name || selectedOption?.textContent || "Selected ingredient"),
+               fromUnit,
+               toUnit,
+             });
+             r.style.boxShadow = "inset 0 0 0 1px #EF4444";
+           }
+       }
+    });
+
+    if (recipeWarnings) {
+      if (incompatibleRows.length > 0) {
+        const first = incompatibleRows[0];
+        recipeWarnings.style.display = "block";
+        recipeWarnings.textContent = `Unit mismatch in ${incompatibleRows.length} row(s). Example: Row ${first.index} (${first.ingredient}) uses ${first.fromUnit || "unknown"} but inventory is ${first.toUnit || "unknown"}.`;
+      } else {
+        recipeWarnings.style.display = "none";
+        recipeWarnings.textContent = "";
+      }
+    }
+
+    if (basePriceDisplay) {
+      basePriceDisplay.textContent = `₱${base.toFixed(2)}`;
+    }
+    validateMenuEditorForm(false);
+  };
+
+  const inventoryOptionsHtml = state.inventoryItems.map(inv => `<option value="${escapeHtml(inv.id)}" data-price="${inv.price || 0}" data-unit="${escapeHtml(inv.unit)}">${escapeHtml(inv.name)} (₱${Number(inv.price||0).toFixed(2)} / ${escapeHtml(inv.unit)})</option>`).join('');
+
+  function updateRecipeRowConversion(row) {
+    const conv = row.querySelector(".mm-recipe-conversion");
+    if (!conv) return;
+    const invId = row.querySelector(".mm-recipe-inv")?.value || "";
+    const qty = Number(row.querySelector(".mm-recipe-qty")?.value || 0);
+    const recipeUnitRaw = row.querySelector(".mm-recipe-unit")?.value || "";
+    const invItem = state.inventoryItems.find((item) => item.id === invId);
+
+    if (!invItem || !Number.isFinite(qty) || qty <= 0) {
+      conv.textContent = "";
+      conv.style.color = "var(--text-muted)";
+      return;
+    }
+
+    const recipeUnit = normalizeUnit(recipeUnitRaw || invItem.unit) || recipeUnitRaw || invItem.unit;
+    const invUnit = normalizeUnit(invItem.unit) || invItem.unit;
+    const converted = convertQuantityBetweenUnits(qty, recipeUnit, invUnit);
+
+    if (converted === null || !Number.isFinite(converted)) {
+      conv.textContent = `Cannot convert ${recipeUnit || "unknown"} to ${invUnit || "unknown"}.`;
+      conv.style.color = "#991B1B";
+      return;
+    }
+
+    if (recipeUnit === invUnit) {
+      conv.textContent = `${qty.toFixed(2)} ${recipeUnit} used per item.`;
+      conv.style.color = "var(--text-muted)";
+      return;
+    }
+
+    conv.textContent = `${qty.toFixed(2)} ${recipeUnit} = ${converted.toFixed(4)} ${invUnit} per item.`;
+    conv.style.color = "var(--text-secondary)";
+  }
+
+  function setFieldError(field, errorId, message) {
+    const errorEl = document.getElementById(errorId);
+    if (errorEl) errorEl.textContent = message || "";
+    if (!field) return;
+    if (message) {
+      field.setAttribute("aria-invalid", "true");
+      field.style.borderColor = "#EF4444";
+      field.style.boxShadow = "0 0 0 2px rgba(239,68,68,0.15)";
+    } else {
+      field.removeAttribute("aria-invalid");
+      field.style.borderColor = "";
+      field.style.boxShadow = "";
+    }
+  }
+
+  function validateMenuEditorForm(showMessages = false) {
+    const name = nameField?.value?.trim() || "";
+    const price = Number(priceField?.value);
+    const category = categoryField?.value?.trim() || "";
+
+    let valid = true;
+    if (!name) {
+      valid = false;
+      if (showMessages) setFieldError(nameField, "mm_name_error", "Name is required.");
+    } else {
+      setFieldError(nameField, "mm_name_error", "");
+    }
+
+    if (!Number.isFinite(price) || price < 0) {
+      valid = false;
+      if (showMessages) setFieldError(priceField, "mm_price_error", "Price must be 0 or higher.");
+    } else {
+      setFieldError(priceField, "mm_price_error", "");
+    }
+
+    if (!category) {
+      valid = false;
+      if (showMessages) setFieldError(categoryField, "mm_category_error", "Category is required.");
+    } else {
+      setFieldError(categoryField, "mm_category_error", "");
+    }
+
+    const hasRecipeMismatch = !!(recipeWarnings && recipeWarnings.style.display !== "none" && recipeWarnings.textContent.trim());
+    if (hasRecipeMismatch) valid = false;
+
+    if (saveBtn) saveBtn.disabled = !valid;
+    if (formHint) {
+      formHint.textContent = hasRecipeMismatch
+        ? "Fix recipe unit mismatch before saving."
+        : valid
+          ? ""
+          : "Complete required fields to enable Save.";
+    }
+
+    return valid;
+  }
+
+  function appendRecipeRow(ingredient = { inventoryId: "", quantity: 0, unit: "" }) {
+    if (!recipeRows) return;
+    const row = document.createElement("div");
+    row.className = "mm-recipe-row";
+    row.style.display = "grid";
+    row.style.gridTemplateColumns = "2fr 1fr 1.35fr auto";
+    row.style.gap = "8px";
+    const selectedUnit = normalizeUnit(ingredient.unit || "") || "";
+    row.innerHTML = `
+      <select class="ls-input mm-recipe-inv" style="margin-bottom:0;">
+        <option value="" disabled ${!ingredient.inventoryId ? "selected" : ""}>Select ingredient...</option>
+        ${inventoryOptionsHtml}
+      </select>
+      <input class="ls-input mm-recipe-qty" type="number" step="0.01" min="0" placeholder="Qty" value="${Number(ingredient.quantity) || ''}" style="margin-bottom:0;" />
+      <select class="ls-input mm-recipe-unit" style="margin-bottom:0;">
+        <option value="" disabled ${!selectedUnit ? "selected" : ""}>Unit</option>
+        ${recipeUnitOptionsHtml}
+      </select>
+      <button type="button" class="mm-remove-recipe" style="background:transparent;border:1px solid var(--border-color);padding:8px 10px;border-radius:10px;font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif;">Remove</button>   
+      <div class="mm-recipe-conversion" style="grid-column:1/-1;font-size:11px;color:var(--text-muted);margin-top:-2px;"></div>
+    `;
+    
+    const selectEl = row.querySelector(".mm-recipe-inv");
+    const unitEl = row.querySelector(".mm-recipe-unit");
+    if (ingredient.inventoryId) {
+      selectEl.value = ingredient.inventoryId;
+    }
+    if (selectedUnit) {
+      unitEl.value = selectedUnit;
+    }
+
+    selectEl.addEventListener("change", () => {
+      const selectedOption = selectEl.options[selectEl.selectedIndex];
+      const invUnit = selectedOption?.dataset?.unit || "";
+      if (!unitEl.value && invUnit) {
+        unitEl.value = normalizeUnit(invUnit) || invUnit;
+      }
+      updateRecipeRowConversion(row);
+      calculateBasePrice();
+    });
+    
+    unitEl.addEventListener("change", () => {
+      updateRecipeRowConversion(row);
+      calculateBasePrice();
+    });
+    row.querySelector(".mm-recipe-qty").addEventListener("input", () => {
+      updateRecipeRowConversion(row);
+      calculateBasePrice();
+    });
+    
+    recipeRows.appendChild(row);
+    updateRecipeRowConversion(row);
+    calculateBasePrice();
+  }
+
+  if (recipeRows) {
+    if (Array.isArray(item.recipe) && item.recipe.length > 0) {
+      item.recipe.forEach(ing => appendRecipeRow(ing));
+    }
+    recipeRows.addEventListener("click", (event) => {
+      const removeBtn = event.target.closest(".mm-remove-recipe");
+      if (!removeBtn) return;
+      const row = removeBtn.closest(".mm-recipe-row");
+      if (!row) return;
+      row.remove();
+      calculateBasePrice();
+      validateMenuEditorForm(false);
+    });
+  }
+
+  addRecipeBtn?.addEventListener("click", () => appendRecipeRow());
+  calculateBasePrice();
+  [nameField, priceField, categoryField].forEach((field) => {
+    field?.addEventListener("input", () => validateMenuEditorForm(false));
+    field?.addEventListener("change", () => validateMenuEditorForm(false));
+  });
+  validateMenuEditorForm(false);
+
   document.getElementById("mm_cancel")?.addEventListener("click", (event) => {
     event.preventDefault();
     event.stopPropagation();
@@ -2092,18 +3223,19 @@ function openMenuEditor(itemId, preset = {}) {
 
   document.getElementById("mm_save")?.addEventListener("click", async () => {
     const err = (msg) => alert(msg);
-    const id = Number(document.getElementById("mm_id")?.value);
+    if (!validateMenuEditorForm(true)) return;
+    const idInput = document.getElementById("mm_id");
+    const id = idInput && idInput.value !== "Auto-generated" ? idInput.value : undefined;
     const name = document.getElementById("mm_name")?.value?.trim();
     const price = Number(document.getElementById("mm_price")?.value);
     const category = document.getElementById("mm_category")?.value?.trim();
-    const subcategory = document.getElementById("mm_subcategory")?.value?.trim();
     const note = document.getElementById("mm_note")?.value?.trim() || "";
     const hasTemp = !!document.getElementById("mm_hasTemp")?.checked;
     const hasVariant = !!document.getElementById("mm_hasVariant")?.checked;
     const popular = !!document.getElementById("mm_popular")?.checked;
     const bestseller = !!document.getElementById("mm_bestseller")?.checked;
 
-    if (!id || !name || !Number.isFinite(price) || !category || !subcategory) return err("ID, name, price, category, and subcategory are required.");
+    if (!name || !Number.isFinite(price) || !category) return err("Name, price, and category are required.");
 
     let variants = [];
     if (hasVariant) {
@@ -2120,18 +3252,84 @@ function openMenuEditor(itemId, preset = {}) {
       }
     }
 
+    const addons = Array.from(document.querySelectorAll("#mm_addonsRows .mm-addon-row"))
+      .map((row, index) => {
+        const addonName = row.querySelector(".mm-addon-name")?.value?.trim() || "";
+        const addonPrice = Number(row.querySelector(".mm-addon-price")?.value || 0);
+        const addonInventoryId = String(row.querySelector(".mm-addon-inv")?.value || "").trim();
+        const addonQty = Number(row.querySelector(".mm-addon-qty")?.value || 0);
+        const addonUnitRaw = String(row.querySelector(".mm-addon-unit")?.value || "").trim();
+        const addonInventory = state.inventoryItems.find((item) => item.id === addonInventoryId);
+        const addonUnit = normalizeUnit(addonUnitRaw || addonInventory?.unit || "") || "";
+        const addonRecipe = addonInventoryId && Number.isFinite(addonQty) && addonQty > 0
+          ? [{
+              inventoryId: addonInventoryId,
+              name: String(addonInventory?.name || addonName || addonInventoryId),
+              quantity: addonQty,
+              unit: addonUnit,
+            }]
+          : [];
+        return {
+          id: `addon-${String(id || name || "menu-item").replace(/\s+/g, "-").toLowerCase()}-${index + 1}`,
+          name: addonName,
+          price: Number.isFinite(addonPrice) ? Math.max(0, addonPrice) : 0,
+          recipe: addonRecipe,
+        };
+      })
+      .filter((addon) => addon.name);
+
+    let recipe = Array.from(document.querySelectorAll("#mm_recipeRows .mm-recipe-row"))
+        .map((row) => {
+        const invSelect = row.querySelector(".mm-recipe-inv");
+        const selectedOption = invSelect?.options?.[invSelect.selectedIndex];
+        const selectedInventoryId = row.querySelector(".mm-recipe-inv")?.value || "";
+        const selectedInventoryItem = state.inventoryItems.find((item) => item.id === selectedInventoryId);
+        const fallbackInvUnit = normalizeUnit(selectedOption?.dataset?.unit || "") || "";
+            return {
+                inventoryId: selectedInventoryId,
+              name: String(selectedInventoryItem?.name || selectedOption?.textContent || "").replace(/\s*\(₱.*$/, "").trim(),
+              quantity: Number(row.querySelector(".mm-recipe-qty")?.value || 0),
+          unit: normalizeUnit(row.querySelector(".mm-recipe-unit")?.value || "") || fallbackInvUnit
+            };
+        })
+        .filter(ing => ing.inventoryId && ing.quantity > 0);
+
+    const incompatibleRecipe = recipe
+      .map((ing) => {
+        const invItem = state.inventoryItems.find((item) => item.id === ing.inventoryId);
+        if (!invItem) return null;
+        const converted = convertQuantityBetweenUnits(Number(ing.quantity || 0), ing.unit || invItem.unit, invItem.unit);
+        if (converted !== null && Number.isFinite(converted)) return null;
+        return {
+          ingredient: invItem.name || ing.inventoryId,
+          recipeUnit: ing.unit || "unknown",
+          inventoryUnit: invItem.unit || "unknown",
+        };
+      })
+      .filter(Boolean);
+
+    if (incompatibleRecipe.length > 0) {
+      const first = incompatibleRecipe[0];
+      await ModalUtils.warning(
+        "Recipe Unit Mismatch",
+        `Unable to save recipe. ${incompatibleRecipe.length} ingredient row(s) have incompatible units. Example: ${first.ingredient} uses ${first.recipeUnit} but inventory unit is ${first.inventoryUnit}.`
+      );
+      return;
+    }
+
     const payload = {
       id,
       name,
       price,
-      category: normalizeMenuCategory(category, subcategory),
-      subcategory,
+      category,
       note: note || "",
       hasTemp,
       hasVariant,
       popular,
       bestseller,
       variants: hasVariant ? variants : [],
+      addons,
+      recipe,
     };
 
     try {
@@ -2150,3 +3348,172 @@ function openMenuEditor(itemId, preset = {}) {
   });
 }
 
+
+
+// ── CATEGORIES ──
+async function loadCategoriesPage() {
+  try {
+    state.categories = await getCategories();
+    renderAdminCategories();
+  } catch (error) {
+    console.error("Failed to load categories page:", error);
+    // Silent fail if element doesn't exist to avoid popup on non-category pages
+    const container = document.getElementById("adminCategoriesList");
+    if(container) {
+      ModalUtils.error("Load Error", "Failed to load categories.");
+    }
+  }
+}
+
+async function renderAdminCategories() {
+  const container = document.getElementById("adminCategoriesList");
+  if (!container) return;
+  
+  if (state.categories.length === 0) {
+    container.innerHTML = '<div style="color:var(--gray);text-align:center;padding:40px;">No categories found.</div>';
+    return;
+  }
+
+  let html = '<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px;">';
+
+  state.categories.forEach(cat => {
+    html += '<div class="card" style="display:flex; align-items:center; padding:16px; gap:16px; border:1px solid var(--border-color); box-shadow:0 2px 8px rgba(0,0,0,0.02);">' +
+            '<div style="font-size:32px; background:rgba(0,0,0,0.04); width:56px; height:56px; display:flex; align-items:center; justify-content:center; border-radius:12px;">' + escapeHtml(cat.icon || "☕") + '</div>' +
+            '<div style="flex:1; overflow:hidden;">' +
+              '<div style="font-weight:600; color:var(--text-primary); font-size:16px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">' + escapeHtml(cat.name) + '</div>' +
+            '</div>' +
+            '<div style="display:flex; gap:8px;">' +
+              '<button onclick="window._adminEditCategory(\'' + String(cat.id).replace(/'/g, "\\\'") + '\')" style="background:var(--primary-light); color:white; border:none; cursor:pointer; width:32px; height:32px; border-radius:8px; display:flex; align-items:center; justify-content:center; transition:background 0.2s;"><i class="ri-pencil-line"></i></button>' +
+              '<button onclick="window._adminDeleteCategory(\'' + String(cat.id).replace(/'/g, "\\\'") + '\')" style="background:rgba(239,68,68,0.1); color:#EF4444; border:none; cursor:pointer; width:32px; height:32px; border-radius:8px; display:flex; align-items:center; justify-content:center; transition:background 0.2s;"><i class="ri-delete-bin-line"></i></button>' +
+            '</div>' +
+          '</div>';
+  });
+
+  html += '</div>';
+  container.innerHTML = html;
+}
+
+
+window._adminAddCategory = function() {
+  window._adminEditCategory(null);
+};
+
+window.__bbUpdateCategoryIconPreview = function(value) {
+  const previewIcon = document.getElementById("cat_icon_preview");
+  const hiddenIcon = document.getElementById("cat_icon");
+  const icon = getCategoryIconForName(value);
+  if (previewIcon) previewIcon.textContent = icon;
+  if (hiddenIcon) hiddenIcon.value = icon;
+};
+
+window._adminEditCategory = function(id) {
+  const cat = id ? state.categories.find(c => c.id === id) : null;
+  const title = cat ? "Edit Category" : "Add Category";
+  const currentIcon = getCategoryIconForName(cat ? cat.name : "") || (cat ? escapeHtml(cat.icon || "") : "📦");
+
+  const content = `<div class="ls-form-grid" style="display:block;">
+    <div class="ls-label">Category Name*</div>
+    <input type="text" class="ls-input" id="cat_name" value="${cat ? escapeHtml(cat.name || "") : ""}" placeholder="Coffee, Sandwiches..." autocomplete="off" oninput="window.__bbUpdateCategoryIconPreview && window.__bbUpdateCategoryIconPreview(this.value)">
+
+    <div class="ls-label" style="margin-top:12px;">Icon</div>
+    <div class="ls-input" style="display:flex; align-items:center; gap:10px; cursor:not-allowed; background:rgba(0,0,0,0.03);">
+      <span id="cat_icon_preview" style="font-size:20px; line-height:1;">${currentIcon}</span>
+      <span style="color:var(--text-muted); font-size:13px;">Fixed icon</span>
+    </div>
+    <input type="hidden" id="cat_icon" value="${currentIcon}">
+  </div>`;
+
+  let nameValue = "";
+  let iconValue = "";
+
+  ModalUtils.show({
+    title: title,
+    message: content,
+    buttons: [
+      { text: "Cancel", type: "secondary" },
+      { 
+        text: "Save", 
+        type: "primary",
+        callback: () => {
+          nameValue = document.getElementById("cat_name")?.value?.trim();
+          iconValue = getCategoryIconForName(nameValue || cat?.name || "");
+          const iconField = document.getElementById("cat_icon");
+          if (iconField) iconField.value = iconValue;
+        }
+      }
+    ]
+  }).then(async (idx) => {
+    if (idx !== 1) return; // Not the Save button
+
+    if (!nameValue) {
+      await ModalUtils.warning("Validation Error", "Name and Icon are required.");
+      return;
+    }
+
+    const genId = typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `cat-${Date.now()}`;
+    const origId = cat ? cat.id : genId;
+    const payload = {
+      id: origId,
+      name: nameValue,
+      icon: iconValue,
+      color: cat ? cat.color : "#373b40",
+    };
+
+    try {
+      console.log("Saving category...");
+      const currentUser = getCurrentUser();
+      if (currentUser) {
+        try {
+          const currentProfile = await getUserProfile(currentUser.uid);
+          await ensureAdminAccessProfile(currentUser.uid, {
+            fullName: currentProfile?.fullName || currentUser.displayName || currentUser.email || "Admin",
+            displayName: currentProfile?.displayName || currentUser.displayName || currentUser.email || "Admin",
+            email: currentUser.email || currentProfile?.email || "",
+            status: currentProfile?.status || "active",
+            isDefaultAdmin: currentProfile?.isDefaultAdmin === true,
+          });
+        } catch (profileBackfillError) {
+          console.warn("[Category] Unable to refresh admin profile before save; continuing.", profileBackfillError);
+        }
+      }
+
+      await saveCategory(payload);
+      console.log("Category saved successfully!");
+
+      // Refresh is best-effort so a UI issue can't hide a successful save.
+      try {
+        state.categories = await getCategories();
+        renderAdminCategories();
+      } catch (refreshError) {
+        console.warn("[Category] Saved, but refresh failed.", refreshError);
+      }
+
+      await ModalUtils.success("Saved", "Category saved successfully!");
+    } catch (error) {
+      console.error(error);
+      ModalUtils.error("Save Failed", "Could not save category. Try again.");
+    }
+  });
+};
+
+window._adminDeleteCategory = async function(id) {
+  const cat = state.categories.find(c => c.id === id);
+  if (!cat) return;
+
+  const confirm = await ModalUtils.confirm("Delete Category", `Are you sure you want to delete "${cat.name}"?\
+\
+This will not delete existing menu items bound to this category.`);
+  if (!confirm) return;
+
+  try {
+    console.log("Deleting category...");
+    await deleteCategory(id);
+    console.log("Deleted successfully!");
+    state.categories = await getCategories();
+    renderAdminCategories();
+    await ModalUtils.success("Deleted", "Category deleted successfully!");
+  } catch (error) {
+    console.error(error);
+    ModalUtils.error("Deletion Failed", "Could not delete category.");
+  }
+};

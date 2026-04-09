@@ -1,8 +1,9 @@
 import { db } from "../controllers/firebase.js";
 import {
-  collection, getDocs, addDoc, doc, query, where, Timestamp, deleteDoc, writeBatch
+  collection, getDocs, addDoc, doc, query, where, Timestamp, deleteDoc, writeBatch, updateDoc
 } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js";
 import { getOrderOutbox, queueOrder, removeQueuedOrder } from "./storageModel.js";
+import { deductInventoryQuantities } from "./inventoryModel.js";
 
 const ORDERS_COLLECTION = "orders";
 
@@ -104,16 +105,59 @@ export async function saveOrder(cart, total, subtotal, paymentMethod, isPwdSenio
       temperature: item.temperature || null,
       discountPercent: item.discountPercent || 0,
       addons:     (item.addons || []).map(a => ({ name: a.name, price: a.price })),
+      recipe:     item.recipe || [],
     })),
   };
 
+  let orderRef = null;
   try {
-    await addDoc(collection(db, ORDERS_COLLECTION), orderData);
-    return { ...orderData, queued: false };
+    orderRef = await addDoc(collection(db, ORDERS_COLLECTION), orderData);
   } catch (e) {
     queueOrder(orderData);
-    return { ...orderData, queued: true, queueError: e?.message || "queued_offline" };
+    return {
+      ...orderData,
+      queued: true,
+      queueError: e?.message || "queued_offline",
+      inventoryAlerts: [],
+      inventoryDeductions: [],
+    };
   }
+
+  const inventoryAlerts = [];
+  const inventoryDeductions = [];
+  let inventoryDeductionError = null;
+
+  try {
+    // Deduct inventory items based on recipe usage.
+    for (const item of orderData.items) {
+      if (item.recipe && item.recipe.length > 0) {
+        const result = await deductInventoryQuantities(item.recipe, item.quantity);
+        if (Array.isArray(result?.alerts) && result.alerts.length > 0) {
+          inventoryAlerts.push(...result.alerts);
+        }
+        if (Array.isArray(result?.audit) && result.audit.length > 0) {
+          inventoryDeductions.push(...result.audit);
+        }
+      }
+    }
+
+    if (inventoryAlerts.length || inventoryDeductions.length) {
+      await updateDoc(orderRef, {
+        inventoryAlerts,
+        inventoryDeductions,
+      });
+    }
+  } catch (deductionError) {
+    inventoryDeductionError = deductionError?.message || "inventory_deduction_failed";
+  }
+
+  return {
+    ...orderData,
+    queued: false,
+    inventoryAlerts,
+    inventoryDeductions,
+    inventoryDeductionError,
+  };
 }
 
 export async function syncQueuedOrders() {
@@ -121,9 +165,39 @@ export async function syncQueuedOrders() {
   if (!outbox.length) return { synced: 0, pending: 0 };
 
   let synced = 0;
+  let syncedAlerts = 0;
+  let deductionFailures = 0;
   for (const item of outbox) {
     try {
-      await addDoc(collection(db, ORDERS_COLLECTION), item.payload);
+      const orderRef = await addDoc(collection(db, ORDERS_COLLECTION), item.payload);
+
+      try {
+        const payloadItems = Array.isArray(item.payload?.items) ? item.payload.items : [];
+        const inventoryAlerts = [];
+        const inventoryDeductions = [];
+        for (const soldItem of payloadItems) {
+          if (Array.isArray(soldItem.recipe) && soldItem.recipe.length > 0) {
+            const result = await deductInventoryQuantities(soldItem.recipe, soldItem.quantity || 1);
+            if (Array.isArray(result?.alerts)) {
+              inventoryAlerts.push(...result.alerts);
+              syncedAlerts += result.alerts.length;
+            }
+            if (Array.isArray(result?.audit) && result.audit.length > 0) {
+              inventoryDeductions.push(...result.audit);
+            }
+          }
+        }
+
+        if (inventoryAlerts.length || inventoryDeductions.length) {
+          await updateDoc(orderRef, {
+            inventoryAlerts,
+            inventoryDeductions,
+          });
+        }
+      } catch {
+        deductionFailures += 1;
+      }
+
       removeQueuedOrder(item.id);
       synced += 1;
     } catch {
@@ -131,7 +205,7 @@ export async function syncQueuedOrders() {
     }
   }
 
-  return { synced, pending: getOrderOutbox().length };
+  return { synced, pending: getOrderOutbox().length, syncedAlerts, deductionFailures };
 }
 
 export function getPendingOrderCount() {

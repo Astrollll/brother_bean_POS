@@ -131,17 +131,15 @@
         <div class="sidebar-pending-box">
           <div class="sidebar-pending-header">
             <span>Pending orders</span>
-            <button
-              class="sidebar-pending-refresh"
-              type="button"
-              onclick="refreshPendingOrders()"
-            >
-              Refresh
-            </button>
+            <span id="pendingOrdersOpenCount">0</span>
           </div>
-          <div id="sidebarPendingList" class="sidebar-pending-list">
-            <div class="sidebar-pending-empty">No pending orders</div>
-          </div>
+          <button
+            class="sidebar-pending-open-btn"
+            type="button"
+            onclick="openPendingOrdersModal()"
+          >
+            View pending orders
+          </button>
         </div>
 
         <div class="sidebar-spacer"></div>
@@ -700,6 +698,56 @@
             class="bb-primary-btn"
             type="button"
             onclick="closeDrawerModal()"
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Pending Orders Modal -->
+    <div class="modal-overlay" id="pendingOrdersModal" aria-hidden="true">
+      <div
+        class="modal bb-modal bb-pending-orders-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="pendingOrdersTitle"
+      >
+        <div class="bb-modal-header">
+          <div class="bb-modal-title-wrap">
+            <div class="bb-modal-kicker">Kitchen</div>
+            <div class="bb-modal-title" id="pendingOrdersTitle">Pending Orders</div>
+          </div>
+          <button
+            class="bb-icon-btn"
+            type="button"
+            onclick="closePendingOrdersModal()"
+            aria-label="Close"
+          >
+            &times;
+          </button>
+        </div>
+
+        <div class="bb-modal-body">
+          <div class="pending-orders-modal-toolbar">
+            <button
+              class="sidebar-pending-refresh"
+              type="button"
+              onclick="refreshPendingOrders()"
+            >
+              Refresh
+            </button>
+          </div>
+          <div id="pendingOrdersModalList" class="sidebar-pending-list">
+            <div class="sidebar-pending-empty">No pending orders</div>
+          </div>
+        </div>
+
+        <div class="bb-modal-footer">
+          <button
+            class="bb-secondary-btn"
+            type="button"
+            onclick="closePendingOrdersModal()"
           >
             Close
           </button>
