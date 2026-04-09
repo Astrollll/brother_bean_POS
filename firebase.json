@@ -3,22 +3,38 @@
     "public": ".",
     "ignore": [
       "firebase.json",
+      "firestore.rules",
       "**/.*",
       "**/node_modules/**"
     ],
+    "redirects": [
+      {
+        "source": "/",
+        "destination": "/views/pages/login.html",
+        "type": 302
+      }
+    ],
     "rewrites": [
       {
+        "source": "/",
+        "destination": "/views/pages/login.html"
+      },
+      {
+        "source": "/login",
+        "destination": "/views/pages/login.html"
+      },
+      {
         "source": "/admin",
-        "destination": "/admin.html"
+        "destination": "/views/pages/admin.html"
       },
       {
         "source": "/pos",
-        "destination": "/index.html"
+        "destination": "/views/pages/pos.html"
       }
     ],
     "headers": [
       {
-        "source": "**/*.@(js|html|css)",
+        "source": "**/*.js",
         "headers": [
           {
             "key": "Cache-Control",
@@ -27,5 +43,8 @@
         ]
       }
     ]
+  },
+  "firestore": {
+    "rules": "firestore.rules"
   }
 }

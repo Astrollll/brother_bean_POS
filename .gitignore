@@ -1,0 +1,17 @@
+# IDE folders
+.cursor/
+
+# Firebase cache and config (local)
+.firebase/
+
+# Logs
+*.log
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Dependencies (if any)
+node_modules/
+.DS_Store
+

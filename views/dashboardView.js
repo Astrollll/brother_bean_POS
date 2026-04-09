@@ -8,6 +8,21 @@ export function renderStats({ totalSales, totalOrders, bestSeller, bestSellerCou
   document.getElementById("bestSellerCount").textContent = bestSellerCount > 0 ? `${bestSellerCount} sold` : "—";
   document.getElementById("statStaff").textContent       = staffOnDuty;
   document.getElementById("staffTotal").textContent      = `of ${totalStaff}`;
+
+  const salesTrend = document.getElementById("salesTrend");
+  const ordersTrend = document.getElementById("ordersTrend");
+
+  if (salesTrend) {
+    salesTrend.textContent = totalSales > 0 ? "▲ Active" : "• No sales";
+    salesTrend.classList.toggle("trend-up", totalSales > 0);
+    salesTrend.classList.toggle("trend-neutral", totalSales <= 0);
+  }
+
+  if (ordersTrend) {
+    ordersTrend.textContent = totalOrders > 0 ? `▲ ${totalOrders} today` : "• No orders";
+    ordersTrend.classList.toggle("trend-up", totalOrders > 0);
+    ordersTrend.classList.toggle("trend-neutral", totalOrders <= 0);
+  }
 }
 
 export function renderRecentOrders(orders) {
@@ -30,10 +45,6 @@ export function renderRecentOrders(orders) {
       : o.timestamp || "";
     const shortId = (o.orderId || "").slice(-6);
 
-    const discountBadge = o.isPwdSenior
-      ? `<span class="badge b-orange">♿ PWD/Senior</span>`
-      : "";
-
     return `<div class="order-row">
       <div>
         <div class="order-num">#${shortId}</div>
@@ -42,10 +53,7 @@ export function renderRecentOrders(orders) {
       </div>
       <div class="order-right">
         <div class="order-amt">₱${(o.total || 0).toFixed(2)}</div>
-        <div style="display:flex;gap:4px;justify-content:flex-end;flex-wrap:wrap;">
-          <span class="badge b-green">Done</span>
-          ${discountBadge}
-        </div>
+        <span class="badge b-green">Done</span>
       </div>
     </div>`;
   }).join("");

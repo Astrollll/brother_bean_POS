@@ -1,0 +1,959 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Brother Bean - Management</title>
+    <link
+      rel="icon"
+      type="image/jpeg"
+      href="/assets/icons/brother-bean-logo.jpg"
+    />
+    <link rel="apple-touch-icon" href="/assets/icons/brother-bean-logo.jpg" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600&family=DM+Sans:wght@300;400;500&display=swap"
+      rel="stylesheet"
+    />
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+    />
+    <link
+      href="https://cdn.jsdelivr.net/npm/remixicon@4.6.0/fonts/remixicon.css"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/assets/adminstyle.css?v=20260409A" />
+  </head>
+  <body>
+    <div
+      id="auth-loading"
+      style="
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 100vh;
+        background: #f9fafb;
+        color: #6b7280;
+        font-size: 14px;
+      "
+    >
+      <span id="auth-loading-text">Checking session...</span>
+    </div>
+
+    <!-- ══ APP ══ -->
+    <div id="app">
+      <!-- Top Bar -->
+      <div class="topbar">
+        <div class="topbar-brand">
+          <span class="topbar-icon">
+            <img
+              src="/assets/icons/brother-bean-logo.jpg"
+              alt="Brother Bean Coffee House logo"
+            />
+          </span>
+          <div>
+            <div class="topbar-name">Brother Bean</div>
+            <div class="topbar-sub">Coffee House</div>
+          </div>
+        </div>
+        <div class="topbar-sep"></div>
+        <div class="topbar-page" id="topbar-page">Dashboard</div>
+        <div class="topbar-right">
+          <span class="topbar-date" id="topbar-date"
+            >Saturday, March 14, 2026</span
+          >
+          <div
+            class="topbar-notif"
+            id="topbarNotifBtn"
+            role="button"
+            tabindex="0"
+            aria-label="Open notifications"
+            title="Open notifications"
+          >
+            <i class="ri-notification-3-line" aria-hidden="true"></i>
+            <div class="notif-dot"></div>
+          </div>
+          <div
+            class="topbar-avatar"
+            id="topbarAvatarBtn"
+            role="button"
+            tabindex="0"
+            aria-label="Open account settings"
+            title="Open account settings"
+          >
+            AD
+          </div>
+          <span class="topbar-uname">Admin</span>
+          <button class="topbar-logout" type="button" onclick="window.logout()">
+            Sign out
+          </button>
+        </div>
+      </div>
+
+      <div class="body-wrap">
+        <!-- Sidebar -->
+        <div class="sidebar">
+          <div class="nav-section">Overview</div>
+          <div
+            class="nav-item active"
+            onclick="window.showPage('dashboard', this, 'Dashboard')"
+          >
+            <span class="nav-icon"
+              ><i class="ri-bar-chart-box-line" aria-hidden="true"></i></span
+            >Dashboard
+          </div>
+
+          <div class="nav-section">Shop</div>
+          <div
+            class="nav-item"
+            id="nav-orders"
+            onclick="window.showPage('orders', this, 'Transactions')"
+          >
+            <span class="nav-icon"
+              ><i class="ri-receipt-line" aria-hidden="true"></i></span
+            >Transactions
+          </div>
+          <div class="nav-item" onclick="window.showPage('menu', this, 'Menu')">
+            <span class="nav-icon"
+              ><i class="ri-cup-line" aria-hidden="true"></i></span
+            >Menu
+          </div>
+          
+          <div
+            class="nav-item"
+            onclick="window.showPage('inventory', this, 'Inventory')"
+          >
+            <span class="nav-icon"
+              ><i class="ri-box-3-line" aria-hidden="true"></i></span
+            >Inventory<span class="nav-badge" id="inventoryNavBadge">0</span>
+          </div>
+          <div
+            class="nav-item"
+            onclick="window.showPage('staff', this, 'Staff')"
+          >
+            <span class="nav-icon"
+              ><i class="ri-team-line" aria-hidden="true"></i></span
+            >Staff
+          </div>
+          <div class="nav-section">System</div>
+          <div
+            class="nav-item"
+            onclick="window.showPage('accounts', this, 'Accounts')"
+          >
+            <span class="nav-icon"
+              ><i class="ri-id-card-line" aria-hidden="true"></i></span
+            >Accounts
+          </div>
+          <div
+            class="nav-item"
+            onclick="window.showPage('settings', this, 'Settings')"
+          >
+            <span class="nav-icon"
+              ><i class="ri-settings-3-line" aria-hidden="true"></i></span
+            >Settings
+          </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="main">
+          <!-- ── DASHBOARD ── -->
+          <div id="dashboard" class="page active">
+            <div class="page-header">
+              <div class="page-title">Good morning</div>
+              <div class="page-sub">
+                Here's what's happening at Brother Bean today.
+              </div>
+            </div>
+
+            <div class="stats-grid">
+              <div class="stat-card">
+                <div class="stat-top">
+                  <div class="stat-icon-wrap">
+                    <i
+                      class="ri-money-dollar-circle-line"
+                      aria-hidden="true"
+                    ></i>
+                  </div>
+                  <span class="stat-trend trend-up" id="salesTrend">—</span>
+                </div>
+                <div class="stat-val" id="statSales">₱0.00</div>
+                <div class="stat-label">Today's Sales</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-top">
+                  <div class="stat-icon-wrap">
+                    <i class="ri-receipt-line" aria-hidden="true"></i>
+                  </div>
+                  <span class="stat-trend trend-up" id="ordersTrend">—</span>
+                </div>
+                <div class="stat-val" id="statOrders">0</div>
+                <div class="stat-label">Transactions Today</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-top">
+                  <div class="stat-icon-wrap">
+                    <i class="ri-fire-line" aria-hidden="true"></i>
+                  </div>
+                  <span class="stat-trend trend-neutral" id="bestSellerCount"
+                    >—</span
+                  >
+                </div>
+                <div
+                  class="stat-val"
+                  id="statBestSeller"
+                  style="font-size: 1.1rem; padding-top: 4px"
+                >
+                  —
+                </div>
+                <div class="stat-label">Best Seller</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-top">
+                  <div class="stat-icon-wrap">
+                    <i class="ri-team-line" aria-hidden="true"></i>
+                  </div>
+                  <span class="stat-trend trend-neutral" id="staffTotal"
+                    >of 0</span
+                  >
+                </div>
+                <div class="stat-val" id="statStaff">0</div>
+                <div class="stat-label">Staff on Duty</div>
+              </div>
+            </div>
+
+            <div class="card quick-actions-card">
+              <div class="card-head">
+                <span class="card-title">Quick Actions</span>
+              </div>
+              <div class="quick-actions-grid">
+                <button
+                  class="quick-action-btn"
+                  onclick="
+                    window.openQuickAction && window.openQuickAction('orders')
+                  "
+                >
+                  View Transactions
+                </button>
+                <button
+                  class="quick-action-btn"
+                  onclick="
+                    window.openQuickAction &&
+                      window.openQuickAction('inventory')
+                  "
+                >
+                  Manage Inventory
+                </button>
+                <button
+                  class="quick-action-btn"
+                  onclick="
+                    window.openQuickAction && window.openQuickAction('menu-add')
+                  "
+                >
+                  Add Menu Item
+                </button>
+                <button
+                  class="quick-action-btn"
+                  onclick="
+                    window.openQuickAction &&
+                      window.openQuickAction('staff-add')
+                  "
+                >
+                  Add Staff Member
+                </button>
+              </div>
+            </div>
+
+            <div class="grid-2">
+              <div class="card">
+                <div class="card-head">
+                  <span class="card-title">Recent Transactions</span>
+                  <span
+                    class="card-action"
+                    onclick="
+                      window.showPage(
+                        'orders',
+                        document.getElementById('nav-orders'),
+                        'Transactions',
+                      )
+                    "
+                    >View all →</span
+                  >
+                </div>
+                <div id="recentOrdersList">
+                  <div style="color: var(--muted); font-size: 13px">
+                    Loading...
+                  </div>
+                </div>
+              </div>
+              <div class="card">
+                <div class="card-head">
+                  <span class="card-title">Staff on Duty</span>
+                </div>
+                <div id="dashStaffList">
+                  <div style="color: var(--muted); font-size: 13px">
+                    Loading...
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="card-head">
+                <span class="card-title">Top Selling Items Today</span>
+                <button
+                  onclick="window.resetDay()"
+                  style="
+                    background: var(--red);
+                    color: white;
+                    border: none;
+                    padding: 6px 16px;
+                    border-radius: 20px;
+                    font-size: 12px;
+                    cursor: pointer;
+                    font-family: &quot;DM Sans&quot;, sans-serif;
+                  "
+                >
+                  <i class="ri-refresh-line" aria-hidden="true"></i> Reset Day
+                </button>
+              </div>
+              <div id="topItemsList">
+                <div style="color: var(--muted); font-size: 13px">
+                  Loading...
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ── TRANSACTIONS ── -->
+          <div id="orders" class="page">
+            <div class="page-header">
+              <div class="page-title">Transactions</div>
+              <div class="page-sub" id="ordersPageSub">
+                Full transaction history from the POS system
+              </div>
+            </div>
+
+            <div class="card compact-card">
+              <div class="orders-toolbar">
+                <div class="orders-filters">
+                  <input
+                    id="ordersSearch"
+                    class="ls-input orders-filter-input"
+                    placeholder="Search by order #, item, or date"
+                  />
+                  <select
+                    id="ordersPaymentFilter"
+                    class="ls-input orders-filter-input"
+                  >
+                    <option value="all">All payments</option>
+                    <option value="cash">Cash</option>
+                    <option value="card">Card</option>
+                    <option value="gcash">GCash</option>
+                    <option value="maya">Maya</option>
+                  </select>
+                  <select
+                    id="ordersSortBy"
+                    class="ls-input orders-filter-input"
+                  >
+                    <option value="latest">Sort: Latest first</option>
+                    <option value="oldest">Sort: Oldest first</option>
+                    <option value="amount_desc">Sort: Amount high-low</option>
+                    <option value="amount_asc">Sort: Amount low-high</option>
+                  </select>
+                  <select
+                    id="ordersPageSize"
+                    class="ls-input orders-filter-input"
+                  >
+                    <option value="10">10 per page</option>
+                    <option value="25">25 per page</option>
+                    <option value="50">50 per page</option>
+                  </select>
+                  <input
+                    id="ordersFromDate"
+                    class="ls-input orders-filter-input"
+                    type="date"
+                  />
+                  <input
+                    id="ordersToDate"
+                    class="ls-input orders-filter-input"
+                    type="date"
+                  />
+                </div>
+                <div class="orders-toolbar-actions">
+                  <button
+                    id="ordersClearBtn"
+                    class="orders-btn ghost"
+                    type="button"
+                  >
+                    Clear
+                  </button>
+                  <button
+                    id="ordersClearAllBtn"
+                    class="orders-btn clear-all-btn"
+                    type="button"
+                  >
+                    Clear All
+                  </button>
+                  <button id="ordersExportBtn" class="orders-btn" type="button">
+                    Export CSV
+                  </button>
+                </div>
+              </div>
+
+              <div class="orders-kpi-row">
+                <div class="orders-kpi-card">
+                  <div class="orders-kpi-label">Filtered Transactions</div>
+                  <div class="orders-kpi-value" id="ordersCountKpi">0</div>
+                </div>
+                <div class="orders-kpi-card">
+                  <div class="orders-kpi-label">Filtered Sales</div>
+                  <div class="orders-kpi-value" id="ordersTotalKpi">₱0.00</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="card-head">
+                <span class="card-title">Transaction List</span
+                ><span
+                  class="card-action"
+                  onclick="window.refreshOrders && window.refreshOrders()"
+                  >Refresh</span
+                >
+              </div>
+              <div id="ordersTableWrap" class="tbl-wrap">
+                <div
+                  style="color: var(--muted); font-size: 13px; padding: 10px 0"
+                >
+                  Loading transactions...
+                </div>
+              </div>
+              <div id="ordersPagination" class="orders-pagination"></div>
+            </div>
+          </div>
+
+          <!-- ── MENU ── -->
+          <div id="menu" class="page">
+            <div class="page-header">
+              <div class="page-title">Menu</div>
+              <div class="page-sub">
+                Manage your shop's menu items and categories.
+              </div>
+            </div>
+
+<div class="card" style="margin-bottom:20px;">
+              <div class="card-head" style="border:none; padding-bottom:0; display:flex; justify-content:space-between; align-items:center;">
+                <span class="card-title">All Categories</span>
+                <button
+                  style="background:var(--primary);color:#fff;border:none;padding:8px 16px;border-radius:12px;font-size:14px;cursor:pointer;"
+                  onclick="window._adminAddCategory && window._adminAddCategory()"
+                >
+                  <i class="ri-add-line" style="margin-right:6px;"></i>New Category
+                </button>
+              </div>
+              <div id="adminCategoriesList" style="padding: 16px; display:flex; flex-direction:column; gap:12px;"></div>
+            </div>
+
+
+            <div id="menuContent">
+              <div style="color: var(--muted); font-size: 13px">
+                Loading menu data...
+              </div>
+            </div>
+          </div>
+
+          <!-- ── INVENTORY ── -->
+          <div id="inventory" class="page">
+            <div class="page-header">
+              <div class="page-title">Inventory</div>
+              <div class="page-sub" id="inventoryPageSub">
+                Track your ingredients and supplies
+              </div>
+            </div>
+            <div class="card" style="margin-bottom: 14px">
+              <div class="card-head">
+                <span class="card-title">Inventory Item</span>
+              </div>
+              <form id="inventoryForm" class="inventory-form-grid">
+                <input id="invId" type="hidden" />
+                <div>
+                  <div class="ls-label">Item Name</div>
+                  <input
+                    id="invName"
+                    class="ls-input"
+                    placeholder="e.g. Espresso Beans"
+                    style="margin-bottom: 0"
+                    required
+                  />
+                </div>
+                <div>
+                  <div class="ls-label">Category</div>
+                  <input
+                    id="invCategory"
+                    class="ls-input"
+                    placeholder="Coffee"
+                    style="margin-bottom: 0"
+                    required
+                  />
+                </div>
+                <div>
+                  <div class="ls-label">Unit</div>
+                  <select
+                    id="invUnit"
+                    class="ls-input"
+                    style="margin-bottom: 0"
+                    required
+                  >
+                    <option value="" disabled selected>Select unit of measure</option>
+                    <optgroup label="Count">
+                      <option value="pcs">pcs - pieces</option>
+                      <option value="pack">pack - package</option>
+                      <option value="box">box - boxed item</option>
+                      <option value="tray">tray - tray unit</option>
+                      <option value="bottle">bottle - bottled item</option>
+                      <option value="can">can - canned item</option>
+                      <option value="jar">jar - jar unit</option>
+                      <option value="sachet">sachet - single-use packet</option>
+                    </optgroup>
+                    <optgroup label="Weight">
+                      <option value="g">g - grams</option>
+                      <option value="kg">kg - kilograms</option>
+                      <option value="oz">oz - ounces</option>
+                      <option value="lb">lb - pounds</option>
+                    </optgroup>
+                    <optgroup label="Volume">
+                      <option value="ml">ml - milliliters</option>
+                      <option value="L">L - liters</option>
+                      <option value="fl oz">fl oz - fluid ounces</option>
+                      <option value="gal">gal - gallons</option>
+                    </optgroup>
+                    <optgroup label="Preparation / Service">
+                      <option value="shot">shot - espresso shot</option>
+                      <option value="cup">cup - cup serving</option>
+                      <option value="serving">serving - serving size</option>
+                      <option value="portion">portion - portion size</option>
+                      <option value="slice">slice - sliced serving</option>
+                      <option value="set">set - grouped set</option>
+                    </optgroup>
+                  </select>
+                </div>
+                <div>
+                  <div class="ls-label">Current Stock</div>
+                  <input
+                    id="invQuantity"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    class="ls-input"
+                    placeholder="0"
+                    style="margin-bottom: 0"
+                    required
+                  />
+                </div>
+                <div>
+                  <div class="ls-label">Restock Alert Level</div>
+                  <input
+                    id="invReorder"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    class="ls-input"
+                    placeholder="0"
+                    style="margin-bottom: 0"
+                    required
+                  />
+                  <div style="margin-top:6px;font-size:12px;color:var(--text-muted);">
+                    We will mark this item as low stock when current stock reaches this number.
+                  </div>
+                </div>
+                <div>
+                  <div class="ls-label">Price (Per Unit)</div>
+                  <input
+                    id="invPrice"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    class="ls-input"
+                    placeholder="0.00"
+                    style="margin-bottom: 0"
+                    required
+                  />
+                </div>
+                <div class="inventory-form-actions">
+                  <button class="orders-btn" type="submit" id="invSaveBtn">
+                    Save Item
+                  </button>
+                  <button
+                    class="orders-btn ghost"
+                    type="button"
+                    id="invCancelBtn"
+                  >
+                    Clear
+                  </button>
+                </div>
+              </form>
+            </div>
+
+            <div class="card">
+              <div class="card-head">
+                <span class="card-title">Stock Levels</span>
+                <div style="display: flex; gap: 12px; align-items: center">
+                  <span
+                    class="card-action"
+                    onclick="window.seedInventory && window.seedInventory()"
+                    >Seed Sample Items</span
+                  >
+                  <span
+                    class="card-action"
+                    onclick="
+                      window.refreshInventory && window.refreshInventory()
+                    "
+                    >Refresh</span
+                  >                  <span
+                    class="card-action text-danger"
+                    id="btnClearInventory"
+                    onclick="window.clearAllInventory && window.clearAllInventory()"
+                    style="color: var(--red); cursor: pointer;"
+                    >Clear all</span
+                  >                </div>
+              </div>
+              <div id="inventoryAlertStrip" class="inventory-alert-strip"></div>
+              <div id="inventoryListWrap"></div>
+            </div>
+          </div>
+
+          <!-- ── STAFF ── -->
+          <div id="staff" class="page staff-page">
+            <div class="page-header">
+              <div class="page-title">Staff</div>
+              <div class="page-sub">Manage your team and weekly schedule</div>
+            </div>
+
+            <div class="staff-grid">
+            <!-- Staff Members -->
+            <div class="card staff-card">
+              <div class="card-head">
+                <span class="card-title">Staff Members</span>
+              </div>
+              <div id="staffList">
+                <div class="staff-loading">
+                  Loading...
+                </div>
+              </div>
+            </div>
+
+            <!-- Add Staff Form (hidden by default) -->
+            <div
+              class="card staff-card"
+              id="addStaffForm"
+              style="display: none"
+            >
+              <div class="card-head">
+                <span class="card-title">Add New Staff</span>
+              </div>
+              <div class="staff-add-form-grid">
+                <div>
+                  <div class="ls-label">Full Name</div>
+                  <input
+                    class="ls-input"
+                    id="newStaffName"
+                    placeholder="e.g. Maria Reyes"
+                    style="margin-bottom: 0"
+                  />
+                </div>
+                <div>
+                  <div class="ls-label">Role</div>
+                  <input
+                    class="ls-input"
+                    id="newStaffRole"
+                    placeholder="e.g. Barista"
+                    style="margin-bottom: 0"
+                  />
+                </div>
+              </div>
+              <div class="staff-form-actions">
+                <button
+                  class="orders-btn"
+                  onclick="window.addStaff()"
+                >
+                  <i class="ri-user-add-line" aria-hidden="true"></i>
+                  Save Staff
+                </button>
+                <button
+                  class="orders-btn ghost"
+                  onclick="
+                    document.getElementById('addStaffForm').style.display =
+                      'none'
+                  "
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+
+            <!-- Weekly Schedule -->
+            <div class="card staff-card staff-schedule-card">
+              <div class="card-head">
+                <span class="card-title">Weekly Schedule</span>
+                <button
+                  class="orders-btn"
+                  onclick="window.saveSchedule()"
+                >
+                  <i class="ri-save-line" aria-hidden="true"></i> Save Schedule
+                </button>
+              </div>
+              <div id="scheduleEditor">
+                <div class="staff-loading">
+                  Loading schedule...
+                </div>
+              </div>
+            </div>
+            </div>
+          </div>
+
+          <!-- ── ACCOUNTS ── -->
+          <div id="accounts" class="page">
+            <div class="page-header">
+              <div class="page-title">Accounts</div>
+              <div class="page-sub">Manage login accounts and roles</div>
+            </div>
+            <div id="accountsContent">
+              <div style="color: var(--muted); font-size: 13px">
+                Loading account data...
+              </div>
+            </div>
+          </div>
+
+          <!-- ── SETTINGS ── -->
+          <div id="settings" class="page">
+            <div class="page-header">
+              <div class="page-title">Settings</div>
+              <div class="page-sub">Manage your shop preferences</div>
+            </div>
+            <div class="grid-2">
+              <div>
+                <div class="card" style="margin-bottom: 14px">
+                  <div class="card-head">
+                    <span class="card-title">Shop Operations</span>
+                  </div>
+                  <div class="setting-row">
+                    <div>
+                      <div class="setting-label">Online ordering</div>
+                      <div class="setting-desc">
+                        Accept orders via delivery apps
+                      </div>
+                    </div>
+                    <label class="toggle"
+                      ><input type="checkbox" checked /><span
+                        class="tslider"
+                      ></span
+                    ></label>
+                  </div>
+                  <div class="setting-row">
+                    <div>
+                      <div class="setting-label">Dine-in available</div>
+                      <div class="setting-desc">
+                        Allow customers to eat in the shop
+                      </div>
+                    </div>
+                    <label class="toggle"
+                      ><input type="checkbox" checked /><span
+                        class="tslider"
+                      ></span
+                    ></label>
+                  </div>
+                  <div class="setting-row">
+                    <div>
+                      <div class="setting-label">Loyalty rewards</div>
+                      <div class="setting-desc">Enable stamp card system</div>
+                    </div>
+                    <label class="toggle"
+                      ><input type="checkbox" checked /><span
+                        class="tslider"
+                      ></span
+                    ></label>
+                  </div>
+                  <div class="setting-row">
+                    <div>
+                      <div class="setting-label">Low stock alerts</div>
+                      <div class="setting-desc">
+                        Notify when ingredients run low
+                      </div>
+                    </div>
+                    <label class="toggle"
+                      ><input type="checkbox" checked /><span
+                        class="tslider"
+                      ></span
+                    ></label>
+                  </div>
+                </div>
+                <div class="card">
+                  <div class="card-head">
+                    <span class="card-title">Notifications</span>
+                  </div>
+                  <div class="setting-row">
+                    <div>
+                      <div class="setting-label">Email alerts</div>
+                      <div class="setting-desc">
+                        Get notified on suspicious activity
+                      </div>
+                    </div>
+                    <label class="toggle"
+                      ><input type="checkbox" checked /><span
+                        class="tslider"
+                      ></span
+                    ></label>
+                  </div>
+                  <div class="setting-row">
+                    <div>
+                      <div class="setting-label">New transactions</div>
+                      <div class="setting-desc">
+                        Notify on every new transaction
+                      </div>
+                    </div>
+                    <label class="toggle"
+                      ><input type="checkbox" /><span class="tslider"></span
+                    ></label>
+                  </div>
+                </div>
+              </div>
+              <div class="card">
+                <div class="card-head">
+                  <span class="card-title">Shop Info</span>
+                </div>
+                <div class="setting-row">
+                  <div>
+                    <div class="setting-label">Shop name</div>
+                    <div class="setting-desc">Brother Bean Coffee House</div>
+                  </div>
+                </div>
+                <div class="setting-row">
+                  <div>
+                    <div class="setting-label">Opening hours</div>
+                    <div class="setting-desc">7:00 AM – 9:00 PM daily</div>
+                  </div>
+                </div>
+                <div class="setting-row">
+                  <div>
+                    <div class="setting-label">Location</div>
+                    <div class="setting-desc">Imus, Cavite</div>
+                  </div>
+                </div>
+                <div class="setting-row">
+                  <div>
+                    <div class="setting-label">Currency</div>
+                    <div class="setting-desc">Philippine Peso (₱)</div>
+                  </div>
+                </div>
+                <div class="setting-row">
+                  <div>
+                    <div class="setting-label">Admin username</div>
+                    <div class="setting-desc">admin</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <!-- /main -->
+      </div>
+      <!-- /body-wrap -->
+    </div>
+    <!-- /app -->
+
+    <div
+      class="modal-overlay-custom"
+      id="logoutConfirmModal"
+      aria-hidden="true"
+      style="display: none"
+      onclick="if (event.target === this) closeLogoutModal()"
+    >
+      <div
+        class="modal-custom admin-logout-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="logoutConfirmTitle"
+        aria-describedby="logoutConfirmDesc"
+      >
+        <div class="modal-custom-header">
+          <div class="modal-custom-icon logout" aria-hidden="true">
+            <i class="ri-logout-circle-r-line" aria-hidden="true"></i>
+          </div>
+          <div class="modal-custom-title-wrap">
+            <div class="modal-custom-title" id="logoutConfirmTitle">
+              Confirm logout
+            </div>
+          </div>
+        </div>
+
+        <div class="modal-custom-body" id="logoutConfirmDesc">
+          You are about to end your admin session and return to the login screen.
+        </div>
+
+        <div class="modal-custom-footer">
+          <button
+            class="modal-custom-btn secondary"
+            type="button"
+            onclick="closeLogoutModal()"
+          >
+            Cancel
+          </button>
+          <button
+            class="modal-custom-btn primary error"
+            type="button"
+            onclick="confirmLogout()"
+          >
+            Sign out
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+      (function () {
+        const loading = document.getElementById("auth-loading");
+        const loadingText = document.getElementById("auth-loading-text");
+        const app = document.getElementById("app");
+        if (!loading) return;
+
+        window.__bbAuthSettled = false;
+
+        window.setTimeout(() => {
+          if (window.__bbAuthSettled) return;
+
+          const appVisible =
+            !!app && window.getComputedStyle(app).display !== "none";
+          if (appVisible) {
+            window.__bbAuthSettled = true;
+            return;
+          }
+
+          if (loadingText) {
+            loadingText.textContent =
+              "Session check is taking longer than expected.";
+          }
+
+          window.setTimeout(() => {
+            if (window.__bbAuthSettled) return;
+            loading.innerHTML = `
+          <div style="display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center;max-width:380px;padding:0 16px;">
+            <div style="font-size:14px;color:#374151;">Session check timed out.</div>
+            <div style="font-size:13px;color:#6b7280;">You can retry session check or go back to login.</div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center;">
+              <button type="button" onclick="window.location.reload()" style="border:none;background:#6B4423;color:#fff;padding:8px 12px;border-radius:8px;cursor:pointer;">Retry</button>
+              <button type="button" onclick="window.location.replace('/views/pages/login.html')" style="border:1px solid #d1d5db;background:#fff;color:#374151;padding:8px 12px;border-radius:8px;cursor:pointer;">Go to Login</button>
+            </div>
+          </div>
+        `;
+          }, 2500);
+        }, 30000);
+      })();
+    </script>
+    <script src="/controllers/utils/modalUtils.js?v=20260408L"></script>
+    <script
+      type="module"
+      src="/controllers/admin/adminPortalController.js?v=20260409A"
+    ></script>
+  </body>
+</html>
