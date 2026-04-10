@@ -124,7 +124,7 @@ export async function getInventoryItems() {
 }
 
 export async function saveInventoryItem(item) {
-  const itemId = String(item.id || crypto.randomUUID());
+  const itemId = String(item.id || (typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `inv-${Date.now()}-${Math.floor(Math.random()*1000)}`));
   const normalizedUnit = normalizeUnit(item.unit || "pcs") || "pcs";
   const payload = {
     id: itemId,

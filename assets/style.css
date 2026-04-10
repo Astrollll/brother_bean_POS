@@ -681,6 +681,208 @@ button,
   padding-right: 2px;
 }
 
+#pendingOrdersModal.modal-overlay {
+  align-items: center;
+  justify-content: center;
+  overflow-y: auto;
+  padding: clamp(12px, 2.8vh, 24px) clamp(10px, 2.8vw, 22px);
+}
+
+#pendingOrdersModal .bb-pending-orders-modal {
+  width: min(760px, 100%);
+  max-width: 760px;
+  max-height: min(86vh, 860px);
+  border-radius: 22px;
+}
+
+#pendingOrdersModal .bb-modal-header {
+  padding: 16px 18px;
+}
+
+#pendingOrdersModal .bb-modal-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow: hidden;
+  padding: 14px 18px 12px;
+}
+
+#pendingOrdersModal .bb-modal-footer {
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 18px 16px;
+}
+
+.pending-orders-modal-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 0;
+}
+
+.pending-orders-modal-summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(107, 68, 35, 0.14);
+  background: rgba(255, 255, 255, 0.85);
+}
+
+.pending-orders-modal-label {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-weight: 700;
+}
+
+.pending-orders-modal-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  height: 24px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: rgba(107, 68, 35, 0.14);
+  color: var(--primary-dark);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+#pendingOrdersModal .sidebar-pending-refresh {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+#pendingOrdersModalList,
+#pendingOrdersModal .bb-pending-orders-list {
+  max-height: min(60vh, 560px);
+  overflow: auto;
+  padding-right: 4px;
+  display: grid;
+  gap: 12px;
+}
+
+#pendingOrdersModal .bb-pending-card {
+  align-items: stretch;
+  padding: 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(229, 224, 215, 1);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.97), rgba(250, 246, 240, 0.95));
+  gap: 12px;
+}
+
+#pendingOrdersModal .bb-pending-main {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+}
+
+#pendingOrdersModal .bb-pending-meta-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+#pendingOrdersModal .bb-pending-items-preview {
+  font-size: 12px;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#pendingOrdersModal .bb-pending-side {
+  min-width: 130px;
+  display: grid;
+  align-content: space-between;
+  justify-items: end;
+  gap: 8px;
+}
+
+#pendingOrdersModal .bb-pending-total {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--primary-dark);
+}
+
+#pendingOrdersModal .sidebar-pending-button {
+  width: 130px;
+  max-width: 130px;
+  font-weight: 700;
+}
+
+#pendingOrdersModal .bb-pending-empty-state {
+  min-height: 190px;
+  border: 1px dashed rgba(107, 68, 35, 0.26);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.75);
+  display: grid;
+  place-items: center;
+  text-align: center;
+  gap: 6px;
+}
+
+#pendingOrdersModal .bb-pending-empty-state i {
+  font-size: 22px;
+  color: var(--primary);
+}
+
+.pending-orders-modal-footer-note {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+@media (max-width: 768px) {
+  #pendingOrdersModal .bb-pending-orders-modal {
+    width: min(96vw, 96vw);
+    max-height: calc(100vh - 20px);
+    border-radius: 16px;
+  }
+
+  #pendingOrdersModal .bb-modal-header,
+  #pendingOrdersModal .bb-modal-body,
+  #pendingOrdersModal .bb-modal-footer {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+
+  #pendingOrdersModal .bb-modal-footer {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .pending-orders-modal-footer-note {
+    order: 2;
+    text-align: center;
+  }
+
+  #pendingOrdersModal .bb-pending-card {
+    flex-direction: column;
+  }
+
+  #pendingOrdersModal .bb-pending-side {
+    min-width: 0;
+    width: 100%;
+    justify-items: stretch;
+    grid-template-columns: 1fr;
+  }
+
+  #pendingOrdersModal .sidebar-pending-button {
+    width: 100%;
+    max-width: none;
+  }
+}
+
 .sales-chart-bars {
   height: 104px;
   display: grid;

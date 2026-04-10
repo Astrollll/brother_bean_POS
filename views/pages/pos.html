@@ -730,20 +730,26 @@
 
         <div class="bb-modal-body">
           <div class="pending-orders-modal-toolbar">
+            <div class="pending-orders-modal-summary" aria-live="polite">
+              <span class="pending-orders-modal-label">Queue</span>
+              <span class="pending-orders-modal-count" id="pendingOrdersModalCount">0</span>
+            </div>
             <button
               class="sidebar-pending-refresh"
               type="button"
               onclick="refreshPendingOrders()"
             >
+              <i class="ri-refresh-line" aria-hidden="true"></i>
               Refresh
             </button>
           </div>
-          <div id="pendingOrdersModalList" class="sidebar-pending-list">
+          <div id="pendingOrdersModalList" class="sidebar-pending-list bb-pending-orders-list">
             <div class="sidebar-pending-empty">No pending orders</div>
           </div>
         </div>
 
         <div class="bb-modal-footer">
+          <div class="pending-orders-modal-footer-note">Tip: Tap a card to preview the pending receipt.</div>
           <button
             class="bb-secondary-btn"
             type="button"

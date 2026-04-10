@@ -122,6 +122,14 @@ button,
   -webkit-user-select: none;
 }
 
+/* Prevent accidental text/icon highlighting in category cards */
+#adminCategoriesList,
+#adminCategoriesList .card,
+#adminCategoriesList .card * {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
 #auth-loading {
   position: fixed;
   inset: 0;

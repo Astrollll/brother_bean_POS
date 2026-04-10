@@ -28,35 +28,67 @@ const DEFAULT_CATEGORIES = [
 
 const CATEGORY_ICON_MAP = new Map([
   ["coffee", "☕"],
+  ["espresso", "☕"],
+  ["iced coffee", "🧋"],
   ["oat series", "☕"],
+  ["oat milk", "🌾"],
   ["coconut series", "☕"],
+  ["coconut", "🥥"],
   ["matcha series", "🍵"],
+  ["matcha", "🍵"],
   ["non-dairy specials", "🧊"],
   ["non-coffee", "🥤"],
   ["starter", "🍔"],
+  ["starters", "🍟"],
+  ["appetizer", "🍟"],
+  ["appetizers", "🍟"],
   ["rice meals", "🍛"],
+  ["rice meal", "🍛"],
   ["toasties", "🥪"],
+  ["toastie", "🥪"],
   ["pasta", "🍝"],
   ["korean street food", "🍱"],
+  ["korean", "🍱"],
   ["party platters", "🍔"],
+  ["platters", "🍱"],
   ["mocktails", "🍹"],
+  ["mocktail", "🍹"],
   ["sandwiches", "🥪"],
+  ["sandwich", "🥪"],
   ["pastries", "🥐"],
+  ["pastry", "🥐"],
   ["add-ons", "➕"],
   ["addons", "➕"],
+  ["add on", "➕"],
+  ["extra", "➕"],
   ["drinks", "🥤"],
+  ["drink", "🥤"],
   ["beverages", "🥤"],
+  ["beverage", "🥤"],
+  ["milktea", "🧋"],
+  ["milk tea", "🧋"],
+  ["smoothies", "🥤"],
+  ["smoothie", "🥤"],
   ["desserts", "🍰"],
+  ["dessert", "🍰"],
   ["cakes", "🍰"],
+  ["cake", "🍰"],
   ["snacks", "🍟"],
+  ["snack", "🍟"],
+  ["fries", "🍟"],
   ["breakfast", "🍳"],
   ["lunch", "🍱"],
   ["dinner", "🍽️"],
   ["fruit", "🍓"],
+  ["fruits", "🍓"],
   ["tea", "🍵"],
   ["milk", "🥛"],
+  ["dairy", "🥛"],
   ["syrup", "🧴"],
+  ["sauces", "🧴"],
+  ["sauce", "🧴"],
   ["ingredients", "🧂"],
+  ["ingredient", "🧂"],
   ["packaging", "📦"],
   ["inventory", "📦"],
 ]);
@@ -79,10 +111,13 @@ export function getCategoryIconForName(name) {
   }
 
   if (normalized.includes("coffee")) return "☕";
+  if (normalized.includes("espresso")) return "☕";
+  if (normalized.includes("milk tea") || normalized.includes("milktea")) return "🧋";
   if (normalized.includes("matcha")) return "🍵";
   if (normalized.includes("tea")) return "🍵";
   if (normalized.includes("coconut")) return "🥥";
   if (normalized.includes("oat")) return "🌾";
+  if (normalized.includes("starter") || normalized.includes("appetizer")) return "🍟";
   if (normalized.includes("milk")) return "🥛";
   if (normalized.includes("drink") || normalized.includes("beverage")) return "🥤";
   if (normalized.includes("starter") || normalized.includes("burger")) return "🍔";
@@ -148,19 +183,50 @@ function removeLocalCategory(id) {
 
 function mergeCategories(remoteCategories, localCache) {
   const merged = new Map();
+  const byName = new Map();
   const deletedIds = new Set((localCache.deletedIds || []).map((id) => String(id)));
+  const defaultIds = new Set(DEFAULT_CATEGORIES.map((category) => String(category.id)));
+
+  const getPriority = (category) => {
+    const id = String(category?.id || "");
+    if (!id) return 0;
+    if (defaultIds.has(id)) return 1;
+    return 2;
+  };
+
+  const upsert = (category) => {
+    if (!category?.id) return;
+    const id = String(category.id);
+    const normalizedName = normalizeCategoryKey(category.name || id);
+    const next = { ...category };
+    merged.set(id, next);
+
+    if (!normalizedName) return;
+    const current = byName.get(normalizedName);
+    if (!current) {
+      byName.set(normalizedName, next);
+      return;
+    }
+
+    const currentPriority = getPriority(current);
+    const nextPriority = getPriority(next);
+    if (nextPriority >= currentPriority) {
+      byName.set(normalizedName, next);
+    }
+  };
 
   for (const category of remoteCategories) {
     if (!category?.id || deletedIds.has(String(category.id))) continue;
-    merged.set(String(category.id), category);
+    upsert(category);
   }
 
   for (const category of localCache.upserts || []) {
     if (!category?.id) continue;
-    merged.set(String(category.id), category);
+    upsert(category);
   }
 
-  return Array.from(merged.values()).sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")));
+  const deduped = Array.from(byName.values());
+  return deduped.sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")));
 }
 
 export async function getCategories() {
@@ -198,8 +264,34 @@ export async function getCategories() {
 }
 
 export async function saveCategory(category) {
+  const normalizedName = normalizeCategoryKey(category?.name);
+  if (!normalizedName) {
+    throw new Error("Category name is required.");
+  }
+
   const genId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : 'cat-' + Date.now();
-  const id = String(category.id || genId);
+  let resolvedId = String(category.id || "").trim();
+
+  if (!resolvedId) {
+    try {
+      const snap = await getDocs(collection(db, CATEGORIES_COLLECTION));
+      const existing = snap.docs
+        .map((d) => ({ id: d.id, ...d.data() }))
+        .find((entry) => normalizeCategoryKey(entry?.name) === normalizedName);
+      if (existing?.id) {
+        resolvedId = String(existing.id);
+      }
+    } catch (error) {
+      console.warn("Unable to check existing categories before save; falling back to generated category ID.", error);
+    }
+  }
+
+  if (!resolvedId) {
+    const matchingDefault = DEFAULT_CATEGORIES.find((entry) => normalizeCategoryKey(entry?.name) === normalizedName);
+    resolvedId = matchingDefault?.id ? String(matchingDefault.id) : genId;
+  }
+
+  const id = resolvedId;
   const resolvedIcon = getCategoryIconForName(category.name);
   const payload = {
     id: id,

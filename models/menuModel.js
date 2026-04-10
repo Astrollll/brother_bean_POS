@@ -2,7 +2,6 @@ import { db } from "../controllers/firebase.js";
 import {
   collection, getDocs, doc, setDoc, deleteDoc, onSnapshot
 } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js";
-import { defaultMenu, generateDefaultMenuItems } from "./defaultSeedData.js";
 
 const MENU_COLLECTION = "menu";
 
@@ -24,7 +23,7 @@ export function watchMenuItems(onChange, onError) {
 // Save a menu item (add or update)
 export async function saveMenuItem(item) {
   if (!item.id) {
-    item.id = crypto.randomUUID();
+    item.id = typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `item-${Date.now()}-${Math.floor(Math.random()*1000)}`;
   }
   const ref = doc(db, MENU_COLLECTION, String(item.id));
   await setDoc(ref, item);
@@ -48,5 +47,3 @@ export async function seedMenu(menuItems) {
     await saveMenuItem(item);
   }
 }
-
-export { defaultMenu, generateDefaultMenuItems };

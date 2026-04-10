@@ -4,7 +4,6 @@
 import { getMenuItems, watchMenuItems }  from "../models/menuModel.js";
 import { getCategories } from "../models/categoryModel.js";
 import { getCategoryIconForName } from "../models/categoryModel.js";
-import { isDefaultTemplateMenuItem } from "../models/defaultSeedData.js";
 import { saveOrder, syncQueuedOrders, getPendingOrderCount } from "../models/orderModel.js";
 import { watchAuth, getCurrentUser, logout as authLogout } from "./auth/firebaseAuth.js";
 import { getUserProfile, getUserRole } from "../models/userModel.js";
@@ -203,7 +202,8 @@ export function renderProducts(filter = "all") {
   }
 
   const grouped = filtered.reduce((acc, item) => {
-    const cat = item.category || 'Uncategorized';
+    const catMeta = getCategoryMeta(item.category || "Uncategorized");
+    const cat = catMeta.name || "Uncategorized";
     if (!acc[cat]) acc[cat] = [];
     acc[cat].push(item);
     return acc;
@@ -273,22 +273,29 @@ function getCategoryMeta(catParam) {
 }
 
 function getMenuCategories() {
-  const available = new Set(
-    menuItems
-      .map((item) => String(item?.category || "").trim())
-      .filter((category) => category && category.toLowerCase() !== "addons")
-  );
+  const availableByNormalized = new Map();
+  menuItems
+    .map((item) => String(item?.category || "").trim())
+    .filter((category) => category && category.toLowerCase() !== "addons")
+    .forEach((category) => {
+      const key = normalizeCategoryKey(category);
+      if (!key || availableByNormalized.has(key)) return;
+      availableByNormalized.set(key, category);
+    });
 
   const ordered = [];
   for (const category of globalCategories) {
-    const match = Array.from(available).find((value) => normalizeCategoryKey(getCategoryMeta(value).name) === normalizeCategoryKey(getCategoryMeta(category.id || category.name).name));
-    if (match && !ordered.includes(match)) {
-      ordered.push(match);
-      available.delete(match);
-    }
+    const key = normalizeCategoryKey(getCategoryMeta(category.id || category.name).name);
+    const match = availableByNormalized.get(key);
+    if (!match) continue;
+    ordered.push(match);
+    availableByNormalized.delete(key);
   }
 
-  return ordered.concat(Array.from(available).sort((a, b) => a.localeCompare(b)));
+  const remaining = Array.from(availableByNormalized.values()).sort((a, b) =>
+    String(getCategoryMeta(a).name || a).localeCompare(String(getCategoryMeta(b).name || b))
+  );
+  return ordered.concat(remaining);
 }
 
 function canonicalizeCategorySelection(category, categories = getMenuCategories()) {
@@ -415,7 +422,7 @@ function buildProductCard(product) {
 
 function sanitizePosMenuItems(items) {
   if (!Array.isArray(items)) return [];
-  return items.filter((item) => !isDefaultTemplateMenuItem(item) && item?.previewOnly !== true && item?.templateOnly !== true);
+  return items;
 }
 
 // ── MENU ITEM MODAL ──
@@ -470,12 +477,12 @@ function getEligibleAddons(product) {
   }
 
   const drinkAddons = menuItems.filter(i =>
-    i.category === "addons" || i.category === "Add-ons" || i.category === "Add-ons Drink"
+    normalizeCategoryKey(i.category) === "addons" || normalizeCategoryKey(i.category) === "add-ons" || normalizeCategoryKey(i.category) === "add-ons drink"
   );
   const foodAddons = menuItems.filter(i =>
-    i.category === "addons" || i.category === "Add-ons" || i.category === "Add-ons Food"
+    normalizeCategoryKey(i.category) === "addons" || normalizeCategoryKey(i.category) === "add-ons" || normalizeCategoryKey(i.category) === "add-ons food"
   );
-  const productCategory = product.category;
+  const productCategory = normalizeCategoryKey(product.category);
   const drinkCats = ["coffee", "oat series", "coconut series", "matcha series", "non-dairy specials", "non-coffee"];
 
   if (drinkCats.includes(productCategory)) {
@@ -1477,25 +1484,44 @@ window.markPendingOrderPrepared = function(orderId) {
 function renderPendingOrdersList() {
   const pending = getPendingOrders();
   const listEl = document.getElementById("pendingOrdersModalList");
+  const modalCountEl = document.getElementById("pendingOrdersModalCount");
   if (!listEl) return;
+  if (modalCountEl) modalCountEl.textContent = String(Array.isArray(pending) ? pending.length : 0);
 
   if (!pending.length) {
-    listEl.innerHTML = '<div class="sidebar-pending-empty">No pending orders</div>';
+    listEl.innerHTML = `
+      <div class="sidebar-pending-empty bb-pending-empty-state">
+        <i class="ri-checkbox-circle-line" aria-hidden="true"></i>
+        <div>No pending orders</div>
+      </div>
+    `;
     return;
   }
 
   listEl.innerHTML = pending.map((order) => {
-    const itemNames = Array.isArray(order.payload?.items)
-      ? order.payload.items.slice(0, 2).map(i => i.name).join(", ") + (order.payload.items.length > 2 ? ", ..." : "")
+    const items = Array.isArray(order.payload?.items) ? order.payload.items : [];
+    const itemCount = items.reduce((sum, item) => sum + (Number(item?.quantity) || 1), 0);
+    const itemNames = items.length
+      ? items.slice(0, 2).map((i) => String(i?.name || "").trim()).join(", ") + (items.length > 2 ? ", ..." : "")
       : "No items";
+    const total = Number(order.payload?.total || 0);
     const createdAt = order.createdAt ? new Date(order.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "--";
+    const orderLabel = String(order.id).replace(/^q_/, "");
     return `
-      <div class="sidebar-pending-item" onclick="openPendingOrder('${order.id}')">
-        <div>
-          <div class="sidebar-pending-order">#${String(order.id).replace(/^q_/, "")}</div>
-          <div class="sidebar-pending-meta">${createdAt} · ${itemNames}</div>
+      <div class="sidebar-pending-item bb-pending-card" onclick="openPendingOrder('${order.id}')" role="button" tabindex="0" aria-label="Open pending order ${escapeHtml(orderLabel)}">
+        <div class="bb-pending-main">
+          <div class="sidebar-pending-order">#${escapeHtml(orderLabel)}</div>
+          <div class="sidebar-pending-meta bb-pending-meta-row">
+            <span>${escapeHtml(createdAt)}</span>
+            <span aria-hidden="true">•</span>
+            <span>${itemCount} item${itemCount === 1 ? "" : "s"}</span>
+          </div>
+          <div class="bb-pending-items-preview" title="${escapeHtml(itemNames)}">${escapeHtml(itemNames)}</div>
         </div>
-        <button class="sidebar-pending-button" type="button" onclick="event.stopPropagation(); markPendingOrderPrepared('${order.id}')">Done preparing</button>
+        <div class="bb-pending-side">
+          <div class="bb-pending-total">₱${total.toFixed(2)}</div>
+          <button class="sidebar-pending-button" type="button" onclick="event.stopPropagation(); markPendingOrderPrepared('${order.id}')">Done preparing</button>
+        </div>
       </div>
     `;
   }).join("");
