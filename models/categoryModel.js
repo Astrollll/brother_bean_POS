@@ -70,6 +70,36 @@ function normalizeCategoryKey(value) {
     .replace(/\s+/g, " ");
 }
 
+function normalizeCategoryAddons(addons) {
+  if (!Array.isArray(addons)) return [];
+
+  return addons
+    .map((addon, index) => {
+      const recipe = Array.isArray(addon?.recipe)
+        ? addon.recipe
+            .map((ingredient) => ({
+              inventoryId: String(ingredient?.inventoryId || "").trim(),
+              name: String(ingredient?.name || "").trim(),
+              quantity: Number(ingredient?.quantity || 0),
+              unit: String(ingredient?.unit || "").trim(),
+            }))
+            .filter((ingredient) => ingredient.inventoryId && ingredient.quantity > 0)
+        : [];
+
+      const rawName = String(addon?.name || "").trim();
+      const derivedName = rawName || String(recipe[0]?.name || "").trim();
+      if (!derivedName) return null;
+
+      return {
+        id: String(addon?.id || `addon-cat-${index + 1}`),
+        name: derivedName,
+        price: Math.max(0, Number(addon?.price || 0)),
+        recipe,
+      };
+    })
+    .filter(Boolean);
+}
+
 export function getCategoryIconForName(name) {
   const normalized = normalizeCategoryKey(name);
   if (!normalized) return "📦";
@@ -205,7 +235,8 @@ export async function saveCategory(category) {
     id: id,
     name: String(category.name || "").trim(),
     icon: resolvedIcon,
-    color: String(category.color || "#373b40").trim()
+    color: String(category.color || "#373b40").trim(),
+    addons: normalizeCategoryAddons(category?.addons),
   };
 
   try {

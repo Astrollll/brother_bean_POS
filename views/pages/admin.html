@@ -441,17 +441,17 @@
               </div>
             </div>
 
-<div class="card" style="margin-bottom:20px;">
-              <div class="card-head" style="border:none; padding-bottom:0; display:flex; justify-content:space-between; align-items:center;">
+<div class="card admin-menu-categories-shell">
+              <div class="card-head admin-menu-categories-head">
                 <span class="card-title">All Categories</span>
                 <button
-                  style="background:var(--primary);color:#fff;border:none;padding:8px 16px;border-radius:12px;font-size:14px;cursor:pointer;"
+                  class="admin-menu-categories-add-btn"
                   onclick="window._adminAddCategory && window._adminAddCategory()"
                 >
                   <i class="ri-add-line" style="margin-right:6px;"></i>New Category
                 </button>
               </div>
-              <div id="adminCategoriesList" style="padding: 16px; display:flex; flex-direction:column; gap:12px;"></div>
+              <div id="adminCategoriesList" class="admin-menu-categories-list"></div>
             </div>
 
 
@@ -463,14 +463,14 @@
           </div>
 
           <!-- ── INVENTORY ── -->
-          <div id="inventory" class="page">
+          <div id="inventory" class="page inventory-page">
             <div class="page-header">
               <div class="page-title">Inventory</div>
               <div class="page-sub" id="inventoryPageSub">
                 Track your ingredients and supplies
               </div>
             </div>
-            <div class="card" style="margin-bottom: 14px">
+            <div class="card inventory-form-card">
               <div class="card-head">
                 <span class="card-title">Inventory Item</span>
               </div>
@@ -562,7 +562,7 @@
                     style="margin-bottom: 0"
                     required
                   />
-                  <div style="margin-top:6px;font-size:12px;color:var(--text-muted);">
+                  <div class="inventory-field-note">
                     We will mark this item as low stock when current stock reaches this number.
                   </div>
                 </div>
@@ -594,26 +594,25 @@
               </form>
             </div>
 
-            <div class="card">
+            <div class="card inventory-stock-card">
               <div class="card-head">
                 <span class="card-title">Stock Levels</span>
-                <div style="display: flex; gap: 12px; align-items: center">
+                <div class="inventory-card-head-actions">
                   <span
-                    class="card-action"
+                    class="card-action inventory-card-action"
                     onclick="window.seedInventory && window.seedInventory()"
                     >Seed Sample Items</span
                   >
                   <span
-                    class="card-action"
+                    class="card-action inventory-card-action"
                     onclick="
                       window.refreshInventory && window.refreshInventory()
                     "
                     >Refresh</span
                   >                  <span
-                    class="card-action text-danger"
+                    class="card-action inventory-card-action text-danger"
                     id="btnClearInventory"
                     onclick="window.clearAllInventory && window.clearAllInventory()"
-                    style="color: var(--red); cursor: pointer;"
                     >Clear all</span
                   >                </div>
               </div>

@@ -6,10 +6,9 @@ import { getTodayOrders, getAllOrders, deleteOrder, clearAllOrders } from "../..
 import { resetDay as archiveResetDay } from "../../models/resetModel.js";
 import { getInventoryItems, saveInventoryItem, deleteInventoryItem, clearInventoryItems, convertQuantityBetweenUnits, normalizeUnit } from "../../models/inventoryModel.js";
 import { inventorySeedItems } from "../../models/defaultSeedData.js";
-import { adminMenuPreviewExample, isDefaultTemplateMenuItem } from "../../models/defaultSeedData.js";
 import { getAllStaff as getStaff, getSchedule, getOnDutyNowFromSchedule, addStaff, removeStaff, removeStaffByName, removeStaffByAccountUid, updateStaffAccountLink, saveSchedule } from "../../models/staffModel.js";
 import { renderStats, renderRecentOrders, renderTopItems, renderStaffOnDuty } from "../../views/dashboardView.js";
-import { renderAdminMenu, renderDefaultMenuPreview } from "../../views/menuView.js";
+import { renderAdminMenu } from "../../views/menuView.js";
 import { renderStaffList, renderScheduleEditor, readScheduleFromDOM } from "../../views/staffView.js";
 import { navigateTo } from "../utils/routes.js";
 
@@ -44,6 +43,7 @@ const state = {
   page: "dashboard",
   categories: [],
   menuItems: [],
+  soldMap: {},
   ordersToday: [],
   allOrders: [],
   filteredOrders: [],
@@ -77,131 +77,35 @@ const accountFilters = {
   sortBy: "recent",
 };
 
-function normalizeProvisionKey(value) {
-  return String(value || "")
-    .trim()
-    .toLowerCase()
-    .replace(/^seed[-_\s]*/i, "")
-    .replace(/[-_]+/g, " ")
-    .replace(/\s+/g, " ");
-}
-
-async function ensureOfficialCappuccinoSetup(menuItems = [], inventoryItems = []) {
-  const nextMenuItems = Array.isArray(menuItems) ? [...menuItems] : [];
-  let nextInventoryItems = Array.isArray(inventoryItems) ? [...inventoryItems] : [];
-
-  const requiredInventory = [
-    { id: "seed-arabica-beans", name: "Arabica Coffee Beans", category: "Coffee", unit: "kg", quantity: 16, reorderLevel: 8, price: 500 },
-    { id: "seed-fresh-milk", name: "Fresh Milk", category: "Dairy", unit: "L", quantity: 30, reorderLevel: 14, price: 90 },
-    { id: "seed-caramel-syrup", name: "Caramel Syrup", category: "Syrup", unit: "L", quantity: 10, reorderLevel: 4, price: 200 },
-    { id: "seed-whipped-cream", name: "Whipped Cream", category: "Dairy", unit: "L", quantity: 8, reorderLevel: 3, price: 180 },
-  ];
-
-  const hasInventoryMatch = (item, target) => {
-    const candidateKeys = [
-      normalizeProvisionKey(item?.id),
-      normalizeProvisionKey(item?.name),
-    ];
-    return candidateKeys.includes(normalizeProvisionKey(target.id)) || candidateKeys.includes(normalizeProvisionKey(target.name));
-  };
-
-  let inventoryUpdated = false;
-  for (const needed of requiredInventory) {
-    const exists = nextInventoryItems.some((item) => hasInventoryMatch(item, needed));
-    if (!exists) {
-      await saveInventoryItem(needed);
-      inventoryUpdated = true;
-    }
-  }
-
-  if (inventoryUpdated) {
-    nextInventoryItems = await getInventoryItems();
-  }
-
-  const findInventoryId = (targets) => {
-    const values = Array.isArray(targets) ? targets : [targets];
-    for (const target of values) {
-      const match = nextInventoryItems.find((item) => hasInventoryMatch(item, { id: target, name: target }));
-      if (match?.id) return String(match.id);
-    }
-    return "";
-  };
-
-  const beansId = findInventoryId(["seed-arabica-beans", "arabica coffee beans"]);
-  const milkId = findInventoryId(["seed-fresh-milk", "fresh milk"]);
-  const caramelId = findInventoryId(["seed-caramel-syrup", "caramel syrup"]);
-  const whippedCreamId = findInventoryId(["seed-whipped-cream", "whipped cream"]);
-
-  const cappuccinoExists = nextMenuItems.some((item) => {
-    const name = normalizeProvisionKey(item?.name);
-    const category = normalizeProvisionKey(item?.category);
-    return name === "cappuccino" && category === "coffee";
-  });
-
-  const legacySimpleCoffeeItems = nextMenuItems.filter((item) => normalizeProvisionKey(item?.name) === "simple coffee");
-  if (legacySimpleCoffeeItems.length) {
-    await Promise.all(
-      legacySimpleCoffeeItems
-        .map((item) => String(item?.id || item?.firestoreId || ""))
-        .filter(Boolean)
-        .map((id) => deleteMenuItem(id))
-    );
-    nextMenuItems = nextMenuItems.filter((item) => normalizeProvisionKey(item?.name) !== "simple coffee");
-  }
-
-  if (!cappuccinoExists && beansId && milkId) {
-    const cappuccinoPayload = {
-      id: "menu-cappuccino",
-      name: "Cappuccino",
-      price: 135,
-      category: "coffee",
-      hasVariant: false,
-      hasTemp: true,
-      popular: true,
-      bestseller: false,
-      note: "Espresso with steamed milk foam",
-      recipe: [
-        { inventoryId: beansId, name: "Arabica Coffee Beans", quantity: 18, unit: "g" },
-        { inventoryId: milkId, name: "Fresh Milk", quantity: 140, unit: "ml" },
-      ],
-      addons: [
-        {
-          id: "addon-cappuccino-extra-shot",
-          name: "Extra Shot",
-          price: 25,
-          recipe: [
-            { inventoryId: beansId, name: "Arabica Coffee Beans", quantity: 8, unit: "g" },
-          ],
-        },
-        {
-          id: "addon-cappuccino-caramel-drizzle",
-          name: "Caramel Drizzle",
-          price: 20,
-          recipe: caramelId
-            ? [{ inventoryId: caramelId, name: "Caramel Syrup", quantity: 10, unit: "ml" }]
-            : [],
-        },
-        {
-          id: "addon-cappuccino-whipped-cream",
-          name: "Whipped Cream",
-          price: 18,
-          recipe: whippedCreamId
-            ? [{ inventoryId: whippedCreamId, name: "Whipped Cream", quantity: 15, unit: "ml" }]
-            : [],
-        },
-      ],
-    };
-
-    await saveMenuItem(cappuccinoPayload);
-    nextMenuItems.push(cappuccinoPayload);
-  }
-
-  return { menuItems: nextMenuItems, inventoryItems: nextInventoryItems };
-}
-
 function showLogin() {
   window.__bbAuthSettled = true;
   navigateTo("login", { replace: true });
+}
+
+function normalizeSoldKey(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+}
+
+function buildSoldMapFromOrders(orders = []) {
+  const soldMap = {};
+  (Array.isArray(orders) ? orders : []).forEach((order) => {
+    (Array.isArray(order?.items) ? order.items : []).forEach((item) => {
+      const qty = Number(item?.quantity || 1) || 1;
+      const menuItemId = String(item?.menuItemId || "").trim();
+      const nameKey = normalizeSoldKey(item?.name);
+
+      if (menuItemId) {
+        soldMap[`id:${menuItemId}`] = (soldMap[`id:${menuItemId}`] || 0) + qty;
+      }
+      if (nameKey) {
+        soldMap[`name:${nameKey}`] = (soldMap[`name:${nameKey}`] || 0) + qty;
+      }
+    });
+  });
+  return soldMap;
 }
 
 function showApp() {
@@ -347,6 +251,74 @@ function normalizeIdentityToken(value) {
   return String(value || "").trim().toLowerCase();
 }
 
+function normalizeCategoryToken(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[_\s]+/g, " ")
+    .replace(/\s*[-–—]\s*/g, "-")
+    .replace(/\s+/g, " ");
+}
+
+function resolveCanonicalMenuCategory(categoryName, categories = [], menuItems = []) {
+  const normalized = normalizeCategoryToken(categoryName);
+  if (!normalized) return "";
+
+  const fromCategories = (Array.isArray(categories) ? categories : []).find((entry) => {
+    const idNormalized = normalizeCategoryToken(entry?.id);
+    const nameNormalized = normalizeCategoryToken(entry?.name);
+    return normalized === nameNormalized || normalized === idNormalized;
+  });
+  if (fromCategories?.name) return String(fromCategories.name).trim();
+
+  const fromMenuItems = (Array.isArray(menuItems) ? menuItems : []).find((entry) => {
+    return normalizeCategoryToken(entry?.category) === normalized;
+  });
+  if (fromMenuItems?.category) return String(fromMenuItems.category).trim();
+
+  return String(categoryName || "").trim();
+}
+
+function normalizeAddonCollection(addons, idPrefix = "addon") {
+  if (!Array.isArray(addons)) return [];
+
+  return addons
+    .map((addon, index) => {
+      const recipe = Array.isArray(addon?.recipe)
+        ? addon.recipe
+            .map((ingredient) => ({
+              inventoryId: String(ingredient?.inventoryId || "").trim(),
+              name: String(ingredient?.name || "").trim(),
+              quantity: Number(ingredient?.quantity || 0),
+              unit: normalizeUnit(ingredient?.unit || "") || String(ingredient?.unit || "").trim(),
+            }))
+            .filter((ingredient) => ingredient.inventoryId && ingredient.quantity > 0)
+        : [];
+
+      const name = String(addon?.name || recipe[0]?.name || "").trim();
+      if (!name) return null;
+
+      return {
+        id: String(addon?.id || `${idPrefix}-${index + 1}`),
+        name,
+        price: Math.max(0, Number(addon?.price || 0)),
+        recipe,
+      };
+    })
+    .filter(Boolean);
+}
+
+function getCategoryByToken(categoryValue) {
+  const normalized = normalizeCategoryToken(categoryValue);
+  if (!normalized) return null;
+
+  return (Array.isArray(state.categories) ? state.categories : []).find((entry) => {
+    const idKey = normalizeCategoryToken(entry?.id);
+    const nameKey = normalizeCategoryToken(entry?.name);
+    return normalized === idKey || normalized === nameKey;
+  }) || null;
+}
+
 async function backfillStaffAccountLinks(staff, users) {
   const staffList = Array.isArray(staff) ? staff : [];
   const userList = Array.isArray(users) ? users : [];
@@ -446,11 +418,14 @@ async function loadDashboard() {
   const totalOrders = ordersToday.length;
 
   // Best seller
-  const soldMap = {};
-  ordersToday.forEach(o => (o.items || []).forEach(i => {
-    soldMap[i.name] = (soldMap[i.name] || 0) + (i.quantity || 1);
+  state.soldMap = buildSoldMapFromOrders(ordersToday);
+  const bestByName = {};
+  ordersToday.forEach((o) => (o.items || []).forEach((i) => {
+    const label = String(i?.name || "").trim();
+    if (!label) return;
+    bestByName[label] = (bestByName[label] || 0) + (Number(i?.quantity || 1) || 1);
   }));
-  const best = Object.entries(soldMap).sort((a, b) => b[1] - a[1])[0];
+  const best = Object.entries(bestByName).sort((a, b) => b[1] - a[1])[0];
 
   // Staff on duty should be time-aware, not just checkbox-based.
   const { onDuty } = getOnDutyNowFromSchedule(staff, schedule, new Date());
@@ -496,25 +471,7 @@ async function loadMenuPage() {
   ]);
   let provisionedMenuItems = menuItems || [];
   let provisionedInventoryItems = inventoryItems || [];
-  try {
-    const provisioned = await ensureOfficialCappuccinoSetup(provisionedMenuItems, provisionedInventoryItems);
-    provisionedMenuItems = provisioned.menuItems;
-    provisionedInventoryItems = provisioned.inventoryItems;
-  } catch (provisionError) {
-    console.warn("[Menu] Cappuccino provisioning skipped:", provisionError);
-  }
-
-  const removableTemplateItems = (provisionedMenuItems || []).filter((item) => isDefaultTemplateMenuItem(item));
-  if (removableTemplateItems.length > 0) {
-    const deleteTargets = removableTemplateItems.map((item) => String(item?.id || item?.firestoreId || "")).filter(Boolean);
-    try {
-      await Promise.all(deleteTargets.map((id) => deleteMenuItem(id)));
-      console.info(`[Menu] Removed ${deleteTargets.length} default template item(s) from live admin menu.`);
-    } catch (removeError) {
-      console.warn("[Menu] Failed to remove one or more default template items:", removeError);
-    }
-  }
-  state.menuItems = (provisionedMenuItems || []).filter((item) => !isDefaultTemplateMenuItem(item));
+  state.menuItems = provisionedMenuItems || [];
   state.ordersToday = ordersToday;
   state.inventoryItems = provisionedInventoryItems;
 
@@ -539,46 +496,37 @@ async function loadMenuPage() {
   }
 
   // sold map for today
-  const soldMap = {};
-  ordersToday.forEach(o => (o.items || []).forEach(i => {
-    soldMap[i.name] = (soldMap[i.name] || 0) + (i.quantity || 1);
-  }));
+  state.soldMap = buildSoldMapFromOrders(ordersToday);
 
   const container = document.getElementById("menuContent");
   if (!container) return;
 
   container.innerHTML = `
-    <div class="card" style="margin-bottom:14px;">
-      <div class="card-head" style="align-items:flex-start;gap:12px;">
+    <div class="card admin-menu-shell">
+      <div class="card-head admin-menu-shell-head">
         <div>
           <span class="card-title">Menu management</span>
-          <div style="font-size:12px;color:var(--text-muted);margin-top:4px;">Use Quick Add to prefill category and speed up item creation.</div>
+          <div class="admin-menu-shell-sub">Use Quick Add to prefill category and speed up item creation.</div>
         </div>
-        <div style="margin-left:auto;display:flex;gap:10px;flex-wrap:wrap;">
+        <div class="admin-menu-shell-actions">
           <button id="btnAddMenuItem"
-            style="background:var(--brown,#6B4423);color:white;border:none;padding:8px 14px;border-radius:12px;font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif;">
+            class="admin-menu-shell-btn primary">
             + Add item
           </button>
           <button id="btnClearMenu"
-            style="background:rgba(239,68,68,0.12);color:#991B1B;border:1px solid rgba(239,68,68,0.3);padding:8px 14px;border-radius:12px;font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif;">
+            class="admin-menu-shell-btn danger">
             Clear all
           </button>
           <button id="btnRefreshMenu"
-            style="background:transparent;border:1px solid var(--border-color);padding:8px 14px;border-radius:12px;font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif;">
+            class="admin-menu-shell-btn ghost">
             Refresh
           </button>
         </div>
       </div>
       <div id="menuEditorSlot"></div>
-      <div id="defaultMenuSlot" style="padding-top:12px;"></div>
       <div style="padding-top:12px;" id="menuListSlot"></div>
     </div>
   `;
-
-  const defaultMenuSlot = document.getElementById("defaultMenuSlot");
-  if (defaultMenuSlot) {
-    defaultMenuSlot.innerHTML = renderDefaultMenuPreview([adminMenuPreviewExample], state.inventoryItems || [], state.categories || []);
-  }
 
   const listSlot = document.getElementById("menuListSlot");
   listSlot.innerHTML = `<div id="menuListInner"></div>`;
@@ -606,8 +554,6 @@ async function loadMenuPage() {
   }
 
   window._adminEditMenuItem = (id) => openMenuEditor(id);
-  window._adminEditDefaultMenuItem = undefined;
-  window._adminDeleteDefaultMenuItem = undefined;
   window._adminDeleteMenuItem = async (id) => {
     try {
       const choice = await ModalUtils.confirm("Delete Item", "Are you sure you want to delete this menu item? This action cannot be undone.");
@@ -2708,32 +2654,50 @@ function openMenuEditor(itemId, preset = {}) {
           price: Number(addon?.price || 0),
           recipe: Array.isArray(addon?.recipe) ? addon.recipe.map((ingredient) => ({ ...ingredient })) : [],
         }))
-        .filter((addon) => addon.name)
+        .filter((addon) => addon.name || addon.recipe.length > 0)
     : [];
 
+  const categorySuggestionMap = new Map();
+  const addCategorySuggestion = (value) => {
+    const name = String(value || "").trim();
+    if (!name) return;
+    const key = normalizeCategoryToken(name);
+    if (!key || categorySuggestionMap.has(key)) return;
+    categorySuggestionMap.set(key, name);
+  };
+
+  if (Array.isArray(state.categories)) {
+    state.categories.forEach((category) => addCategorySuggestion(category?.name));
+  }
+  if (Array.isArray(state.menuItems)) {
+    state.menuItems.forEach((menuItem) => addCategorySuggestion(menuItem?.category));
+  }
+  addCategorySuggestion("Coffee");
+  addCategorySuggestion("Add-ons");
+
+  const categorySuggestions = Array.from(categorySuggestionMap.values()).sort((a, b) => a.localeCompare(b));
+
   const normalizedCurrentCategory = String(item.category || "").trim();
-  const hasCurrentCategoryOption = state.categories.some(
-    (c) => String(c?.name || "").trim().toLowerCase() === normalizedCurrentCategory.toLowerCase()
+  const hasCurrentCategoryOption = categorySuggestions.some(
+    (name) => String(name || "").trim().toLowerCase() === normalizedCurrentCategory.toLowerCase()
   );
-  const categoryOptionsHtml = state.categories
-    .map((c) => {
-      const value = String(c?.name || "").trim();
-      if (!value) return "";
-      const selected = value.toLowerCase() === normalizedCurrentCategory.toLowerCase() ? "selected" : "";
-      return `<option value="${escapeHtml(value)}" ${selected}>${escapeHtml(value)}</option>`;
+  const categoryOptionsHtml = categorySuggestions
+    .map((value) => {
+      const normalizedValue = String(value || "").trim();
+      if (!normalizedValue) return "";
+      const isSelected = normalizedValue.toLowerCase() === normalizedCurrentCategory.toLowerCase();
+      return `<option value="${escapeHtml(normalizedValue)}"${isSelected ? " selected" : ""}>${escapeHtml(normalizedValue)}</option>`;
     })
     .join("");
-  const customCategoryOption =
-    normalizedCurrentCategory && !hasCurrentCategoryOption
-      ? `<option value="${escapeHtml(normalizedCurrentCategory)}" selected>${escapeHtml(normalizedCurrentCategory)}</option>`
-      : "";
-  const shouldSelectPlaceholder = !normalizedCurrentCategory;
+  const currentCategoryOptionHtml = !hasCurrentCategoryOption && normalizedCurrentCategory
+    ? `<option value="${escapeHtml(normalizedCurrentCategory)}" selected>${escapeHtml(normalizedCurrentCategory)}</option>`
+    : "";
 
   slot.innerHTML = `
     <div class="card mm-menu-editor" style="margin:14px 0;border:1px solid rgba(107,68,35,0.12);border-radius:18px;box-shadow:0 12px 34px rgba(30,20,12,0.08);overflow:hidden;background:linear-gradient(180deg,#ffffff 0%,#fdfaf6 100%);">
       <div class="card-head" style="padding:14px 16px;border-bottom:1px solid rgba(107,68,35,0.12);background:linear-gradient(135deg,rgba(107,68,35,0.08) 0%,rgba(221,184,146,0.16) 100%);">
         <div style="display:flex;flex-direction:column;gap:4px;">
-          <span class="card-title" style="font-size:15px;letter-spacing:0.04em;text-transform:uppercase;color:#5f3c1f;">${isNew ? (presetItem.id ? "Customize default menu item" : "Add menu item") : "Edit menu item"}</span>
+          <span class="card-title" style="font-size:15px;letter-spacing:0.04em;text-transform:uppercase;color:#5f3c1f;">${isNew ? (presetItem.id ? "Customize menu item" : "Add menu item") : "Edit menu item"}</span>
           <span style="font-size:12px;color:#7b6652;">Set details, recipe, and pricing before saving.</span>
         </div>
       </div>
@@ -2755,8 +2719,8 @@ function openMenuEditor(itemId, preset = {}) {
         <div>
           <div class="ls-label">Category</div>
           <select class="ls-input" id="mm_category" style="margin-bottom:0;" aria-label="Menu item category">
-            <option value="" disabled ${shouldSelectPlaceholder ? "selected" : ""}>Select a category...</option>
-            ${customCategoryOption}
+            <option value="">Select category</option>
+            ${currentCategoryOptionHtml}
             ${categoryOptionsHtml}
           </select>
           <div id="mm_category_error" class="mm-field-error" aria-live="polite"></div>
@@ -2804,10 +2768,13 @@ function openMenuEditor(itemId, preset = {}) {
         <div id="mm_addonsSection" style="grid-column:1/-1;border-top:1px solid var(--border-color);padding-top:12px;margin-top:4px;">
           <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px;">
             <div class="ls-label" style="margin:0;">Add-ons (Optional)</div>
-            <button type="button" id="mm_addAddon" style="background:transparent;border:1px solid var(--border-color);padding:6px 10px;border-radius:10px;font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif;">+ Add Add-on</button>
+            <div style="display:flex;gap:8px;align-items:center;">
+              <button type="button" id="mm_editCategoryAddons" style="background:rgba(16,185,129,0.12);border:1px solid rgba(16,185,129,0.3);color:#047857;padding:6px 10px;border-radius:10px;font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif;">Edit category add-ons</button>
+              <button type="button" id="mm_addAddon" style="background:transparent;border:1px solid var(--border-color);padding:6px 10px;border-radius:10px;font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif;">+ Add Add-on</button>
+            </div>
           </div>
           <div id="mm_addonsRows" style="display:grid;gap:8px;"></div>
-          <div style="font-size:11px;color:var(--text-muted);margin-top:6px;">Each add-on can have extra price and optional inventory usage for stock deduction.</div>
+          <div style="font-size:11px;color:var(--text-muted);margin-top:6px;">Tip: Category add-ons (if configured) are applied to all items in that category on POS.</div>
         </div>
 
         <!-- Variants Section -->
@@ -2840,6 +2807,7 @@ function openMenuEditor(itemId, preset = {}) {
   const addVariantBtn = document.getElementById("mm_addVariant");
   const addonsRows = document.getElementById("mm_addonsRows");
   const addAddonBtn = document.getElementById("mm_addAddon");
+  const editCategoryAddonsBtn = document.getElementById("mm_editCategoryAddons");
   const nameField = document.getElementById("mm_name");
   const priceField = document.getElementById("mm_price");
   const categoryField = document.getElementById("mm_category");
@@ -2877,8 +2845,9 @@ function openMenuEditor(itemId, preset = {}) {
 
   addVariantBtn?.addEventListener("click", () => appendVariantRow());
 
-  function appendAddonRow(addon = { id: "", name: "", price: 0, recipe: [] }) {
+  function appendAddonRow(addon = { id: "", name: "", price: 0, recipe: [] }, options = {}) {
     if (!addonsRows) return;
+    const shouldFocus = !!options.focus;
     const addonRecipe = Array.isArray(addon.recipe) && addon.recipe.length ? addon.recipe[0] : {};
     const selectedInventoryId = String(addonRecipe.inventoryId || "").trim();
     const selectedUnit = normalizeUnit(addonRecipe.unit || "") || "";
@@ -2886,15 +2855,14 @@ function openMenuEditor(itemId, preset = {}) {
     const row = document.createElement("div");
     row.className = "mm-addon-row";
     row.style.display = "grid";
-    row.style.gridTemplateColumns = "1.3fr 0.9fr 1.3fr 0.8fr 0.9fr auto";
+    row.style.gridTemplateColumns = "1.6fr 0.9fr 0.8fr 0.9fr auto auto";
     row.style.gap = "8px";
     row.innerHTML = `
-      <input class="ls-input mm-addon-name" placeholder="Add-on name (e.g. Extra shot)" value="${String(addon.name || "").replaceAll('"', '&quot;')}" style="margin-bottom:0;" />
-      <input class="ls-input mm-addon-price" type="number" step="0.25" min="0" placeholder="Price" value="${Number(addon.price) || 0}" style="margin-bottom:0;" />
       <select class="ls-input mm-addon-inv" style="margin-bottom:0;">
-        <option value="" ${!selectedInventoryId ? "selected" : ""}>No stock mapping</option>
+        <option value="" ${!selectedInventoryId ? "selected" : ""}>Select add-on ingredient...</option>
         ${inventorySelectOptionsHtml}
       </select>
+      <input class="ls-input mm-addon-price" type="number" step="0.25" min="0" placeholder="Extra price" value="${Number(addon.price) || 0}" style="margin-bottom:0;" />
       <input class="ls-input mm-addon-qty" type="number" step="0.01" min="0" placeholder="Qty" value="${Number.isFinite(selectedQty) && selectedQty > 0 ? selectedQty : ''}" style="margin-bottom:0;" />
       <select class="ls-input mm-addon-unit" style="margin-bottom:0;">
         <option value="" ${!selectedUnit ? "selected" : ""}>Unit</option>
@@ -2921,29 +2889,68 @@ function openMenuEditor(itemId, preset = {}) {
         <option value="slice" ${selectedUnit === "slice" ? "selected" : ""}>slice</option>
         <option value="set" ${selectedUnit === "set" ? "selected" : ""}>set</option>
       </select>
+      <button type="button" class="mm-duplicate-addon" style="background:transparent;border:1px solid var(--border-color);padding:8px 10px;border-radius:10px;font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif;">Copy</button>
       <button type="button" class="mm-remove-addon" style="background:transparent;border:1px solid var(--border-color);padding:8px 10px;border-radius:10px;font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif;">Remove</button>
+      <div class="mm-addon-name-display" style="grid-column:1/-1;font-size:11px;color:var(--text-muted);margin-top:-2px;">Add-on name: ${escapeHtml(String(addon.name || "-") || "-")}</div>
     `;
 
     const invSelect = row.querySelector(".mm-addon-inv");
-    if (selectedInventoryId) {
-      invSelect.value = selectedInventoryId;
-    }
+    const unitEl = row.querySelector(".mm-addon-unit");
+    const qtyEl = row.querySelector(".mm-addon-qty");
+    const nameDisplay = row.querySelector(".mm-addon-name-display");
+
+    const updateAddonNameDisplay = () => {
+      if (!nameDisplay) return;
+      const selectedOption = invSelect?.options?.[invSelect.selectedIndex];
+      const selectedLabel = String(selectedOption?.textContent || "").trim();
+      const derivedName = selectedLabel.replace(/\s*\([^)]*\)\s*$/, "").trim();
+      nameDisplay.textContent = `Add-on name: ${derivedName || "-"}`;
+    };
 
     invSelect?.addEventListener("change", () => {
-      const unitEl = row.querySelector(".mm-addon-unit");
       const selectedOption = invSelect.options[invSelect.selectedIndex];
       const invUnit = normalizeUnit(selectedOption?.dataset?.unit || "") || "";
       if (unitEl && !unitEl.value && invUnit) {
         unitEl.value = invUnit;
       }
+      if (qtyEl && !qtyEl.value) {
+        qtyEl.value = "1";
+      }
+      updateAddonNameDisplay();
     });
 
+    if (selectedInventoryId) {
+      invSelect.value = selectedInventoryId;
+      updateAddonNameDisplay();
+    }
+
     addonsRows.appendChild(row);
+    if (shouldFocus) {
+      row.querySelector(".mm-addon-inv")?.focus();
+    }
   }
 
   if (addonsRows) {
     initialAddons.forEach((addon) => appendAddonRow(addon));
     addonsRows.addEventListener("click", (event) => {
+      const duplicateBtn = event.target.closest(".mm-duplicate-addon");
+      if (duplicateBtn) {
+        const row = duplicateBtn.closest(".mm-addon-row");
+        if (!row) return;
+        const clone = {
+          price: Number(row.querySelector(".mm-addon-price")?.value || 0),
+          recipe: [],
+        };
+        const invId = String(row.querySelector(".mm-addon-inv")?.value || "").trim();
+        const qty = Number(row.querySelector(".mm-addon-qty")?.value || 0);
+        const unit = String(row.querySelector(".mm-addon-unit")?.value || "").trim();
+        if (invId && Number.isFinite(qty) && qty > 0) {
+          clone.recipe = [{ inventoryId: invId, quantity: qty, unit }];
+        }
+        appendAddonRow(clone, { focus: true });
+        return;
+      }
+
       const removeBtn = event.target.closest(".mm-remove-addon");
       if (!removeBtn) return;
       const row = removeBtn.closest(".mm-addon-row");
@@ -2952,7 +2959,31 @@ function openMenuEditor(itemId, preset = {}) {
     });
   }
 
-  addAddonBtn?.addEventListener("click", () => appendAddonRow({ name: "", price: 0 }));
+  addAddonBtn?.addEventListener("click", () => appendAddonRow({ price: 0 }, { focus: true }));
+
+  const updateCategoryAddonButtonState = () => {
+    if (!editCategoryAddonsBtn) return;
+    const categoryValue = String(categoryField?.value || "").trim();
+    const category = getCategoryByToken(categoryValue);
+    editCategoryAddonsBtn.disabled = !category;
+    editCategoryAddonsBtn.style.opacity = category ? "1" : "0.55";
+    editCategoryAddonsBtn.title = category
+      ? `Edit shared add-ons for ${category.name}`
+      : "Select an existing category first";
+  };
+
+  editCategoryAddonsBtn?.addEventListener("click", async () => {
+    const categoryValue = String(categoryField?.value || "").trim();
+    const category = getCategoryByToken(categoryValue);
+    if (!category) {
+      await ModalUtils.warning("Select Category", "Choose an existing category first to edit shared add-ons.");
+      return;
+    }
+    await window._adminEditCategoryAddons(category.id);
+  });
+  categoryField?.addEventListener("change", updateCategoryAddonButtonState);
+  categoryField?.addEventListener("input", updateCategoryAddonButtonState);
+  updateCategoryAddonButtonState();
 
   const syncVariantVisibility = () => {
     if (!variantsSection || !hasVariantInput) return;
@@ -3137,12 +3168,13 @@ function openMenuEditor(itemId, preset = {}) {
     return valid;
   }
 
-  function appendRecipeRow(ingredient = { inventoryId: "", quantity: 0, unit: "" }) {
+  function appendRecipeRow(ingredient = { inventoryId: "", quantity: 0, unit: "" }, options = {}) {
     if (!recipeRows) return;
+    const shouldFocus = !!options.focus;
     const row = document.createElement("div");
     row.className = "mm-recipe-row";
     row.style.display = "grid";
-    row.style.gridTemplateColumns = "2fr 1fr 1.35fr auto";
+    row.style.gridTemplateColumns = "2fr 1fr 1.35fr auto auto";
     row.style.gap = "8px";
     const selectedUnit = normalizeUnit(ingredient.unit || "") || "";
     row.innerHTML = `
@@ -3155,7 +3187,8 @@ function openMenuEditor(itemId, preset = {}) {
         <option value="" disabled ${!selectedUnit ? "selected" : ""}>Unit</option>
         ${recipeUnitOptionsHtml}
       </select>
-      <button type="button" class="mm-remove-recipe" style="background:transparent;border:1px solid var(--border-color);padding:8px 10px;border-radius:10px;font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif;">Remove</button>   
+      <button type="button" class="mm-duplicate-recipe" style="background:transparent;border:1px solid var(--border-color);padding:8px 10px;border-radius:10px;font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif;">Copy</button>
+      <button type="button" class="mm-remove-recipe" style="background:transparent;border:1px solid var(--border-color);padding:8px 10px;border-radius:10px;font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif;">Remove</button>
       <div class="mm-recipe-conversion" style="grid-column:1/-1;font-size:11px;color:var(--text-muted);margin-top:-2px;"></div>
     `;
     
@@ -3171,8 +3204,12 @@ function openMenuEditor(itemId, preset = {}) {
     selectEl.addEventListener("change", () => {
       const selectedOption = selectEl.options[selectEl.selectedIndex];
       const invUnit = selectedOption?.dataset?.unit || "";
+      const qtyEl = row.querySelector(".mm-recipe-qty");
       if (!unitEl.value && invUnit) {
         unitEl.value = normalizeUnit(invUnit) || invUnit;
+      }
+      if (qtyEl && !qtyEl.value) {
+        qtyEl.value = "1";
       }
       updateRecipeRowConversion(row);
       calculateBasePrice();
@@ -3188,6 +3225,9 @@ function openMenuEditor(itemId, preset = {}) {
     });
     
     recipeRows.appendChild(row);
+    if (shouldFocus) {
+      row.querySelector(".mm-recipe-inv")?.focus();
+    }
     updateRecipeRowConversion(row);
     calculateBasePrice();
   }
@@ -3197,6 +3237,18 @@ function openMenuEditor(itemId, preset = {}) {
       item.recipe.forEach(ing => appendRecipeRow(ing));
     }
     recipeRows.addEventListener("click", (event) => {
+      const duplicateBtn = event.target.closest(".mm-duplicate-recipe");
+      if (duplicateBtn) {
+        const row = duplicateBtn.closest(".mm-recipe-row");
+        if (!row) return;
+        appendRecipeRow({
+          inventoryId: String(row.querySelector(".mm-recipe-inv")?.value || ""),
+          quantity: Number(row.querySelector(".mm-recipe-qty")?.value || 0),
+          unit: String(row.querySelector(".mm-recipe-unit")?.value || ""),
+        }, { focus: true });
+        return;
+      }
+
       const removeBtn = event.target.closest(".mm-remove-recipe");
       if (!removeBtn) return;
       const row = removeBtn.closest(".mm-recipe-row");
@@ -3207,7 +3259,7 @@ function openMenuEditor(itemId, preset = {}) {
     });
   }
 
-  addRecipeBtn?.addEventListener("click", () => appendRecipeRow());
+  addRecipeBtn?.addEventListener("click", () => appendRecipeRow({}, { focus: true }));
   calculateBasePrice();
   [nameField, priceField, categoryField].forEach((field) => {
     field?.addEventListener("input", () => validateMenuEditorForm(false));
@@ -3254,29 +3306,32 @@ function openMenuEditor(itemId, preset = {}) {
 
     const addons = Array.from(document.querySelectorAll("#mm_addonsRows .mm-addon-row"))
       .map((row, index) => {
-        const addonName = row.querySelector(".mm-addon-name")?.value?.trim() || "";
         const addonPrice = Number(row.querySelector(".mm-addon-price")?.value || 0);
         const addonInventoryId = String(row.querySelector(".mm-addon-inv")?.value || "").trim();
         const addonQty = Number(row.querySelector(".mm-addon-qty")?.value || 0);
         const addonUnitRaw = String(row.querySelector(".mm-addon-unit")?.value || "").trim();
         const addonInventory = state.inventoryItems.find((item) => item.id === addonInventoryId);
+        if (!addonInventoryId || !addonInventory) return null;
+
+        const derivedAddonName = String(addonInventory?.name || addonInventoryId).trim();
+        const resolvedQty = Number.isFinite(addonQty) && addonQty > 0 ? addonQty : 1;
         const addonUnit = normalizeUnit(addonUnitRaw || addonInventory?.unit || "") || "";
-        const addonRecipe = addonInventoryId && Number.isFinite(addonQty) && addonQty > 0
+        const addonRecipe = addonInventoryId
           ? [{
               inventoryId: addonInventoryId,
-              name: String(addonInventory?.name || addonName || addonInventoryId),
-              quantity: addonQty,
+              name: derivedAddonName,
+              quantity: resolvedQty,
               unit: addonUnit,
             }]
           : [];
         return {
           id: `addon-${String(id || name || "menu-item").replace(/\s+/g, "-").toLowerCase()}-${index + 1}`,
-          name: addonName,
+          name: derivedAddonName,
           price: Number.isFinite(addonPrice) ? Math.max(0, addonPrice) : 0,
           recipe: addonRecipe,
         };
       })
-      .filter((addon) => addon.name);
+      .filter(Boolean);
 
     let recipe = Array.from(document.querySelectorAll("#mm_recipeRows .mm-recipe-row"))
         .map((row) => {
@@ -3321,7 +3376,7 @@ function openMenuEditor(itemId, preset = {}) {
       id,
       name,
       price,
-      category,
+      category: resolveCanonicalMenuCategory(category, state.categories, state.menuItems),
       note: note || "",
       hasTemp,
       hasVariant,
@@ -3370,21 +3425,31 @@ async function renderAdminCategories() {
   if (!container) return;
   
   if (state.categories.length === 0) {
-    container.innerHTML = '<div style="color:var(--gray);text-align:center;padding:40px;">No categories found.</div>';
+    container.innerHTML = '<div class="admin-categories-empty">No categories found.</div>';
     return;
   }
 
-  let html = '<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px;">';
+  let html = '<div class="admin-categories-grid">';
 
-  state.categories.forEach(cat => {
-    html += '<div class="card" style="display:flex; align-items:center; padding:16px; gap:16px; border:1px solid var(--border-color); box-shadow:0 2px 8px rgba(0,0,0,0.02);">' +
-            '<div style="font-size:32px; background:rgba(0,0,0,0.04); width:56px; height:56px; display:flex; align-items:center; justify-content:center; border-radius:12px;">' + escapeHtml(cat.icon || "☕") + '</div>' +
-            '<div style="flex:1; overflow:hidden;">' +
-              '<div style="font-weight:600; color:var(--text-primary); font-size:16px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">' + escapeHtml(cat.name) + '</div>' +
+  const sortedCategories = [...state.categories].sort((a, b) =>
+    String(a?.name || "").localeCompare(String(b?.name || ""))
+  );
+
+  sortedCategories.forEach(cat => {
+    const categoryAddons = normalizeAddonCollection(cat?.addons || [], `addon-${String(cat?.id || "cat")}`);
+    const addonSummaryText = categoryAddons.length
+      ? `${categoryAddons.length} add-on option${categoryAddons.length === 1 ? "" : "s"}`
+      : "No add-ons configured";
+    html += '<div class="card admin-category-card">' +
+            '<div class="admin-category-icon">' + escapeHtml(cat.icon || "☕") + '</div>' +
+            '<div class="admin-category-meta">' +
+              '<div class="admin-category-name">' + escapeHtml(cat.name) + '</div>' +
+              '<div class="admin-category-addons">' + escapeHtml(addonSummaryText) + '</div>' +
             '</div>' +
-            '<div style="display:flex; gap:8px;">' +
-              '<button onclick="window._adminEditCategory(\'' + String(cat.id).replace(/'/g, "\\\'") + '\')" style="background:var(--primary-light); color:white; border:none; cursor:pointer; width:32px; height:32px; border-radius:8px; display:flex; align-items:center; justify-content:center; transition:background 0.2s;"><i class="ri-pencil-line"></i></button>' +
-              '<button onclick="window._adminDeleteCategory(\'' + String(cat.id).replace(/'/g, "\\\'") + '\')" style="background:rgba(239,68,68,0.1); color:#EF4444; border:none; cursor:pointer; width:32px; height:32px; border-radius:8px; display:flex; align-items:center; justify-content:center; transition:background 0.2s;"><i class="ri-delete-bin-line"></i></button>' +
+            '<div class="admin-category-actions">' +
+              '<button class="admin-category-action addons" onclick="window._adminEditCategoryAddons(\'' + String(cat.id).replace(/'/g, "\\\'") + '\')" title="Edit add-ons"><i class="ri-list-settings-line"></i></button>' +
+              '<button class="admin-category-action edit" onclick="window._adminEditCategory(\'' + String(cat.id).replace(/'/g, "\\\'") + '\')" title="Edit category"><i class="ri-pencil-line"></i></button>' +
+              '<button class="admin-category-action delete" onclick="window._adminDeleteCategory(\'' + String(cat.id).replace(/'/g, "\\\'") + '\')" title="Delete category"><i class="ri-delete-bin-line"></i></button>' +
             '</div>' +
           '</div>';
   });
@@ -3411,14 +3476,14 @@ window._adminEditCategory = function(id) {
   const title = cat ? "Edit Category" : "Add Category";
   const currentIcon = getCategoryIconForName(cat ? cat.name : "") || (cat ? escapeHtml(cat.icon || "") : "📦");
 
-  const content = `<div class="ls-form-grid" style="display:block;">
+  const content = `<div class="ls-form-grid cat-modal-form" style="display:block;">
     <div class="ls-label">Category Name*</div>
     <input type="text" class="ls-input" id="cat_name" value="${cat ? escapeHtml(cat.name || "") : ""}" placeholder="Coffee, Sandwiches..." autocomplete="off" oninput="window.__bbUpdateCategoryIconPreview && window.__bbUpdateCategoryIconPreview(this.value)">
 
-    <div class="ls-label" style="margin-top:12px;">Icon</div>
-    <div class="ls-input" style="display:flex; align-items:center; gap:10px; cursor:not-allowed; background:rgba(0,0,0,0.03);">
-      <span id="cat_icon_preview" style="font-size:20px; line-height:1;">${currentIcon}</span>
-      <span style="color:var(--text-muted); font-size:13px;">Fixed icon</span>
+    <div class="ls-label cat-modal-icon-label">Icon</div>
+    <div class="ls-input cat-modal-icon-preview" aria-hidden="true">
+      <span id="cat_icon_preview" class="cat-modal-icon-emoji">${currentIcon}</span>
+      <span class="cat-modal-icon-text">Fixed icon</span>
     </div>
     <input type="hidden" id="cat_icon" value="${currentIcon}">
   </div>`;
@@ -3450,6 +3515,16 @@ window._adminEditCategory = function(id) {
       return;
     }
 
+    const normalizedName = normalizeCategoryToken(nameValue);
+    const duplicate = state.categories.find((entry) => {
+      if (!entry?.id || (cat && entry.id === cat.id)) return false;
+      return normalizeCategoryToken(entry.name) === normalizedName;
+    });
+    if (duplicate) {
+      await ModalUtils.warning("Duplicate Category", "A category with the same name already exists.");
+      return;
+    }
+
     const genId = typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `cat-${Date.now()}`;
     const origId = cat ? cat.id : genId;
     const payload = {
@@ -3457,6 +3532,7 @@ window._adminEditCategory = function(id) {
       name: nameValue,
       icon: iconValue,
       color: cat ? cat.color : "#373b40",
+      addons: normalizeAddonCollection(cat?.addons || [], `addon-${origId}`),
     };
 
     try {
@@ -3494,6 +3570,235 @@ window._adminEditCategory = function(id) {
       ModalUtils.error("Save Failed", "Could not save category. Try again.");
     }
   });
+};
+
+window._adminEditCategoryAddons = async function(id) {
+  const cat = state.categories.find((entry) => entry.id === id);
+  if (!cat) return;
+
+  if (!Array.isArray(state.inventoryItems) || state.inventoryItems.length === 0) {
+    try {
+      state.inventoryItems = await getInventoryItems();
+    } catch (inventoryError) {
+      console.warn("[Category Add-ons] Inventory preload failed.", inventoryError);
+      state.inventoryItems = Array.isArray(state.inventoryItems) ? state.inventoryItems : [];
+    }
+  }
+
+  const initialAddons = normalizeAddonCollection(cat?.addons || [], `addon-${cat.id || "category"}`);
+  const unitOptions = [
+    "g", "kg", "oz", "lb", "ml", "L", "fl oz", "gal", "pcs", "pack", "box", "tray",
+    "bottle", "can", "jar", "sachet", "shot", "cup", "serving", "portion", "slice", "set",
+  ];
+
+  const createInventoryOptionsHtml = (selectedInventoryId = "") => {
+    const selectedId = String(selectedInventoryId || "").trim();
+    const options = (Array.isArray(state.inventoryItems) ? state.inventoryItems : [])
+      .map((inv) => {
+        const invId = String(inv?.id || "");
+        const invName = String(inv?.name || invId || "Inventory item");
+        const invUnit = normalizeUnit(inv?.unit || "") || String(inv?.unit || "").trim();
+        const selected = selectedId && selectedId === invId ? " selected" : "";
+        return `<option value="${escapeHtml(invId)}" data-unit="${escapeHtml(invUnit)}"${selected}>${escapeHtml(invName)} (${escapeHtml(invUnit || "unit")})</option>`;
+      })
+      .join("");
+
+    return `<option value="" ${!selectedId ? "selected" : ""}>Select add-on ingredient...</option>${options}`;
+  };
+
+  const createUnitOptionsHtml = (selectedUnit = "") => {
+    const resolvedUnit = normalizeUnit(selectedUnit || "") || String(selectedUnit || "").trim();
+    const options = unitOptions
+      .map((unit) => `<option value="${escapeHtml(unit)}" ${resolvedUnit === unit ? "selected" : ""}>${escapeHtml(unit)}</option>`)
+      .join("");
+    return `<option value="" ${!resolvedUnit ? "selected" : ""}>Unit</option>${options}`;
+  };
+
+  const createAddonRowHtml = (addon = { name: "", price: 0, recipe: [] }) => {
+    const recipe = Array.isArray(addon?.recipe) && addon.recipe.length ? addon.recipe[0] : {};
+    const selectedInventoryId = String(recipe?.inventoryId || "").trim();
+    const selectedQty = Number(recipe?.quantity || 0);
+    const selectedUnit = normalizeUnit(recipe?.unit || "") || "";
+    const addonName = String(addon?.name || recipe?.name || "").trim();
+    const addonPrice = Math.max(0, Number(addon?.price || 0));
+
+    return `
+      <div class="cat-addon-row" style="display:grid;grid-template-columns:1.6fr 0.9fr 0.8fr 0.9fr auto auto;gap:8px;margin-bottom:8px;">
+        <select class="ls-input cat-addon-inv" style="margin-bottom:0;" onchange="window.__bbCategoryAddonEditorSyncRow && window.__bbCategoryAddonEditorSyncRow(this)">
+          ${createInventoryOptionsHtml(selectedInventoryId)}
+        </select>
+        <input class="ls-input cat-addon-price" type="number" step="0.25" min="0" placeholder="Extra price" value="${Number.isFinite(addonPrice) ? addonPrice : 0}" style="margin-bottom:0;" />
+        <input class="ls-input cat-addon-qty" type="number" step="0.01" min="0" placeholder="Qty" value="${Number.isFinite(selectedQty) && selectedQty > 0 ? selectedQty : ""}" style="margin-bottom:0;" />
+        <select class="ls-input cat-addon-unit" style="margin-bottom:0;">
+          ${createUnitOptionsHtml(selectedUnit)}
+        </select>
+        <button type="button" onclick="window.__bbCategoryAddonEditorCloneRow && window.__bbCategoryAddonEditorCloneRow(this)" style="background:transparent;border:1px solid var(--border-color);padding:8px 10px;border-radius:10px;font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif;">Copy</button>
+        <button type="button" onclick="window.__bbCategoryAddonEditorRemoveRow && window.__bbCategoryAddonEditorRemoveRow(this)" style="background:transparent;border:1px solid var(--border-color);padding:8px 10px;border-radius:10px;font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif;">Remove</button>
+        <div class="cat-addon-name-display" style="grid-column:1/-1;font-size:11px;color:var(--text-muted);margin-top:-2px;">Add-on name: ${escapeHtml(addonName || "-")}</div>
+      </div>
+    `;
+  };
+
+  const initialRowsHtml = initialAddons.length
+    ? initialAddons.map((addon) => createAddonRowHtml(addon)).join("")
+    : createAddonRowHtml({ price: 0, recipe: [] });
+
+  let savedAddons = initialAddons;
+
+  const attachEditorHelpers = () => {
+    window.__bbCategoryAddonEditorSyncRow = (selectEl) => {
+      const row = selectEl?.closest?.(".cat-addon-row");
+      if (!row) return;
+      const selectedOption = selectEl.options?.[selectEl.selectedIndex];
+      const unitEl = row.querySelector(".cat-addon-unit");
+      const qtyEl = row.querySelector(".cat-addon-qty");
+      const nameEl = row.querySelector(".cat-addon-name-display");
+      const selectedLabel = String(selectedOption?.textContent || "").trim();
+      const derivedName = selectedLabel.replace(/\s*\([^)]*\)\s*$/, "").trim();
+      const unit = normalizeUnit(selectedOption?.dataset?.unit || "") || "";
+
+      if (unitEl && !unitEl.value && unit) {
+        unitEl.value = unit;
+      }
+      if (qtyEl && !qtyEl.value) {
+        qtyEl.value = "1";
+      }
+      if (nameEl) {
+        nameEl.textContent = `Add-on name: ${derivedName || "-"}`;
+      }
+    };
+
+    window.__bbCategoryAddonEditorAddRow = () => {
+      const rows = document.getElementById("catAddonRows");
+      if (!rows) return;
+      rows.insertAdjacentHTML("beforeend", createAddonRowHtml({ price: 0, recipe: [] }));
+      rows.querySelector(".cat-addon-row:last-child .cat-addon-inv")?.focus();
+    };
+
+    window.__bbCategoryAddonEditorCloneRow = (buttonEl) => {
+      const row = buttonEl?.closest?.(".cat-addon-row");
+      const rows = document.getElementById("catAddonRows");
+      if (!row || !rows) return;
+      const cloneAddon = {
+        price: Number(row.querySelector(".cat-addon-price")?.value || 0),
+        recipe: [],
+      };
+      const addonInventoryId = String(row.querySelector(".cat-addon-inv")?.value || "").trim();
+      const addonQty = Number(row.querySelector(".cat-addon-qty")?.value || 0);
+      const addonUnit = String(row.querySelector(".cat-addon-unit")?.value || "").trim();
+      const selectedOption = row.querySelector(".cat-addon-inv")?.options?.[row.querySelector(".cat-addon-inv")?.selectedIndex || 0];
+      const addonName = String(selectedOption?.textContent || "").replace(/\s*\([^)]*\)\s*$/, "").trim();
+      if (addonInventoryId) {
+        cloneAddon.recipe = [{
+          inventoryId: addonInventoryId,
+          name: addonName,
+          quantity: Number.isFinite(addonQty) && addonQty > 0 ? addonQty : 1,
+          unit: normalizeUnit(addonUnit || selectedOption?.dataset?.unit || "") || "",
+        }];
+      }
+      rows.insertAdjacentHTML("beforeend", createAddonRowHtml(cloneAddon));
+    };
+
+    window.__bbCategoryAddonEditorRemoveRow = (buttonEl) => {
+      const row = buttonEl?.closest?.(".cat-addon-row");
+      if (!row) return;
+      const rows = document.getElementById("catAddonRows");
+      row.remove();
+      if (rows && rows.children.length === 0) {
+        rows.insertAdjacentHTML("beforeend", createAddonRowHtml({ price: 0, recipe: [] }));
+      }
+    };
+  };
+
+  const cleanupEditorHelpers = () => {
+    delete window.__bbCategoryAddonEditorSyncRow;
+    delete window.__bbCategoryAddonEditorAddRow;
+    delete window.__bbCategoryAddonEditorCloneRow;
+    delete window.__bbCategoryAddonEditorRemoveRow;
+  };
+
+  const markAddonModalLayout = () => {
+    const modalEl = document.getElementById("modal-custom");
+    if (!modalEl) return;
+    modalEl.classList.add("modal-addon-editor");
+    modalEl.querySelector(".modal-custom-body")?.classList.add("modal-addon-editor-body");
+  };
+
+  window.setTimeout(markAddonModalLayout, 0);
+  window.setTimeout(markAddonModalLayout, 60);
+
+  window.setTimeout(attachEditorHelpers, 0);
+
+  try {
+    const action = await ModalUtils.show({
+      title: `${cat.name} - Category Add-ons`,
+      message: `
+        <div class="cat-addon-modal-shell">
+          <div class="cat-addon-modal-note">These add-ons will be shared by all menu items under <strong>${escapeHtml(cat.name)}</strong>.</div>
+          <div id="catAddonRows" class="cat-addon-modal-rows">${initialRowsHtml}</div>
+          <div class="cat-addon-modal-actions">
+            <button type="button" class="cat-addon-add-btn" onclick="window.__bbCategoryAddonEditorAddRow && window.__bbCategoryAddonEditorAddRow()">+ Add Add-on</button>
+            <span class="cat-addon-modal-tip">Tip: Select an ingredient to auto-fill add-on name and unit.</span>
+          </div>
+        </div>
+      `,
+      buttons: [
+        { text: "Cancel", type: "secondary" },
+        {
+          text: "Save",
+          type: "primary",
+          callback: () => {
+            savedAddons = Array.from(document.querySelectorAll("#catAddonRows .cat-addon-row"))
+              .map((row, index) => {
+                const addonPrice = Number(row.querySelector(".cat-addon-price")?.value || 0);
+                const addonInventoryId = String(row.querySelector(".cat-addon-inv")?.value || "").trim();
+                const addonQty = Number(row.querySelector(".cat-addon-qty")?.value || 0);
+                const addonUnitRaw = String(row.querySelector(".cat-addon-unit")?.value || "").trim();
+                const selectedOption = row.querySelector(".cat-addon-inv")?.options?.[row.querySelector(".cat-addon-inv")?.selectedIndex || 0];
+                const addonName = String(selectedOption?.textContent || "").replace(/\s*\([^)]*\)\s*$/, "").trim();
+                if (!addonInventoryId) return null;
+
+                return {
+                  id: `addon-${String(cat.id || cat.name || "category").replace(/\s+/g, "-").toLowerCase()}-${index + 1}`,
+                  name: addonName,
+                  price: Number.isFinite(addonPrice) ? Math.max(0, addonPrice) : 0,
+                  recipe: [{
+                    inventoryId: addonInventoryId,
+                    name: addonName,
+                    quantity: Number.isFinite(addonQty) && addonQty > 0 ? addonQty : 1,
+                    unit: normalizeUnit(addonUnitRaw || selectedOption?.dataset?.unit || "") || "",
+                  }],
+                };
+              })
+              .filter(Boolean);
+          },
+        },
+      ],
+    });
+
+    if (action !== 1) return;
+
+    const payload = {
+      id: cat.id,
+      name: String(cat.name || "").trim(),
+      icon: getCategoryIconForName(cat.name || ""),
+      color: String(cat.color || "#373b40").trim() || "#373b40",
+      addons: normalizeAddonCollection(savedAddons, `addon-${cat.id || "category"}`),
+    };
+
+    await saveCategory(payload);
+    state.categories = await getCategories();
+    renderAdminCategories();
+    await ModalUtils.success("Category Add-ons Saved", `${cat.name} add-ons updated successfully.`);
+  } catch (error) {
+    console.error("[Category Add-ons] Save failed", error);
+    await ModalUtils.error("Save Failed", error?.message || "Unable to save category add-ons.");
+  } finally {
+    const modalEl = document.getElementById("modal-custom");
+    modalEl?.classList?.remove("modal-addon-editor");
+    modalEl?.querySelector(".modal-custom-body")?.classList?.remove("modal-addon-editor-body");
+    cleanupEditorHelpers();
+  }
 };
 
 window._adminDeleteCategory = async function(id) {

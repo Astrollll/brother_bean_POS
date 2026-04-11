@@ -447,10 +447,11 @@ window.closeMenuItemModal = function() {
 };
 
 function getEligibleAddons(product) {
-  if (Array.isArray(product?.addons) && product.addons.length > 0) {
-    const normalizedAddons = product.addons
+  const normalizeAddons = (addons, idPrefix) => {
+    if (!Array.isArray(addons)) return [];
+    return addons
       .map((addon, index) => ({
-        id: String(addon?.id || `addon-${product.id || "item"}-${index}`),
+        id: String(addon?.id || `${idPrefix}-${index + 1}`),
         name: String(addon?.name || "").trim(),
         price: Number(addon?.price || 0),
         recipe: Array.isArray(addon?.recipe)
@@ -465,7 +466,25 @@ function getEligibleAddons(product) {
           : [],
       }))
       .filter((addon) => addon.name);
+  };
 
+  const normalizedProductCategory = normalizeCategoryKey(product?.category || "");
+  const matchedCategory = (Array.isArray(globalCategories) ? globalCategories : []).find((category) => {
+    const idKey = normalizeCategoryKey(category?.id || "");
+    const nameKey = normalizeCategoryKey(category?.name || "");
+    return normalizedProductCategory && (normalizedProductCategory === idKey || normalizedProductCategory === nameKey);
+  });
+
+  const categoryHasAddonConfig = !!(matchedCategory && Array.isArray(matchedCategory.addons));
+  const categoryAddons = categoryHasAddonConfig
+    ? normalizeAddons(matchedCategory?.addons || [], `addon-cat-${matchedCategory?.id || matchedCategory?.name || "category"}`)
+    : [];
+  if (categoryHasAddonConfig) {
+    return { label: "Add-ons", addons: categoryAddons };
+  }
+
+  if (Array.isArray(product?.addons) && product.addons.length > 0) {
+    const normalizedAddons = normalizeAddons(product.addons, `addon-${product.id || "item"}`);
     return { label: "Add-ons", addons: normalizedAddons };
   }
 
