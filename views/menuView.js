@@ -10,6 +10,17 @@ export function renderAdminMenu(menuItems, soldMap = {}, inventoryItems = [], gl
   const invMap = {};
   for(let i of inventoryItems) invMap[i.id] = i;
 
+  const normalizeAddons = (addons, idPrefix = "addon") => {
+    if (!Array.isArray(addons)) return [];
+    return addons
+      .map((addon, index) => ({
+        id: String(addon?.id || `${idPrefix}-${index + 1}`),
+        name: String(addon?.name || "").trim(),
+        price: Number(addon?.price || 0),
+      }))
+      .filter((addon) => addon.name);
+  };
+
   // Build a Category Map for fast lookups
   const catMap = {};
   for (const c of globalCategories) {
@@ -32,13 +43,17 @@ export function renderAdminMenu(menuItems, soldMap = {}, inventoryItems = [], gl
     const titleIconHtml = '<span style="margin-right: 8px;">' + catData.icon + '</span>';
     const cardIconHtml = '<span style="font-size: 24px; display: block; margin-bottom: 8px;">' + catData.icon + '</span>';
     
-    html += '<div class="card" style="margin-bottom:14px;">' +
+    html += '<div class="card admin-menu-category-shell">' +
       '<div class="card-head">' +
         '<span class="card-title">' + titleIconHtml + ' ' + catData.name + '</span>' +
       '</div>' +
       '<div class="menu-grid">' +
         items.map(item => {
-          const sold = soldMap[item.name] || 0;
+          const itemId = String(item?.id || "").trim();
+          const soldById = itemId ? Number(soldMap[`id:${itemId}`] || 0) : 0;
+          const soldByName = Number(soldMap[`name:${normalizeSoldKey(item?.name)}`] || 0);
+          const soldLegacy = Number(soldMap[item.name] || 0);
+          const sold = soldById || soldByName || soldLegacy || 0;
           let baseCost = 0;
           if(Array.isArray(item.recipe)){
              item.recipe.forEach(ing => {
@@ -53,47 +68,49 @@ export function renderAdminMenu(menuItems, soldMap = {}, inventoryItems = [], gl
                baseCost += Number(inv.price || 0) * qtyInInvUnit;
              });
           }
-          const addons = Array.isArray(item.addons)
-            ? item.addons
-                .map((addon) => ({
-                  name: String(addon?.name || "").trim(),
-                  price: Number(addon?.price || 0),
-                }))
-                .filter((addon) => addon.name)
-            : [];
+          const normalizedItemCategory = normalizeCategoryKey(item?.category || "");
+          const matchedCategory = (Array.isArray(globalCategories) ? globalCategories : []).find((category) => {
+            const idKey = normalizeCategoryKey(category?.id || "");
+            const nameKey = normalizeCategoryKey(category?.name || "");
+            return normalizedItemCategory && (normalizedItemCategory === idKey || normalizedItemCategory === nameKey);
+          });
+          const categoryHasAddonConfig = !!(matchedCategory && Array.isArray(matchedCategory.addons));
+          const addons = categoryHasAddonConfig
+            ? normalizeAddons(matchedCategory?.addons || [], `addon-cat-${matchedCategory?.id || matchedCategory?.name || "category"}`)
+            : normalizeAddons(item.addons || [], `addon-item-${item?.id || "item"}`);
           const addonPreview = addons.slice(0, 2).map((addon) => `${addon.name} (+₱${addon.price.toFixed(2)})`).join(', ');
           const addonSummary = addons.length > 2 ? `${addonPreview}, ...` : addonPreview;
           const minAddonPrice = addons.length ? Math.min(...addons.map((addon) => addon.price)) : 0;
-          return '<div class="menu-card" style="display:flex;flex-direction:column;">' +
+          return '<div class="menu-card menu-card-admin">' +
             '<div class="menu-icon">' + cardIconHtml + '</div>' +
             '<div class="menu-name" style="flex:1;">' + (item.name || '') + '</div>' +
             (addons.length
-              ? '<div style="font-size:11px;color:var(--text-muted);margin-bottom:8px;min-height:30px;">Add-ons: ' + addonSummary + '</div>'
-              : '<div style="font-size:11px;color:var(--text-muted);margin-bottom:8px;min-height:30px;">No add-ons</div>') +
-            '<div style="background:rgba(0,0,0,0.02);border-radius:8px;padding:8px;margin-bottom:10px;">' +
-              '<div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text-muted);margin-bottom:4px;">' +
+              ? '<div class="menu-addon-summary">Add-ons: ' + addonSummary + (categoryHasAddonConfig ? ' (category)' : '') + '</div>'
+              : '<div class="menu-addon-summary muted">No add-ons</div>') +
+            '<div class="menu-pricing-stack">' +
+              '<div class="menu-pricing-row">' +
                  '<span>Base Price</span>' +
                  '<span>₱' + baseCost.toFixed(2) + '</span>' +
               '</div>' +
               (addons.length
-                ? '<div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text-muted);margin-bottom:4px;">' +
+                ? '<div class="menu-pricing-row">' +
                     '<span>Add-ons start at</span>' +
                     '<span>+₱' + minAddonPrice.toFixed(2) + '</span>' +
                   '</div>'
                 : '') +
-              '<div style="display:flex;justify-content:space-between;font-size:12px;font-weight:700;">' +
-                 '<span style="color:var(--text-primary);">Retail Price</span>' +
-                 '<span style="color:var(--primary);">₱' + Number(item.price||0).toFixed(2) + '</span>' +
+              '<div class="menu-pricing-row total">' +
+                 '<span>Retail Price</span>' +
+                 '<span>₱' + Number(item.price||0).toFixed(2) + '</span>' +
               '</div>' +
             '</div>' +
-            '<div class="menu-sales" style="margin-bottom:8px;">' + (sold > 0 ? sold + ' sold today' : 'none sold today') + '</div>' +
-            '<div style="display:flex;gap:8px;justify-content:center;margin-top:auto;">' +
+            '<div class="menu-sales menu-sales-admin">' + (sold > 0 ? sold + ' sold today' : 'none sold today') + '</div>' +
+            '<div class="menu-card-actions">' +
               '<button onclick="window._adminEditMenuItem && window._adminEditMenuItem(\'' + String(item.id).replace(/'/g, '\\\'') + '\')" ' +
-                'style="background:transparent;border:1px solid var(--border-color);padding:6px 10px;border-radius:10px;font-size:12px;cursor:pointer;flex:1;transition:all 0.2s;">' +
+                'class="menu-card-action edit">' +
                 'Edit' +
               '</button>' +
               '<button onclick="window._adminDeleteMenuItem && window._adminDeleteMenuItem(\'' + String(item.id).replace(/'/g, '\\\'') + '\')" ' +
-                'style="background:rgba(239,68,68,0.12);border:1px solid rgba(239,68,68,0.3);color:#991B1B;padding:6px 10px;border-radius:10px;font-size:12px;cursor:pointer;transition:all 0.2s;">' +
+                'class="menu-card-action delete">' +
                 'Delete' +
               '</button>' +
             '</div>' +
@@ -113,6 +130,13 @@ function normalizeCategoryKey(value) {
     .toLowerCase()
     .replace(/[_\s]+/g, " ")
     .replace(/\s*[-–—]\s*/g, "-")
+    .replace(/\s+/g, " ");
+}
+
+function normalizeSoldKey(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
     .replace(/\s+/g, " ");
 }
 

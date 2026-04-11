@@ -43,6 +43,7 @@ const state = {
   page: "dashboard",
   categories: [],
   menuItems: [],
+  soldMap: {},
   ordersToday: [],
   allOrders: [],
   filteredOrders: [],
@@ -79,6 +80,32 @@ const accountFilters = {
 function showLogin() {
   window.__bbAuthSettled = true;
   navigateTo("login", { replace: true });
+}
+
+function normalizeSoldKey(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+}
+
+function buildSoldMapFromOrders(orders = []) {
+  const soldMap = {};
+  (Array.isArray(orders) ? orders : []).forEach((order) => {
+    (Array.isArray(order?.items) ? order.items : []).forEach((item) => {
+      const qty = Number(item?.quantity || 1) || 1;
+      const menuItemId = String(item?.menuItemId || "").trim();
+      const nameKey = normalizeSoldKey(item?.name);
+
+      if (menuItemId) {
+        soldMap[`id:${menuItemId}`] = (soldMap[`id:${menuItemId}`] || 0) + qty;
+      }
+      if (nameKey) {
+        soldMap[`name:${nameKey}`] = (soldMap[`name:${nameKey}`] || 0) + qty;
+      }
+    });
+  });
+  return soldMap;
 }
 
 function showApp() {
@@ -252,6 +279,46 @@ function resolveCanonicalMenuCategory(categoryName, categories = [], menuItems =
   return String(categoryName || "").trim();
 }
 
+function normalizeAddonCollection(addons, idPrefix = "addon") {
+  if (!Array.isArray(addons)) return [];
+
+  return addons
+    .map((addon, index) => {
+      const recipe = Array.isArray(addon?.recipe)
+        ? addon.recipe
+            .map((ingredient) => ({
+              inventoryId: String(ingredient?.inventoryId || "").trim(),
+              name: String(ingredient?.name || "").trim(),
+              quantity: Number(ingredient?.quantity || 0),
+              unit: normalizeUnit(ingredient?.unit || "") || String(ingredient?.unit || "").trim(),
+            }))
+            .filter((ingredient) => ingredient.inventoryId && ingredient.quantity > 0)
+        : [];
+
+      const name = String(addon?.name || recipe[0]?.name || "").trim();
+      if (!name) return null;
+
+      return {
+        id: String(addon?.id || `${idPrefix}-${index + 1}`),
+        name,
+        price: Math.max(0, Number(addon?.price || 0)),
+        recipe,
+      };
+    })
+    .filter(Boolean);
+}
+
+function getCategoryByToken(categoryValue) {
+  const normalized = normalizeCategoryToken(categoryValue);
+  if (!normalized) return null;
+
+  return (Array.isArray(state.categories) ? state.categories : []).find((entry) => {
+    const idKey = normalizeCategoryToken(entry?.id);
+    const nameKey = normalizeCategoryToken(entry?.name);
+    return normalized === idKey || normalized === nameKey;
+  }) || null;
+}
+
 async function backfillStaffAccountLinks(staff, users) {
   const staffList = Array.isArray(staff) ? staff : [];
   const userList = Array.isArray(users) ? users : [];
@@ -351,11 +418,14 @@ async function loadDashboard() {
   const totalOrders = ordersToday.length;
 
   // Best seller
-  const soldMap = {};
-  ordersToday.forEach(o => (o.items || []).forEach(i => {
-    soldMap[i.name] = (soldMap[i.name] || 0) + (i.quantity || 1);
+  state.soldMap = buildSoldMapFromOrders(ordersToday);
+  const bestByName = {};
+  ordersToday.forEach((o) => (o.items || []).forEach((i) => {
+    const label = String(i?.name || "").trim();
+    if (!label) return;
+    bestByName[label] = (bestByName[label] || 0) + (Number(i?.quantity || 1) || 1);
   }));
-  const best = Object.entries(soldMap).sort((a, b) => b[1] - a[1])[0];
+  const best = Object.entries(bestByName).sort((a, b) => b[1] - a[1])[0];
 
   // Staff on duty should be time-aware, not just checkbox-based.
   const { onDuty } = getOnDutyNowFromSchedule(staff, schedule, new Date());
@@ -426,32 +496,29 @@ async function loadMenuPage() {
   }
 
   // sold map for today
-  const soldMap = {};
-  ordersToday.forEach(o => (o.items || []).forEach(i => {
-    soldMap[i.name] = (soldMap[i.name] || 0) + (i.quantity || 1);
-  }));
+  state.soldMap = buildSoldMapFromOrders(ordersToday);
 
   const container = document.getElementById("menuContent");
   if (!container) return;
 
   container.innerHTML = `
-    <div class="card" style="margin-bottom:14px;">
-      <div class="card-head" style="align-items:flex-start;gap:12px;">
+    <div class="card admin-menu-shell">
+      <div class="card-head admin-menu-shell-head">
         <div>
           <span class="card-title">Menu management</span>
-          <div style="font-size:12px;color:var(--text-muted);margin-top:4px;">Use Quick Add to prefill category and speed up item creation.</div>
+          <div class="admin-menu-shell-sub">Use Quick Add to prefill category and speed up item creation.</div>
         </div>
-        <div style="margin-left:auto;display:flex;gap:10px;flex-wrap:wrap;">
+        <div class="admin-menu-shell-actions">
           <button id="btnAddMenuItem"
-            style="background:var(--brown,#6B4423);color:white;border:none;padding:8px 14px;border-radius:12px;font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif;">
+            class="admin-menu-shell-btn primary">
             + Add item
           </button>
           <button id="btnClearMenu"
-            style="background:rgba(239,68,68,0.12);color:#991B1B;border:1px solid rgba(239,68,68,0.3);padding:8px 14px;border-radius:12px;font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif;">
+            class="admin-menu-shell-btn danger">
             Clear all
           </button>
           <button id="btnRefreshMenu"
-            style="background:transparent;border:1px solid var(--border-color);padding:8px 14px;border-radius:12px;font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif;">
+            class="admin-menu-shell-btn ghost">
             Refresh
           </button>
         </div>
@@ -2701,10 +2768,13 @@ function openMenuEditor(itemId, preset = {}) {
         <div id="mm_addonsSection" style="grid-column:1/-1;border-top:1px solid var(--border-color);padding-top:12px;margin-top:4px;">
           <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px;">
             <div class="ls-label" style="margin:0;">Add-ons (Optional)</div>
-            <button type="button" id="mm_addAddon" style="background:transparent;border:1px solid var(--border-color);padding:6px 10px;border-radius:10px;font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif;">+ Add Add-on</button>
+            <div style="display:flex;gap:8px;align-items:center;">
+              <button type="button" id="mm_editCategoryAddons" style="background:rgba(16,185,129,0.12);border:1px solid rgba(16,185,129,0.3);color:#047857;padding:6px 10px;border-radius:10px;font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif;">Edit category add-ons</button>
+              <button type="button" id="mm_addAddon" style="background:transparent;border:1px solid var(--border-color);padding:6px 10px;border-radius:10px;font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif;">+ Add Add-on</button>
+            </div>
           </div>
           <div id="mm_addonsRows" style="display:grid;gap:8px;"></div>
-          <div style="font-size:11px;color:var(--text-muted);margin-top:6px;">Each add-on can have extra price and optional inventory usage for stock deduction.</div>
+          <div style="font-size:11px;color:var(--text-muted);margin-top:6px;">Tip: Category add-ons (if configured) are applied to all items in that category on POS.</div>
         </div>
 
         <!-- Variants Section -->
@@ -2737,6 +2807,7 @@ function openMenuEditor(itemId, preset = {}) {
   const addVariantBtn = document.getElementById("mm_addVariant");
   const addonsRows = document.getElementById("mm_addonsRows");
   const addAddonBtn = document.getElementById("mm_addAddon");
+  const editCategoryAddonsBtn = document.getElementById("mm_editCategoryAddons");
   const nameField = document.getElementById("mm_name");
   const priceField = document.getElementById("mm_price");
   const categoryField = document.getElementById("mm_category");
@@ -2889,6 +2960,30 @@ function openMenuEditor(itemId, preset = {}) {
   }
 
   addAddonBtn?.addEventListener("click", () => appendAddonRow({ price: 0 }, { focus: true }));
+
+  const updateCategoryAddonButtonState = () => {
+    if (!editCategoryAddonsBtn) return;
+    const categoryValue = String(categoryField?.value || "").trim();
+    const category = getCategoryByToken(categoryValue);
+    editCategoryAddonsBtn.disabled = !category;
+    editCategoryAddonsBtn.style.opacity = category ? "1" : "0.55";
+    editCategoryAddonsBtn.title = category
+      ? `Edit shared add-ons for ${category.name}`
+      : "Select an existing category first";
+  };
+
+  editCategoryAddonsBtn?.addEventListener("click", async () => {
+    const categoryValue = String(categoryField?.value || "").trim();
+    const category = getCategoryByToken(categoryValue);
+    if (!category) {
+      await ModalUtils.warning("Select Category", "Choose an existing category first to edit shared add-ons.");
+      return;
+    }
+    await window._adminEditCategoryAddons(category.id);
+  });
+  categoryField?.addEventListener("change", updateCategoryAddonButtonState);
+  categoryField?.addEventListener("input", updateCategoryAddonButtonState);
+  updateCategoryAddonButtonState();
 
   const syncVariantVisibility = () => {
     if (!variantsSection || !hasVariantInput) return;
@@ -3330,25 +3425,31 @@ async function renderAdminCategories() {
   if (!container) return;
   
   if (state.categories.length === 0) {
-    container.innerHTML = '<div style="color:var(--gray);text-align:center;padding:40px;">No categories found.</div>';
+    container.innerHTML = '<div class="admin-categories-empty">No categories found.</div>';
     return;
   }
 
-  let html = '<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px;">';
+  let html = '<div class="admin-categories-grid">';
 
   const sortedCategories = [...state.categories].sort((a, b) =>
     String(a?.name || "").localeCompare(String(b?.name || ""))
   );
 
   sortedCategories.forEach(cat => {
-    html += '<div class="card" style="display:flex; align-items:center; padding:16px; gap:16px; border:1px solid var(--border-color); box-shadow:0 2px 8px rgba(0,0,0,0.02);">' +
-            '<div style="font-size:32px; background:rgba(0,0,0,0.04); width:56px; height:56px; display:flex; align-items:center; justify-content:center; border-radius:12px;">' + escapeHtml(cat.icon || "☕") + '</div>' +
-            '<div style="flex:1; overflow:hidden;">' +
-              '<div style="font-weight:600; color:var(--text-primary); font-size:16px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">' + escapeHtml(cat.name) + '</div>' +
+    const categoryAddons = normalizeAddonCollection(cat?.addons || [], `addon-${String(cat?.id || "cat")}`);
+    const addonSummaryText = categoryAddons.length
+      ? `${categoryAddons.length} add-on option${categoryAddons.length === 1 ? "" : "s"}`
+      : "No add-ons configured";
+    html += '<div class="card admin-category-card">' +
+            '<div class="admin-category-icon">' + escapeHtml(cat.icon || "☕") + '</div>' +
+            '<div class="admin-category-meta">' +
+              '<div class="admin-category-name">' + escapeHtml(cat.name) + '</div>' +
+              '<div class="admin-category-addons">' + escapeHtml(addonSummaryText) + '</div>' +
             '</div>' +
-            '<div style="display:flex; gap:8px;">' +
-              '<button onclick="window._adminEditCategory(\'' + String(cat.id).replace(/'/g, "\\\'") + '\')" style="background:var(--primary-light); color:white; border:none; cursor:pointer; width:32px; height:32px; border-radius:8px; display:flex; align-items:center; justify-content:center; transition:background 0.2s;"><i class="ri-pencil-line"></i></button>' +
-              '<button onclick="window._adminDeleteCategory(\'' + String(cat.id).replace(/'/g, "\\\'") + '\')" style="background:rgba(239,68,68,0.1); color:#EF4444; border:none; cursor:pointer; width:32px; height:32px; border-radius:8px; display:flex; align-items:center; justify-content:center; transition:background 0.2s;"><i class="ri-delete-bin-line"></i></button>' +
+            '<div class="admin-category-actions">' +
+              '<button class="admin-category-action addons" onclick="window._adminEditCategoryAddons(\'' + String(cat.id).replace(/'/g, "\\\'") + '\')" title="Edit add-ons"><i class="ri-list-settings-line"></i></button>' +
+              '<button class="admin-category-action edit" onclick="window._adminEditCategory(\'' + String(cat.id).replace(/'/g, "\\\'") + '\')" title="Edit category"><i class="ri-pencil-line"></i></button>' +
+              '<button class="admin-category-action delete" onclick="window._adminDeleteCategory(\'' + String(cat.id).replace(/'/g, "\\\'") + '\')" title="Delete category"><i class="ri-delete-bin-line"></i></button>' +
             '</div>' +
           '</div>';
   });
@@ -3375,14 +3476,14 @@ window._adminEditCategory = function(id) {
   const title = cat ? "Edit Category" : "Add Category";
   const currentIcon = getCategoryIconForName(cat ? cat.name : "") || (cat ? escapeHtml(cat.icon || "") : "📦");
 
-  const content = `<div class="ls-form-grid" style="display:block;">
+  const content = `<div class="ls-form-grid cat-modal-form" style="display:block;">
     <div class="ls-label">Category Name*</div>
     <input type="text" class="ls-input" id="cat_name" value="${cat ? escapeHtml(cat.name || "") : ""}" placeholder="Coffee, Sandwiches..." autocomplete="off" oninput="window.__bbUpdateCategoryIconPreview && window.__bbUpdateCategoryIconPreview(this.value)">
 
-    <div class="ls-label" style="margin-top:12px;">Icon</div>
-    <div class="ls-input" style="display:flex; align-items:center; gap:10px; cursor:not-allowed; background:rgba(0,0,0,0.03);">
-      <span id="cat_icon_preview" style="font-size:20px; line-height:1;">${currentIcon}</span>
-      <span style="color:var(--text-muted); font-size:13px;">Fixed icon</span>
+    <div class="ls-label cat-modal-icon-label">Icon</div>
+    <div class="ls-input cat-modal-icon-preview" aria-hidden="true">
+      <span id="cat_icon_preview" class="cat-modal-icon-emoji">${currentIcon}</span>
+      <span class="cat-modal-icon-text">Fixed icon</span>
     </div>
     <input type="hidden" id="cat_icon" value="${currentIcon}">
   </div>`;
@@ -3431,6 +3532,7 @@ window._adminEditCategory = function(id) {
       name: nameValue,
       icon: iconValue,
       color: cat ? cat.color : "#373b40",
+      addons: normalizeAddonCollection(cat?.addons || [], `addon-${origId}`),
     };
 
     try {
@@ -3468,6 +3570,235 @@ window._adminEditCategory = function(id) {
       ModalUtils.error("Save Failed", "Could not save category. Try again.");
     }
   });
+};
+
+window._adminEditCategoryAddons = async function(id) {
+  const cat = state.categories.find((entry) => entry.id === id);
+  if (!cat) return;
+
+  if (!Array.isArray(state.inventoryItems) || state.inventoryItems.length === 0) {
+    try {
+      state.inventoryItems = await getInventoryItems();
+    } catch (inventoryError) {
+      console.warn("[Category Add-ons] Inventory preload failed.", inventoryError);
+      state.inventoryItems = Array.isArray(state.inventoryItems) ? state.inventoryItems : [];
+    }
+  }
+
+  const initialAddons = normalizeAddonCollection(cat?.addons || [], `addon-${cat.id || "category"}`);
+  const unitOptions = [
+    "g", "kg", "oz", "lb", "ml", "L", "fl oz", "gal", "pcs", "pack", "box", "tray",
+    "bottle", "can", "jar", "sachet", "shot", "cup", "serving", "portion", "slice", "set",
+  ];
+
+  const createInventoryOptionsHtml = (selectedInventoryId = "") => {
+    const selectedId = String(selectedInventoryId || "").trim();
+    const options = (Array.isArray(state.inventoryItems) ? state.inventoryItems : [])
+      .map((inv) => {
+        const invId = String(inv?.id || "");
+        const invName = String(inv?.name || invId || "Inventory item");
+        const invUnit = normalizeUnit(inv?.unit || "") || String(inv?.unit || "").trim();
+        const selected = selectedId && selectedId === invId ? " selected" : "";
+        return `<option value="${escapeHtml(invId)}" data-unit="${escapeHtml(invUnit)}"${selected}>${escapeHtml(invName)} (${escapeHtml(invUnit || "unit")})</option>`;
+      })
+      .join("");
+
+    return `<option value="" ${!selectedId ? "selected" : ""}>Select add-on ingredient...</option>${options}`;
+  };
+
+  const createUnitOptionsHtml = (selectedUnit = "") => {
+    const resolvedUnit = normalizeUnit(selectedUnit || "") || String(selectedUnit || "").trim();
+    const options = unitOptions
+      .map((unit) => `<option value="${escapeHtml(unit)}" ${resolvedUnit === unit ? "selected" : ""}>${escapeHtml(unit)}</option>`)
+      .join("");
+    return `<option value="" ${!resolvedUnit ? "selected" : ""}>Unit</option>${options}`;
+  };
+
+  const createAddonRowHtml = (addon = { name: "", price: 0, recipe: [] }) => {
+    const recipe = Array.isArray(addon?.recipe) && addon.recipe.length ? addon.recipe[0] : {};
+    const selectedInventoryId = String(recipe?.inventoryId || "").trim();
+    const selectedQty = Number(recipe?.quantity || 0);
+    const selectedUnit = normalizeUnit(recipe?.unit || "") || "";
+    const addonName = String(addon?.name || recipe?.name || "").trim();
+    const addonPrice = Math.max(0, Number(addon?.price || 0));
+
+    return `
+      <div class="cat-addon-row" style="display:grid;grid-template-columns:1.6fr 0.9fr 0.8fr 0.9fr auto auto;gap:8px;margin-bottom:8px;">
+        <select class="ls-input cat-addon-inv" style="margin-bottom:0;" onchange="window.__bbCategoryAddonEditorSyncRow && window.__bbCategoryAddonEditorSyncRow(this)">
+          ${createInventoryOptionsHtml(selectedInventoryId)}
+        </select>
+        <input class="ls-input cat-addon-price" type="number" step="0.25" min="0" placeholder="Extra price" value="${Number.isFinite(addonPrice) ? addonPrice : 0}" style="margin-bottom:0;" />
+        <input class="ls-input cat-addon-qty" type="number" step="0.01" min="0" placeholder="Qty" value="${Number.isFinite(selectedQty) && selectedQty > 0 ? selectedQty : ""}" style="margin-bottom:0;" />
+        <select class="ls-input cat-addon-unit" style="margin-bottom:0;">
+          ${createUnitOptionsHtml(selectedUnit)}
+        </select>
+        <button type="button" onclick="window.__bbCategoryAddonEditorCloneRow && window.__bbCategoryAddonEditorCloneRow(this)" style="background:transparent;border:1px solid var(--border-color);padding:8px 10px;border-radius:10px;font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif;">Copy</button>
+        <button type="button" onclick="window.__bbCategoryAddonEditorRemoveRow && window.__bbCategoryAddonEditorRemoveRow(this)" style="background:transparent;border:1px solid var(--border-color);padding:8px 10px;border-radius:10px;font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif;">Remove</button>
+        <div class="cat-addon-name-display" style="grid-column:1/-1;font-size:11px;color:var(--text-muted);margin-top:-2px;">Add-on name: ${escapeHtml(addonName || "-")}</div>
+      </div>
+    `;
+  };
+
+  const initialRowsHtml = initialAddons.length
+    ? initialAddons.map((addon) => createAddonRowHtml(addon)).join("")
+    : createAddonRowHtml({ price: 0, recipe: [] });
+
+  let savedAddons = initialAddons;
+
+  const attachEditorHelpers = () => {
+    window.__bbCategoryAddonEditorSyncRow = (selectEl) => {
+      const row = selectEl?.closest?.(".cat-addon-row");
+      if (!row) return;
+      const selectedOption = selectEl.options?.[selectEl.selectedIndex];
+      const unitEl = row.querySelector(".cat-addon-unit");
+      const qtyEl = row.querySelector(".cat-addon-qty");
+      const nameEl = row.querySelector(".cat-addon-name-display");
+      const selectedLabel = String(selectedOption?.textContent || "").trim();
+      const derivedName = selectedLabel.replace(/\s*\([^)]*\)\s*$/, "").trim();
+      const unit = normalizeUnit(selectedOption?.dataset?.unit || "") || "";
+
+      if (unitEl && !unitEl.value && unit) {
+        unitEl.value = unit;
+      }
+      if (qtyEl && !qtyEl.value) {
+        qtyEl.value = "1";
+      }
+      if (nameEl) {
+        nameEl.textContent = `Add-on name: ${derivedName || "-"}`;
+      }
+    };
+
+    window.__bbCategoryAddonEditorAddRow = () => {
+      const rows = document.getElementById("catAddonRows");
+      if (!rows) return;
+      rows.insertAdjacentHTML("beforeend", createAddonRowHtml({ price: 0, recipe: [] }));
+      rows.querySelector(".cat-addon-row:last-child .cat-addon-inv")?.focus();
+    };
+
+    window.__bbCategoryAddonEditorCloneRow = (buttonEl) => {
+      const row = buttonEl?.closest?.(".cat-addon-row");
+      const rows = document.getElementById("catAddonRows");
+      if (!row || !rows) return;
+      const cloneAddon = {
+        price: Number(row.querySelector(".cat-addon-price")?.value || 0),
+        recipe: [],
+      };
+      const addonInventoryId = String(row.querySelector(".cat-addon-inv")?.value || "").trim();
+      const addonQty = Number(row.querySelector(".cat-addon-qty")?.value || 0);
+      const addonUnit = String(row.querySelector(".cat-addon-unit")?.value || "").trim();
+      const selectedOption = row.querySelector(".cat-addon-inv")?.options?.[row.querySelector(".cat-addon-inv")?.selectedIndex || 0];
+      const addonName = String(selectedOption?.textContent || "").replace(/\s*\([^)]*\)\s*$/, "").trim();
+      if (addonInventoryId) {
+        cloneAddon.recipe = [{
+          inventoryId: addonInventoryId,
+          name: addonName,
+          quantity: Number.isFinite(addonQty) && addonQty > 0 ? addonQty : 1,
+          unit: normalizeUnit(addonUnit || selectedOption?.dataset?.unit || "") || "",
+        }];
+      }
+      rows.insertAdjacentHTML("beforeend", createAddonRowHtml(cloneAddon));
+    };
+
+    window.__bbCategoryAddonEditorRemoveRow = (buttonEl) => {
+      const row = buttonEl?.closest?.(".cat-addon-row");
+      if (!row) return;
+      const rows = document.getElementById("catAddonRows");
+      row.remove();
+      if (rows && rows.children.length === 0) {
+        rows.insertAdjacentHTML("beforeend", createAddonRowHtml({ price: 0, recipe: [] }));
+      }
+    };
+  };
+
+  const cleanupEditorHelpers = () => {
+    delete window.__bbCategoryAddonEditorSyncRow;
+    delete window.__bbCategoryAddonEditorAddRow;
+    delete window.__bbCategoryAddonEditorCloneRow;
+    delete window.__bbCategoryAddonEditorRemoveRow;
+  };
+
+  const markAddonModalLayout = () => {
+    const modalEl = document.getElementById("modal-custom");
+    if (!modalEl) return;
+    modalEl.classList.add("modal-addon-editor");
+    modalEl.querySelector(".modal-custom-body")?.classList.add("modal-addon-editor-body");
+  };
+
+  window.setTimeout(markAddonModalLayout, 0);
+  window.setTimeout(markAddonModalLayout, 60);
+
+  window.setTimeout(attachEditorHelpers, 0);
+
+  try {
+    const action = await ModalUtils.show({
+      title: `${cat.name} - Category Add-ons`,
+      message: `
+        <div class="cat-addon-modal-shell">
+          <div class="cat-addon-modal-note">These add-ons will be shared by all menu items under <strong>${escapeHtml(cat.name)}</strong>.</div>
+          <div id="catAddonRows" class="cat-addon-modal-rows">${initialRowsHtml}</div>
+          <div class="cat-addon-modal-actions">
+            <button type="button" class="cat-addon-add-btn" onclick="window.__bbCategoryAddonEditorAddRow && window.__bbCategoryAddonEditorAddRow()">+ Add Add-on</button>
+            <span class="cat-addon-modal-tip">Tip: Select an ingredient to auto-fill add-on name and unit.</span>
+          </div>
+        </div>
+      `,
+      buttons: [
+        { text: "Cancel", type: "secondary" },
+        {
+          text: "Save",
+          type: "primary",
+          callback: () => {
+            savedAddons = Array.from(document.querySelectorAll("#catAddonRows .cat-addon-row"))
+              .map((row, index) => {
+                const addonPrice = Number(row.querySelector(".cat-addon-price")?.value || 0);
+                const addonInventoryId = String(row.querySelector(".cat-addon-inv")?.value || "").trim();
+                const addonQty = Number(row.querySelector(".cat-addon-qty")?.value || 0);
+                const addonUnitRaw = String(row.querySelector(".cat-addon-unit")?.value || "").trim();
+                const selectedOption = row.querySelector(".cat-addon-inv")?.options?.[row.querySelector(".cat-addon-inv")?.selectedIndex || 0];
+                const addonName = String(selectedOption?.textContent || "").replace(/\s*\([^)]*\)\s*$/, "").trim();
+                if (!addonInventoryId) return null;
+
+                return {
+                  id: `addon-${String(cat.id || cat.name || "category").replace(/\s+/g, "-").toLowerCase()}-${index + 1}`,
+                  name: addonName,
+                  price: Number.isFinite(addonPrice) ? Math.max(0, addonPrice) : 0,
+                  recipe: [{
+                    inventoryId: addonInventoryId,
+                    name: addonName,
+                    quantity: Number.isFinite(addonQty) && addonQty > 0 ? addonQty : 1,
+                    unit: normalizeUnit(addonUnitRaw || selectedOption?.dataset?.unit || "") || "",
+                  }],
+                };
+              })
+              .filter(Boolean);
+          },
+        },
+      ],
+    });
+
+    if (action !== 1) return;
+
+    const payload = {
+      id: cat.id,
+      name: String(cat.name || "").trim(),
+      icon: getCategoryIconForName(cat.name || ""),
+      color: String(cat.color || "#373b40").trim() || "#373b40",
+      addons: normalizeAddonCollection(savedAddons, `addon-${cat.id || "category"}`),
+    };
+
+    await saveCategory(payload);
+    state.categories = await getCategories();
+    renderAdminCategories();
+    await ModalUtils.success("Category Add-ons Saved", `${cat.name} add-ons updated successfully.`);
+  } catch (error) {
+    console.error("[Category Add-ons] Save failed", error);
+    await ModalUtils.error("Save Failed", error?.message || "Unable to save category add-ons.");
+  } finally {
+    const modalEl = document.getElementById("modal-custom");
+    modalEl?.classList?.remove("modal-addon-editor");
+    modalEl?.querySelector(".modal-custom-body")?.classList?.remove("modal-addon-editor-body");
+    cleanupEditorHelpers();
+  }
 };
 
 window._adminDeleteCategory = async function(id) {
