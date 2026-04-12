@@ -234,15 +234,15 @@ const ModalUtils = (() => {
     }
 
     if (overlay) {
-      overlay.style.animation = 'fadeOut 150ms ease-out forwards';
+      overlay.style.animation = 'fadeOut 120ms ease-out forwards';
       overlay.style.opacity = '0';
     }
     if (modal) {
-      modal.style.animation = 'fadeOut 150ms ease-out forwards';
+      modal.style.animation = 'fadeOut 120ms ease-out forwards';
       modal.style.opacity = '0';
     }
 
-    targetModal.closeTimer = setTimeout(finalizeClose, 150);
+    targetModal.closeTimer = setTimeout(finalizeClose, 120);
   };
 
   /**

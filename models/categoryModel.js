@@ -4,6 +4,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js";
 
 const CATEGORIES_COLLECTION = "categories";
+const CATEGORY_DELETIONS_COLLECTION = "category_deletions";
 const LOCAL_CACHE_KEY = "bb_categories_local_cache";
 
 // Seed data if none exist
@@ -259,23 +260,50 @@ function mergeCategories(remoteCategories, localCache) {
   return deduped.sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")));
 }
 
+async function readDeletedCategoryIds() {
+  try {
+    const snap = await getDocs(collection(db, CATEGORY_DELETIONS_COLLECTION));
+    return new Set(
+      snap.docs
+        .map((docSnap) => String(docSnap.id || docSnap.data()?.id || "").trim())
+        .filter(Boolean)
+    );
+  } catch {
+    return new Set();
+  }
+}
+
 export async function getCategories() {
   let categories = [];
   const localCache = readLocalCache();
+  const deletedIds = new Set((localCache.deletedIds || []).map((id) => String(id)));
   try {
-    const snap = await getDocs(collection(db, CATEGORIES_COLLECTION));
-    categories = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    const [categorySnapResult, deletionSnapResult] = await Promise.allSettled([
+      getDocs(collection(db, CATEGORIES_COLLECTION)),
+      getDocs(collection(db, CATEGORY_DELETIONS_COLLECTION)),
+    ]);
+
+    if (categorySnapResult.status === "fulfilled") {
+      categories = categorySnapResult.value.docs.map((d) => ({ id: d.id, ...d.data() }));
+    }
+
+    if (deletionSnapResult.status === "fulfilled") {
+      deletionSnapResult.value.docs.forEach((docSnap) => {
+        const deletedId = String(docSnap.id || docSnap.data()?.id || "").trim();
+        if (deletedId) deletedIds.add(deletedId);
+      });
+    }
 
     if (categories.length === 0 && localCache.upserts.length === 0) {
-      // Seed default categories
-      for (const cat of DEFAULT_CATEGORIES) {
+      const seedableDefaults = DEFAULT_CATEGORIES.filter((cat) => !deletedIds.has(String(cat.id)));
+      for (const cat of seedableDefaults) {
         try {
           await setDoc(doc(db, CATEGORIES_COLLECTION, cat.id), cat);
         } catch(seedErr) {
           console.warn("Could not seed category", cat.id, seedErr);
         }
       }
-      categories = [...DEFAULT_CATEGORIES];
+      categories = [...seedableDefaults];
     }
   } catch (err) {
     if (localCache.upserts.length > 0) {
@@ -285,12 +313,20 @@ export async function getCategories() {
     }
   }
 
-  const merged = mergeCategories([...DEFAULT_CATEGORIES, ...categories], localCache);
+  const filteredRemoteCategories = categories.filter((category) => !deletedIds.has(String(category.id)));
+  const merged = mergeCategories([...DEFAULT_CATEGORIES, ...filteredRemoteCategories], {
+    upserts: localCache.upserts,
+    deletedIds: Array.from(deletedIds),
+  });
   if (merged.length > 0) return merged;
 
   // Fallback to defaults if both Firestore and local cache are empty,
   // while still respecting locally deleted default categories.
-  return mergeCategories(DEFAULT_CATEGORIES, localCache);
+  const seedableDefaults = DEFAULT_CATEGORIES.filter((cat) => !deletedIds.has(String(cat.id)));
+  return mergeCategories(seedableDefaults, {
+    upserts: localCache.upserts,
+    deletedIds: Array.from(deletedIds),
+  });
 }
 
 export async function saveCategory(category) {
@@ -322,6 +358,10 @@ export async function saveCategory(category) {
   }
 
   const id = resolvedId;
+  const deletedIds = await readDeletedCategoryIds();
+  if (deletedIds.has(id)) {
+    throw new Error("This category has been deleted and cannot be restored.");
+  }
   const resolvedIcon = getCategoryIconForName(category.name);
   const payload = {
     id: id,
@@ -345,6 +385,15 @@ export async function saveCategory(category) {
 
 export async function deleteCategory(id) {
   if (!id) throw new Error("Category ID required for deletion.");
+  try {
+    await setDoc(doc(db, CATEGORY_DELETIONS_COLLECTION, String(id)), {
+      id: String(id),
+      deletedAtMs: Date.now(),
+    });
+  } catch (error) {
+    console.warn("Could not save category deletion tombstone.", error);
+  }
+
   try {
     await deleteDoc(doc(db, CATEGORIES_COLLECTION, id));
   } catch (error) {

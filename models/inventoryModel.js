@@ -4,6 +4,8 @@ import {
 } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js";
 
 const INVENTORY_COLLECTION = "inventory";
+const INVENTORY_DELETIONS_COLLECTION = "inventory_deletions";
+const LOCAL_CACHE_KEY = "bb_inventory_local_cache";
 
 const UNIT_ALIASES = {
   pcs: "pcs",
@@ -116,15 +118,78 @@ export function convertQuantityBetweenUnits(amount, fromUnit, toUnit) {
   return inBase / toDef.toBase;
 }
 
+async function readDeletedInventoryIds() {
+  const localCache = readLocalInventoryCache();
+  const deletedIds = new Set((localCache.deletedIds || []).map((id) => String(id)));
+  try {
+    const snap = await getDocs(collection(db, INVENTORY_DELETIONS_COLLECTION));
+    snap.docs
+      .map((docSnap) => String(docSnap.id || docSnap.data()?.id || "").trim())
+      .filter(Boolean)
+      .forEach((id) => deletedIds.add(id));
+  } catch {
+  }
+
+  return deletedIds;
+}
+
+export async function getDeletedInventoryIds() {
+  return readDeletedInventoryIds();
+}
+
+function readLocalInventoryCache() {
+  if (typeof localStorage === "undefined") {
+    return { deletedIds: [] };
+  }
+
+  try {
+    const raw = localStorage.getItem(LOCAL_CACHE_KEY);
+    if (!raw) return { deletedIds: [] };
+    const parsed = JSON.parse(raw);
+    return {
+      deletedIds: Array.isArray(parsed.deletedIds) ? parsed.deletedIds : [],
+    };
+  } catch {
+    return { deletedIds: [] };
+  }
+}
+
+function writeLocalInventoryCache(cache) {
+  if (typeof localStorage === "undefined") {
+    return;
+  }
+
+  try {
+    localStorage.setItem(LOCAL_CACHE_KEY, JSON.stringify(cache));
+  } catch {
+    // Ignore localStorage failures in restricted environments.
+  }
+}
+
+function markLocalInventoryDeleted(id) {
+  const cache = readLocalInventoryCache();
+  writeLocalInventoryCache({
+    deletedIds: Array.from(new Set([...(cache.deletedIds || []), String(id)])),
+  });
+}
+
 export async function getInventoryItems() {
-  const snap = await getDocs(collection(db, INVENTORY_COLLECTION));
-  return snap.docs
+  const [docs, deletedIds] = await Promise.all([
+    getDocs(collection(db, INVENTORY_COLLECTION)).then((snap) => snap.docs),
+    readDeletedInventoryIds(),
+  ]);
+  return docs
     .map((d) => ({ id: d.id, ...d.data() }))
+    .filter((item) => !deletedIds.has(String(item.id)))
     .sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")));
 }
 
 export async function saveInventoryItem(item) {
   const itemId = String(item.id || (typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `inv-${Date.now()}-${Math.floor(Math.random()*1000)}`));
+  const deletedIds = await readDeletedInventoryIds();
+  if (deletedIds.has(itemId)) {
+    throw new Error("This inventory item has been deleted and cannot be restored.");
+  }
   const normalizedUnit = normalizeUnit(item.unit || "pcs") || "pcs";
   const payload = {
     id: itemId,
@@ -295,6 +360,15 @@ export async function deductInventoryQuantities(recipeItems, multiplier = 1) {
 }
 
 export async function deleteInventoryItem(id) {
+  try {
+    await setDoc(doc(db, INVENTORY_DELETIONS_COLLECTION, String(id)), {
+      id: String(id),
+      deletedAtMs: Date.now(),
+    });
+  } catch (error) {
+    console.warn("Could not save inventory deletion tombstone.", error);
+  }
+  markLocalInventoryDeleted(id);
   await deleteDoc(doc(db, INVENTORY_COLLECTION, String(id)));
 }
 

@@ -4,7 +4,7 @@ import { getMenuItems, saveMenuItem, deleteMenuItem, clearMenuItems } from "../.
 import { getCategories, saveCategory, deleteCategory, getCategoryIconForName } from "../../models/categoryModel.js";
 import { getTodayOrders, getAllOrders, deleteOrder, clearAllOrders } from "../../models/orderModel.js";
 import { resetDay as archiveResetDay } from "../../models/resetModel.js";
-import { getInventoryItems, saveInventoryItem, deleteInventoryItem, clearInventoryItems, convertQuantityBetweenUnits, normalizeUnit } from "../../models/inventoryModel.js";
+import { getInventoryItems, saveInventoryItem, deleteInventoryItem, clearInventoryItems, getDeletedInventoryIds, convertQuantityBetweenUnits, normalizeUnit } from "../../models/inventoryModel.js";
 import { inventorySeedItems } from "../../models/defaultSeedData.js";
 import { getAllStaff as getStaff, getSchedule, getOnDutyNowFromSchedule, addStaff, removeStaff, removeStaffByName, removeStaffByAccountUid, updateStaffAccountLink, saveSchedule } from "../../models/staffModel.js";
 import { renderStats, renderRecentOrders, renderTopItems, renderStaffOnDuty } from "../../views/dashboardView.js";
@@ -59,7 +59,7 @@ const state = {
 
 const DASHBOARD_SYNC_INTERVAL_MS = 60_000;
 let dashboardSyncInProgress = false;
-const AUTH_OPERATION_TIMEOUT_MS = 6000;
+const AUTH_OPERATION_TIMEOUT_MS = 4000;
 
 function withTimeout(promise, timeoutMs, label) {
   return new Promise((resolve, reject) => {
@@ -2204,7 +2204,7 @@ async function loadSettingsPage() {
     if (!savedHint) return;
     savedHint.textContent = message;
     savedHint.classList.add("saved");
-    window.setTimeout(() => savedHint.classList.remove("saved"), 1200);
+    window.setTimeout(() => savedHint.classList.remove("saved"), 800);
   };
 
   const toggleDisplay = document.getElementById("shopInfoDisplay");
@@ -2425,12 +2425,29 @@ window.seedInventory = async function () {
   const confirmed = await ModalUtils.confirm(title, message);
   if (confirmed !== 1) return;
 
+  const deletedIdSet = await getDeletedInventoryIds();
+
+  let seededCount = 0;
+  let skippedCount = 0;
   for (const item of inventorySeedItems) {
-    await saveInventoryItem(item);
+    if (deletedIdSet.has(String(item.id || "").trim())) {
+      skippedCount += 1;
+      continue;
+    }
+    try {
+      await saveInventoryItem(item);
+      seededCount += 1;
+    } catch (error) {
+      skippedCount += 1;
+      console.warn("Skipping deleted inventory seed item", item.id, error);
+    }
   }
 
   await loadInventoryPage();
-  await ModalUtils.success("Inventory Seeded", "Sample inventory items are ready.");
+  const summary = skippedCount > 0
+    ? `Seeded ${seededCount} item(s). ${skippedCount} deleted item(s) were skipped.`
+    : "Sample inventory items are ready.";
+  await ModalUtils.success("Inventory Seeded", summary);
 };
 
 window.openQuickAction = async function (action) {
@@ -2570,7 +2587,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   let authSettled = false;
   let nullUserTimerId = null;
-  const authTimeoutMs = 5000;
+  const authTimeoutMs = 3500;
   const authTimeoutId = window.setTimeout(() => {
     if (authSettled) return;
     const fallbackUser = getCurrentUser();

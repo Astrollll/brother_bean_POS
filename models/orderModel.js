@@ -6,7 +6,7 @@ import { getOrderOutbox, queueOrder, removeQueuedOrder } from "./storageModel.js
 import { deductInventoryQuantities } from "./inventoryModel.js";
 
 const ORDERS_COLLECTION = "orders";
-const ORDER_WRITE_TIMEOUT_MS = 4000;
+const ORDER_WRITE_TIMEOUT_MS = 10000;
 
 function isOnlineNow() {
   return typeof navigator === "undefined" ? true : navigator.onLine !== false;
@@ -201,10 +201,13 @@ export async function saveOrder(cart, total, subtotal, paymentMethod, isPwdSenio
 export async function syncQueuedOrders() {
   const outbox = getOrderOutbox();
   if (!outbox.length) return { synced: 0, pending: 0 };
+  if (!isOnlineNow()) return { synced: 0, pending: outbox.length, syncedAlerts: 0, deductionFailures: 0 };
 
   let synced = 0;
   let syncedAlerts = 0;
   let deductionFailures = 0;
+  let failed = 0;
+  let lastError = "";
   for (const item of outbox) {
     try {
       const payloadOrderId = String(item.payload?.orderId || item.id || Date.now());
@@ -240,12 +243,14 @@ export async function syncQueuedOrders() {
 
       removeQueuedOrder(item.id);
       synced += 1;
-    } catch {
+    } catch (error) {
+      failed += 1;
+      lastError = String(error?.code || error?.message || "sync_failed");
       // Keep unsynced item in queue and continue.
     }
   }
 
-  return { synced, pending: getOrderOutbox().length, syncedAlerts, deductionFailures };
+  return { synced, pending: getOrderOutbox().length, syncedAlerts, deductionFailures, failed, lastError };
 }
 
 export function getPendingOrderCount() {

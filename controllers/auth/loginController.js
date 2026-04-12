@@ -24,7 +24,7 @@ const DEFAULT_ADMIN_ACCOUNTS = [
   },
 ];
 
-const AUTH_OPERATION_TIMEOUT_MS = 6000;
+const AUTH_OPERATION_TIMEOUT_MS = 4000;
 
 function withTimeout(promise, timeoutMs, label) {
   return new Promise((resolve, reject) => {

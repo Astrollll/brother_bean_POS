@@ -38,7 +38,67 @@ let dailyStats       = { orders: 0, totalSales: 0, discountsApplied: 0 };
 let isOnline         = navigator.onLine;
 const THEME_STORAGE_KEY = "bb-pos-theme";
 const CART_DENSITY_STORAGE_KEY = "bb-pos-cart-density";
-const AUTH_OPERATION_TIMEOUT_MS = 6000;
+const AUTH_OPERATION_TIMEOUT_MS = 4000;
+const QUEUE_SYNC_RETRY_MS = 1500;
+
+let queueSyncInFlight = false;
+let queueSyncRetryTimerId = null;
+
+function clearQueueSyncRetryTimer() {
+  if (!queueSyncRetryTimerId) return;
+  window.clearTimeout(queueSyncRetryTimerId);
+  queueSyncRetryTimerId = null;
+}
+
+function scheduleQueueSyncRetry() {
+  if (queueSyncRetryTimerId || !navigator.onLine) return;
+  queueSyncRetryTimerId = window.setTimeout(() => {
+    queueSyncRetryTimerId = null;
+    void runQueueSync({ silent: true });
+  }, QUEUE_SYNC_RETRY_MS);
+}
+
+async function runQueueSync({ silent = false } = {}) {
+  if (!navigator.onLine) {
+    clearQueueSyncRetryTimer();
+    return;
+  }
+
+  if (queueSyncInFlight) return;
+
+  queueSyncInFlight = true;
+  try {
+    const result = await syncQueuedOrders();
+    updateConnectivityStatus();
+
+    if (!silent && result.synced > 0) {
+      showToast(`Synced ${result.synced} pending order(s)`, "success");
+    }
+    if (Number(result?.syncedAlerts || 0) > 0) {
+      showToast(`${result.syncedAlerts} ingredient stock item(s) reached zero after sync.`, "warning");
+    }
+    if (Number(result?.deductionFailures || 0) > 0) {
+      showToast(`${result.deductionFailures} synced order(s) were saved but inventory deduction failed. Please contact admin.`, "warning");
+    }
+    if (!silent && Number(result?.failed || 0) > 0) {
+      const reason = String(result?.lastError || "sync_failed").replace(/^auth\//, "");
+      showToast(`${result.failed} queued order(s) still pending sync (${reason}). Retrying...`, "warning");
+    }
+
+    if (Number(result?.pending || 0) > 0 && navigator.onLine) {
+      scheduleQueueSyncRetry();
+    } else {
+      clearQueueSyncRetryTimer();
+    }
+  } catch {
+    updateConnectivityStatus();
+    if (navigator.onLine) {
+      scheduleQueueSyncRetry();
+    }
+  } finally {
+    queueSyncInFlight = false;
+  }
+}
 
 function setButtonBusyState(button, isBusy, busyLabel = "Working...") {
   if (!button) return;
@@ -184,30 +244,20 @@ document.addEventListener("DOMContentLoaded", async () => {
       }
     });
 
-    window.addEventListener("online", async () => {
+    window.addEventListener("online", () => {
       isOnline = true;
-      const result = await syncQueuedOrders();
-      updateConnectivityStatus();
-      if (result.synced > 0) {
-        showToast(`Synced ${result.synced} pending order(s)`, "success");
-      }
-      if (Number(result?.syncedAlerts || 0) > 0) {
-        showToast(`${result.syncedAlerts} ingredient stock item(s) reached zero after sync.`, "warning");
-      }
-      if (Number(result?.deductionFailures || 0) > 0) {
-        showToast(`${result.deductionFailures} synced order(s) were saved but inventory deduction failed. Please contact admin.`, "warning");
-      }
+      void runQueueSync({ silent: false });
     });
 
     window.addEventListener("offline", () => {
       isOnline = false;
+      clearQueueSyncRetryTimer();
       updateConnectivityStatus();
       showToast("You are offline. Orders will queue automatically.", "warning");
     });
 
     if (navigator.onLine) {
-      await syncQueuedOrders();
-      updateConnectivityStatus();
+      void runQueueSync({ silent: true });
     }
   });
 });
@@ -945,6 +995,10 @@ window.completePayment = async function() {
     document.getElementById("receiptModal").classList.add("active");
     updateConnectivityStatus();
     showToast(sale.queued ? "Payment saved offline and queued for sync." : "Payment successful! Thank you!", "success");
+    if (sale.queued && navigator.onLine) {
+      // Fire an immediate retry if write was queued due transient latency while online.
+      void runQueueSync({ silent: true });
+    }
     if (!sale.queued && sale.inventoryDeductionError) {
       showToast("Order saved, but inventory deduction failed. Please contact admin.", "warning");
     }
@@ -1620,5 +1674,5 @@ function showToast(message, type = "success") {
   document.getElementById("toastIcon").innerHTML = iconMap[type] || iconMap.success;
   document.getElementById("toastMessage").textContent = message;
   toast.classList.add("show");
-  setTimeout(() => toast.classList.remove("show"), 3000);
+  setTimeout(() => toast.classList.remove("show"), 2200);
 }

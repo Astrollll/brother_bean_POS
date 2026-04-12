@@ -68,11 +68,11 @@ export function showModal(options = {}) {
     const cancelBtn = document.getElementById(`${modalId}-cancel`);
 
     const closeModal = (result) => {
-      overlay.style.animation = "fadeOut 0.3s ease-out";
+      overlay.style.animation = "fadeOut 0.2s ease-out";
       setTimeout(() => {
         overlay.remove();
         resolve(result);
-      }, 300);
+      }, 200);
     };
 
     confirmBtn?.addEventListener("click", () => {

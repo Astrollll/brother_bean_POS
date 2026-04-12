@@ -28,7 +28,7 @@ service cloud.firestore {
     }
 
     function isWorker() {
-      return isSignedIn() && (role() in ["admin", "staff"]);
+      return isSignedIn() && ((role() in ["admin", "staff"]) || isLegacyAdmin());
     }
 
     // Users can read their own profile; only admins can write roles for others.
@@ -76,7 +76,8 @@ service cloud.firestore {
 
     match /orders/{docId} {
       allow create: if isWorker();
-      allow read, update, delete: if isAdmin();
+      allow update: if isWorker();
+      allow read, delete: if isAdmin();
     }
 
     match /resets/{dateId} {
