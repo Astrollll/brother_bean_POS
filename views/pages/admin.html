@@ -11,10 +11,6 @@
     />
     <link rel="apple-touch-icon" href="/assets/icons/brother-bean-logo.jpg" />
     <link
-      href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600&family=DM+Sans:wght@300;400;500&display=swap"
-      rel="stylesheet"
-    />
-    <link
       href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css"
       rel="stylesheet"
     />
@@ -118,7 +114,7 @@
               ><i class="ri-cup-line" aria-hidden="true"></i></span
             >Menu
           </div>
-          
+
           <div
             class="nav-item"
             onclick="window.showPage('inventory', this, 'Inventory')"
@@ -441,19 +437,24 @@
               </div>
             </div>
 
-<div class="card admin-menu-categories-shell">
+            <div class="card admin-menu-categories-shell">
               <div class="card-head admin-menu-categories-head">
                 <span class="card-title">All Categories</span>
                 <button
                   class="admin-menu-categories-add-btn"
-                  onclick="window._adminAddCategory && window._adminAddCategory()"
+                  onclick="
+                    window._adminAddCategory && window._adminAddCategory()
+                  "
                 >
-                  <i class="ri-add-line" style="margin-right:6px;"></i>New Category
+                  <i class="ri-add-line" style="margin-right: 6px"></i>New
+                  Category
                 </button>
               </div>
-              <div id="adminCategoriesList" class="admin-menu-categories-list"></div>
+              <div
+                id="adminCategoriesList"
+                class="admin-menu-categories-list"
+              ></div>
             </div>
-
 
             <div id="menuContent">
               <div style="color: var(--muted); font-size: 13px">
@@ -504,7 +505,9 @@
                     style="margin-bottom: 0"
                     required
                   >
-                    <option value="" disabled selected>Select unit of measure</option>
+                    <option value="" disabled selected>
+                      Select unit of measure
+                    </option>
                     <optgroup label="Count">
                       <option value="pcs">pcs - pieces</option>
                       <option value="pack">pack - package</option>
@@ -563,7 +566,8 @@
                     required
                   />
                   <div class="inventory-field-note">
-                    We will mark this item as low stock when current stock reaches this number.
+                    We will mark this item as low stock when current stock
+                    reaches this number.
                   </div>
                 </div>
                 <div>
@@ -609,12 +613,16 @@
                       window.refreshInventory && window.refreshInventory()
                     "
                     >Refresh</span
-                  >                  <span
+                  >
+                  <span
                     class="card-action inventory-card-action text-danger"
                     id="btnClearInventory"
-                    onclick="window.clearAllInventory && window.clearAllInventory()"
+                    onclick="
+                      window.clearAllInventory && window.clearAllInventory()
+                    "
                     >Clear all</span
-                  >                </div>
+                  >
+                </div>
               </div>
               <div id="inventoryAlertStrip" class="inventory-alert-strip"></div>
               <div id="inventoryListWrap"></div>
@@ -629,84 +637,75 @@
             </div>
 
             <div class="staff-grid">
-            <!-- Staff Members -->
-            <div class="card staff-card">
-              <div class="card-head">
-                <span class="card-title">Staff Members</span>
-              </div>
-              <div id="staffList">
-                <div class="staff-loading">
-                  Loading...
+              <!-- Staff Members -->
+              <div class="card staff-card">
+                <div class="card-head">
+                  <span class="card-title">Staff Members</span>
+                </div>
+                <div id="staffList">
+                  <div class="staff-loading">Loading...</div>
                 </div>
               </div>
-            </div>
 
-            <!-- Add Staff Form (hidden by default) -->
-            <div
-              class="card staff-card"
-              id="addStaffForm"
-              style="display: none"
-            >
-              <div class="card-head">
-                <span class="card-title">Add New Staff</span>
-              </div>
-              <div class="staff-add-form-grid">
-                <div>
-                  <div class="ls-label">Full Name</div>
-                  <input
-                    class="ls-input"
-                    id="newStaffName"
-                    placeholder="e.g. Maria Reyes"
-                    style="margin-bottom: 0"
-                  />
+              <!-- Add Staff Form (hidden by default) -->
+              <div
+                class="card staff-card"
+                id="addStaffForm"
+                style="display: none"
+              >
+                <div class="card-head">
+                  <span class="card-title">Add New Staff</span>
                 </div>
-                <div>
-                  <div class="ls-label">Role</div>
-                  <input
-                    class="ls-input"
-                    id="newStaffRole"
-                    placeholder="e.g. Barista"
-                    style="margin-bottom: 0"
-                  />
+                <div class="staff-add-form-grid">
+                  <div>
+                    <div class="ls-label">Full Name</div>
+                    <input
+                      class="ls-input"
+                      id="newStaffName"
+                      placeholder="e.g. Maria Reyes"
+                      style="margin-bottom: 0"
+                    />
+                  </div>
+                  <div>
+                    <div class="ls-label">Role</div>
+                    <input
+                      class="ls-input"
+                      id="newStaffRole"
+                      placeholder="e.g. Barista"
+                      style="margin-bottom: 0"
+                    />
+                  </div>
+                </div>
+                <div class="staff-form-actions">
+                  <button class="orders-btn" onclick="window.addStaff()">
+                    <i class="ri-user-add-line" aria-hidden="true"></i>
+                    Save Staff
+                  </button>
+                  <button
+                    class="orders-btn ghost"
+                    onclick="
+                      document.getElementById('addStaffForm').style.display =
+                        'none'
+                    "
+                  >
+                    Cancel
+                  </button>
                 </div>
               </div>
-              <div class="staff-form-actions">
-                <button
-                  class="orders-btn"
-                  onclick="window.addStaff()"
-                >
-                  <i class="ri-user-add-line" aria-hidden="true"></i>
-                  Save Staff
-                </button>
-                <button
-                  class="orders-btn ghost"
-                  onclick="
-                    document.getElementById('addStaffForm').style.display =
-                      'none'
-                  "
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
 
-            <!-- Weekly Schedule -->
-            <div class="card staff-card staff-schedule-card">
-              <div class="card-head">
-                <span class="card-title">Weekly Schedule</span>
-                <button
-                  class="orders-btn"
-                  onclick="window.saveSchedule()"
-                >
-                  <i class="ri-save-line" aria-hidden="true"></i> Save Schedule
-                </button>
-              </div>
-              <div id="scheduleEditor">
-                <div class="staff-loading">
-                  Loading schedule...
+              <!-- Weekly Schedule -->
+              <div class="card staff-card staff-schedule-card">
+                <div class="card-head">
+                  <span class="card-title">Weekly Schedule</span>
+                  <button class="orders-btn" onclick="window.saveSchedule()">
+                    <i class="ri-save-line" aria-hidden="true"></i> Save
+                    Schedule
+                  </button>
+                </div>
+                <div id="scheduleEditor">
+                  <div class="staff-loading">Loading schedule...</div>
                 </div>
               </div>
-            </div>
             </div>
           </div>
 
@@ -865,7 +864,7 @@
       id="logoutConfirmModal"
       aria-hidden="true"
       style="display: none"
-      onclick="if (event.target === this) closeLogoutModal()"
+      onclick="if (event.target === this) closeLogoutModal();"
     >
       <div
         class="modal-custom admin-logout-modal"
@@ -886,7 +885,8 @@
         </div>
 
         <div class="modal-custom-body" id="logoutConfirmDesc">
-          You are about to end your admin session and return to the login screen.
+          You are about to end your admin session and return to the login
+          screen.
         </div>
 
         <div class="modal-custom-footer">

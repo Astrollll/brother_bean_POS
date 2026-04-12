@@ -39,6 +39,35 @@ let dailyStats       = { orders: 0, totalSales: 0, discountsApplied: 0 };
 let isOnline         = navigator.onLine;
 const THEME_STORAGE_KEY = "bb-pos-theme";
 const CART_DENSITY_STORAGE_KEY = "bb-pos-cart-density";
+const AUTH_OPERATION_TIMEOUT_MS = 6000;
+
+function setButtonBusyState(button, isBusy, busyLabel = "Working...") {
+  if (!button) return;
+  if (!button.dataset.originalLabel) {
+    button.dataset.originalLabel = String(button.textContent || "").trim() || "Button";
+  }
+  button.disabled = !!isBusy;
+  button.setAttribute("aria-busy", isBusy ? "true" : "false");
+  button.textContent = isBusy ? busyLabel : button.dataset.originalLabel;
+}
+
+function withTimeout(promise, timeoutMs, label) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(`${label}_timeout`));
+    }, timeoutMs);
+
+    Promise.resolve(promise)
+      .then((value) => {
+        clearTimeout(timer);
+        resolve(value);
+      })
+      .catch((error) => {
+        clearTimeout(timer);
+        reject(error);
+      });
+  });
+}
 
 
 // ── INIT ──
@@ -869,6 +898,7 @@ function updateChangeDisplay() {
 }
 
 window.completePayment = async function() {
+  const doneBtn = document.getElementById("doneBtn");
   const total    = parseFloat(document.getElementById("total").textContent.replace("₱","").replace(",",""));
   const subtotal = cart.reduce((s, item) => {
     const addonTotal = (item.addons || []).reduce((a, x) => a + x.price, 0);
@@ -876,43 +906,51 @@ window.completePayment = async function() {
   }, 0);
   const amountTendered = currentPayMethod === "cash" ? (parseFloat(enteredAmount) || total) : total;
 
-  // Save to Firebase via model
-  const user = getCurrentUser();
-  const sale = await saveOrder(cart, total, subtotal, currentPayMethod, isPwdSenior, amountTendered, user?.uid || null);
+  setButtonBusyState(doneBtn, true, "Saving...");
+  try {
+    // Save to Firebase via model
+    const user = getCurrentUser();
+    const sale = await saveOrder(cart, total, subtotal, currentPayMethod, isPwdSenior, amountTendered, user?.uid || null);
 
-  // Add to kitchen pending queue so the order appears in the sidebar
-  saveKitchenOrder(sale);
+    // Add to kitchen pending queue so the order appears in the sidebar
+    saveKitchenOrder(sale);
 
-  // Update local stats
-  dailyStats.orders++;
-  dailyStats.totalSales += total;
-  if (isPwdSenior) dailyStats.discountsApplied++;
-  salesHistory.push(sale);
-  saveToStorage(salesHistory, dailyStats);
+    // Update local stats
+    dailyStats.orders++;
+    dailyStats.totalSales += total;
+    if (isPwdSenior) dailyStats.discountsApplied++;
+    salesHistory.push(sale);
+    saveToStorage(salesHistory, dailyStats);
 
-  // Generate receipt
-  generateReceipt({ ...sale, items: cart, amountTendered, change: amountTendered - total });
+    // Generate receipt
+    generateReceipt({ ...sale, items: cart, amountTendered, change: amountTendered - total });
 
-  // Reset state
-  cart        = [];
-  isPwdSenior = false;
-  enteredAmount = "";
-  document.getElementById("pwdSeniorCheck").checked = false;
-  document.getElementById("discountToggle").classList.remove("active");
-  updateCart();
-  updateStats();
-  closePaymentModal();
+    // Reset state
+    cart        = [];
+    isPwdSenior = false;
+    enteredAmount = "";
+    document.getElementById("pwdSeniorCheck").checked = false;
+    document.getElementById("discountToggle").classList.remove("active");
+    updateCart();
+    updateStats();
+    closePaymentModal();
 
-  document.getElementById("receiptModal").classList.add("active");
-  updateConnectivityStatus();
-  showToast(sale.queued ? "Payment saved offline and queued for sync." : "Payment successful! Thank you!", "success");
-  if (!sale.queued && sale.inventoryDeductionError) {
-    showToast("Order saved, but inventory deduction failed. Please contact admin.", "warning");
-  }
-  if (Array.isArray(sale.inventoryAlerts) && sale.inventoryAlerts.length > 0) {
-    const alertNames = sale.inventoryAlerts.slice(0, 2).map((entry) => entry.name).join(", ");
-    const suffix = sale.inventoryAlerts.length > 2 ? "..." : "";
-    showToast(`Stock reached zero: ${alertNames}${suffix}`, "warning");
+    document.getElementById("receiptModal").classList.add("active");
+    updateConnectivityStatus();
+    showToast(sale.queued ? "Payment saved offline and queued for sync." : "Payment successful! Thank you!", "success");
+    if (!sale.queued && sale.inventoryDeductionError) {
+      showToast("Order saved, but inventory deduction failed. Please contact admin.", "warning");
+    }
+    if (Array.isArray(sale.inventoryAlerts) && sale.inventoryAlerts.length > 0) {
+      const alertNames = sale.inventoryAlerts.slice(0, 2).map((entry) => entry.name).join(", ");
+      const suffix = sale.inventoryAlerts.length > 2 ? "..." : "";
+      showToast(`Stock reached zero: ${alertNames}${suffix}`, "warning");
+    }
+  } catch (error) {
+    console.error("[POS] Complete payment failed:", error);
+    showToast(error?.message || "Unable to save the order right now.", "warning");
+  } finally {
+    setButtonBusyState(doneBtn, false);
   }
 };
 
@@ -1177,9 +1215,16 @@ window.closeLogoutModal = function() {
 };
 
 window.confirmLogout = async function() {
+  const modal = document.getElementById("logoutConfirmModal");
+  const signOutBtn = modal?.querySelector(".bb-primary-btn.bb-danger-btn");
+  setButtonBusyState(signOutBtn, true, "Signing out...");
   try {
-    await authLogout();
+    await withTimeout(authLogout(), AUTH_OPERATION_TIMEOUT_MS, "logout");
+  } catch (error) {
+    console.error("[Auth] POS logout failed:", error);
+    showToast(error?.message === "logout_timeout" ? "Logout is taking too long. Please try again." : "Unable to sign out right now.", "warning");
   } finally {
+    setButtonBusyState(signOutBtn, false);
     closeLogoutModal();
   }
 };
