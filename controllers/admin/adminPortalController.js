@@ -59,6 +59,25 @@ const state = {
 
 const DASHBOARD_SYNC_INTERVAL_MS = 60_000;
 let dashboardSyncInProgress = false;
+const AUTH_OPERATION_TIMEOUT_MS = 6000;
+
+function withTimeout(promise, timeoutMs, label) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(`${label}_timeout`));
+    }, timeoutMs);
+
+    Promise.resolve(promise)
+      .then((value) => {
+        clearTimeout(timer);
+        resolve(value);
+      })
+      .catch((error) => {
+        clearTimeout(timer);
+        reject(error);
+      });
+  });
+}
 
 const orderFilters = {
   search: "",
@@ -116,13 +135,23 @@ function showApp() {
   if (app) app.style.display = "flex";
 }
 
-function setAuthLoadingState(message = "Loading dashboard...") {
+function setAuthLoadingState(message = "Loading dashboard...", keepAppVisible = false) {
   const loading = document.getElementById("auth-loading");
   const text = document.getElementById("auth-loading-text");
   const app = document.getElementById("app");
   if (text) text.textContent = message;
   if (loading) loading.style.display = "flex";
-  if (app) app.style.display = "none";
+  if (app && !keepAppVisible) app.style.display = "none";
+}
+
+function setButtonLoadingState(button, isLoading, loadingLabel = "Working...") {
+  if (!button) return;
+  if (!button.dataset.originalLabel) {
+    button.dataset.originalLabel = String(button.textContent || "").trim() || "Button";
+  }
+  button.disabled = !!isLoading;
+  button.setAttribute("aria-busy", isLoading ? "true" : "false");
+  button.textContent = isLoading ? loadingLabel : button.dataset.originalLabel;
 }
 
 function setTopbarTitle(title) {
@@ -392,56 +421,60 @@ async function backfillStaffAccountLinks(staff, users) {
 }
 
 async function loadDashboard() {
-  const [menuItems, ordersToday, staff, schedule] = await Promise.all([
-    getMenuItems(),
-    getTodayOrders(),
-    getStaff(),
-    getSchedule(),
-  ]);
+  try {
+    const [menuItems, ordersToday, staff, schedule] = await Promise.all([
+      getMenuItems(),
+      getTodayOrders(),
+      getStaff(),
+      getSchedule(),
+    ]);
 
-  // Inventory should not block dashboard rendering in slow/unreliable networks.
-  const inventoryItems = await getInventoryItems().catch((error) => {
-    console.warn("[Inventory] Dashboard prefetch failed:", error);
-    return state.inventoryItems || [];
-  });
+    // Inventory should not block dashboard rendering in slow/unreliable networks.
+    const inventoryItems = await getInventoryItems().catch((error) => {
+      console.warn("[Inventory] Dashboard prefetch failed:", error);
+      return state.inventoryItems || [];
+    });
 
-  state.menuItems = menuItems;
-  state.ordersToday = ordersToday;
-  state.staff = staff;
-  state.schedule = schedule;
-  state.inventoryItems = inventoryItems;
+    state.menuItems = menuItems;
+    state.ordersToday = ordersToday;
+    state.staff = staff;
+    state.schedule = schedule;
+    state.inventoryItems = inventoryItems;
 
-  const navBadge = document.getElementById("inventoryNavBadge");
-  if (navBadge) navBadge.textContent = String(inventoryItems.length);
+    const navBadge = document.getElementById("inventoryNavBadge");
+    if (navBadge) navBadge.textContent = String(inventoryItems.length);
 
-  const totalSales = ordersToday.reduce((s, o) => s + (o.total || 0), 0);
-  const totalOrders = ordersToday.length;
+    const totalSales = ordersToday.reduce((s, o) => s + (o.total || 0), 0);
+    const totalOrders = ordersToday.length;
 
-  // Best seller
-  state.soldMap = buildSoldMapFromOrders(ordersToday);
-  const bestByName = {};
-  ordersToday.forEach((o) => (o.items || []).forEach((i) => {
-    const label = String(i?.name || "").trim();
-    if (!label) return;
-    bestByName[label] = (bestByName[label] || 0) + (Number(i?.quantity || 1) || 1);
-  }));
-  const best = Object.entries(bestByName).sort((a, b) => b[1] - a[1])[0];
+    // Best seller
+    state.soldMap = buildSoldMapFromOrders(ordersToday);
+    const bestByName = {};
+    ordersToday.forEach((o) => (o.items || []).forEach((i) => {
+      const label = String(i?.name || "").trim();
+      if (!label) return;
+      bestByName[label] = (bestByName[label] || 0) + (Number(i?.quantity || 1) || 1);
+    }));
+    const best = Object.entries(bestByName).sort((a, b) => b[1] - a[1])[0];
 
-  // Staff on duty should be time-aware, not just checkbox-based.
-  const { onDuty } = getOnDutyNowFromSchedule(staff, schedule, new Date());
+    // Staff on duty should be time-aware, not just checkbox-based.
+    const { onDuty } = getOnDutyNowFromSchedule(staff, schedule, new Date());
 
-  renderStats({
-    totalSales,
-    totalOrders,
-    bestSeller: best ? best[0] : "—",
-    bestSellerCount: best ? best[1] : 0,
-    staffOnDuty: onDuty.length,
-    totalStaff: staff.length,
-  });
+    renderStats({
+      totalSales,
+      totalOrders,
+      bestSeller: best ? best[0] : "—",
+      bestSellerCount: best ? best[1] : 0,
+      staffOnDuty: onDuty.length,
+      totalStaff: staff.length,
+    });
 
-  renderRecentOrders(ordersToday);
-  renderTopItems(ordersToday, menuItems);
-  renderStaffOnDuty(onDuty);
+    renderRecentOrders(ordersToday);
+    renderTopItems(ordersToday, menuItems);
+    renderStaffOnDuty(onDuty);
+  } finally {
+    showApp();
+  }
 }
 
 function startDashboardAutoSync() {
@@ -461,45 +494,46 @@ function startDashboardAutoSync() {
 }
 
 async function loadMenuPage() {
-  const [menuItems, ordersToday, inventoryItems] = await Promise.all([
-    getMenuItems(),
-    getTodayOrders(),
-    getInventoryItems().catch((error) => {
-      console.warn("[Menu] Inventory prefetch failed:", error);
-      return state.inventoryItems || [];
-    }),
-  ]);
-  let provisionedMenuItems = menuItems || [];
-  let provisionedInventoryItems = inventoryItems || [];
-  state.menuItems = provisionedMenuItems || [];
-  state.ordersToday = ordersToday;
-  state.inventoryItems = provisionedInventoryItems;
+  try {
+    const [menuItems, ordersToday, inventoryItems] = await Promise.all([
+      getMenuItems(),
+      getTodayOrders(),
+      getInventoryItems().catch((error) => {
+        console.warn("[Menu] Inventory prefetch failed:", error);
+        return state.inventoryItems || [];
+      }),
+    ]);
+    let provisionedMenuItems = menuItems || [];
+    let provisionedInventoryItems = inventoryItems || [];
+    state.menuItems = provisionedMenuItems || [];
+    state.ordersToday = ordersToday;
+    state.inventoryItems = provisionedInventoryItems;
 
-  // Load Categories into the dedicated section above the menu items
-  const categoriesListEl = document.getElementById("adminCategoriesList");
-  if (categoriesListEl) {
-     const hasCachedCategories = Array.isArray(state.categories) && state.categories.length > 0;
-     if (hasCachedCategories) {
-       renderAdminCategories();
-     } else {
-       categoriesListEl.innerHTML = renderSectionState("Loading categories...");
-     }
-     try {
-       state.categories = await getCategories();
-       renderAdminCategories();
-     } catch (err) {
-       console.error(err);
-       if (!hasCachedCategories) {
-         categoriesListEl.innerHTML = renderSectionState("Failed to load categories.", "error");
+    // Load Categories into the dedicated section above the menu items
+    const categoriesListEl = document.getElementById("adminCategoriesList");
+    if (categoriesListEl) {
+       const hasCachedCategories = Array.isArray(state.categories) && state.categories.length > 0;
+       if (hasCachedCategories) {
+         renderAdminCategories();
+       } else {
+         categoriesListEl.innerHTML = renderSectionState("Loading categories...");
        }
-     }
-  }
+       try {
+         state.categories = await getCategories();
+         renderAdminCategories();
+       } catch (err) {
+         console.error(err);
+         if (!hasCachedCategories) {
+           categoriesListEl.innerHTML = renderSectionState("Failed to load categories.", "error");
+         }
+       }
+    }
 
-  // sold map for today
-  state.soldMap = buildSoldMapFromOrders(ordersToday);
+    // sold map for today
+    state.soldMap = buildSoldMapFromOrders(ordersToday);
 
-  const container = document.getElementById("menuContent");
-  if (!container) return;
+    const container = document.getElementById("menuContent");
+    if (!container) return;
 
   container.innerHTML = `
     <div class="card admin-menu-shell">
@@ -567,43 +601,47 @@ async function loadMenuPage() {
     }
   };
 
-  document.getElementById("btnAddMenuItem")?.addEventListener("click", () => openMenuEditor(null));
-  document.getElementById("btnClearMenu")?.addEventListener("click", async () => {
-    try {
-      const confirmed = await ModalUtils.confirm("Clear all menu items", "This will permanently remove every menu item. Are you sure you want to continue?");
-      if (confirmed !== 1) return;
-      await clearMenuItems();
-      await loadMenuPage();
-      await ModalUtils.success("Menu cleared", "All menu items have been removed. You can now add new categories and items.");
-    } catch (error) {
-      console.error("Clear menu failed:", error);
-      await ModalUtils.error("Clear Failed", error?.message || "Unable to clear menu items.");
-    }
-  });
-  document.getElementById("btnRefreshMenu")?.addEventListener("click", () => loadMenuPage());
+    document.getElementById("btnAddMenuItem")?.addEventListener("click", () => openMenuEditor(null));
+    document.getElementById("btnClearMenu")?.addEventListener("click", async () => {
+      try {
+        const confirmed = await ModalUtils.confirm("Clear all menu items", "This will permanently remove every menu item. Are you sure you want to continue?");
+        if (confirmed !== 1) return;
+        await clearMenuItems();
+        await loadMenuPage();
+        await ModalUtils.success("Menu cleared", "All menu items have been removed. You can now add new categories and items.");
+      } catch (error) {
+        console.error("Clear menu failed:", error);
+        await ModalUtils.error("Clear Failed", error?.message || "Unable to clear menu items.");
+      }
+    });
+    document.getElementById("btnRefreshMenu")?.addEventListener("click", () => loadMenuPage());
+  } finally {
+    showApp();
+  }
 }
 
 async function loadStaffPage() {
-  const [staff, schedule] = await Promise.all([getStaff(), getSchedule()]);
-
-  let nextStaff = staff;
   try {
-    const users = await listUsers();
-    const backfill = await backfillStaffAccountLinks(staff, users);
-    if (backfill.linked > 0) {
-      nextStaff = await getStaff();
-      console.info(
-        `[Staff] Backfilled account links: ${backfill.linked} linked, ${backfill.ambiguous} ambiguous, ${backfill.skipped} skipped.`
-      );
+    const [staff, schedule] = await Promise.all([getStaff(), getSchedule()]);
+
+    let nextStaff = staff;
+    try {
+      const users = await listUsers();
+      const backfill = await backfillStaffAccountLinks(staff, users);
+      if (backfill.linked > 0) {
+        nextStaff = await getStaff();
+        console.info(
+          `[Staff] Backfilled account links: ${backfill.linked} linked, ${backfill.ambiguous} ambiguous, ${backfill.skipped} skipped.`
+        );
+      }
+    } catch (backfillError) {
+      console.warn("[Staff] Backfill skipped due to account fetch/update issue:", backfillError);
     }
-  } catch (backfillError) {
-    console.warn("[Staff] Backfill skipped due to account fetch/update issue:", backfillError);
-  }
 
-  state.staff = nextStaff;
-  state.schedule = schedule;
+    state.staff = nextStaff;
+    state.schedule = schedule;
 
-  renderStaffList(nextStaff, async (id) => {
+    renderStaffList(nextStaff, async (id) => {
     const member = state.staff.find((entry) => entry.id === id);
     if (!member) return;
 
@@ -666,7 +704,10 @@ async function loadStaffPage() {
     }
   });
 
-  renderScheduleEditor(nextStaff, schedule);
+    renderScheduleEditor(nextStaff, schedule);
+  } finally {
+    showApp();
+  }
 }
 
 async function loadOrdersPage() {
@@ -681,6 +722,8 @@ async function loadOrdersPage() {
     applyOrderFilters();
   } catch (error) {
     wrap.innerHTML = `<div style="color:var(--red);font-size:13px;padding:10px 0;">Failed to load transactions: ${error?.message || "Unknown error"}</div>`;
+  } finally {
+    showApp();
   }
 }
 
@@ -1162,6 +1205,8 @@ async function loadInventoryPage() {
     if (!hasCached && listWrap) {
       listWrap.innerHTML = renderSectionState("Unable to load inventory right now. Please try again.", "error");
     }
+  } finally {
+    showApp();
   }
 
   bindInventoryForm();
@@ -1450,6 +1495,7 @@ async function loadAccountsPage() {
 
   await refreshAccountsRecords();
   bindAccountsControls();
+  showApp();
 }
 
 function normalizeAccountRecord(user) {
@@ -2316,6 +2362,8 @@ async function loadSettingsPage() {
       await ModalUtils.error("Export Failed", error?.message || "Unable to export settings.");
     }
   });
+
+  showApp();
 }
 
 // Public API expected by admin.html
@@ -2324,15 +2372,18 @@ window.showPage = async function (pageId, navEl, title) {
   setActiveNav(navEl);
   setTopbarTitle(title || "Admin");
   showPage(pageId);
-
-  if (pageId === "dashboard") await loadDashboard();
-  if (pageId === "orders") await loadOrdersPage();
-  if (pageId === "menu") await loadMenuPage();
-  if (pageId === "inventory") await loadInventoryPage();
-  if (pageId === "staff") await loadStaffPage();
-  if (pageId === "accounts") await loadAccountsPage();
-  if (pageId === "categories") await loadCategoriesPage();
-  if (pageId === "settings") await loadSettingsPage();
+  try {
+    if (pageId === "dashboard") await loadDashboard();
+    if (pageId === "orders") await loadOrdersPage();
+    if (pageId === "menu") await loadMenuPage();
+    if (pageId === "inventory") await loadInventoryPage();
+    if (pageId === "staff") await loadStaffPage();
+    if (pageId === "accounts") await loadAccountsPage();
+    if (pageId === "categories") await loadCategoriesPage();
+    if (pageId === "settings") await loadSettingsPage();
+  } finally {
+    showApp();
+  }
 };
 
 window.refreshOrders = async function () {
@@ -2346,7 +2397,7 @@ window.refreshInventory = async function () {
 window.clearAllInventory = async function () {
   const hasExisting = Array.isArray(state.inventoryItems) && state.inventoryItems.length > 0;
   if (!hasExisting) {
-    await ModalUtils.info("Nothing to Clear", "Inventory is already empty.");
+    await ModalUtils.warning("Nothing to Clear", "Inventory is already empty.");
     return;
   }
   
@@ -2487,13 +2538,21 @@ window.logout = function () {
 };
 
 window.confirmLogout = async function () {
+  const modal = document.getElementById("logoutConfirmModal");
+  const signOutBtn = modal?.querySelector(".modal-custom-btn.primary.error");
+  setButtonLoadingState(signOutBtn, true, "Signing out...");
   try {
-    await authLogout();
-    window.closeLogoutModal();
+    await withTimeout(authLogout(), AUTH_OPERATION_TIMEOUT_MS, "logout");
     navigateTo("login", { replace: true });
   } catch (error) {
     console.error("[Auth] Logout failed:", error);
-    await ModalUtils.error("Logout Failed", error?.message || "Unable to sign out right now.");
+    await ModalUtils.error(
+      "Logout Failed",
+      error?.message === "logout_timeout" ? "Logout is taking too long. Please try again." : error?.message || "Unable to sign out right now."
+    );
+  } finally {
+    setButtonLoadingState(signOutBtn, false);
+    window.closeLogoutModal();
   }
 };
 

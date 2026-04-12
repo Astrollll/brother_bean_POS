@@ -1,11 +1,62 @@
 import { db } from "../controllers/firebase.js";
 import {
-  collection, getDocs, addDoc, doc, query, where, Timestamp, deleteDoc, writeBatch, updateDoc
+  collection, getDocs, setDoc, doc, query, where, Timestamp, deleteDoc, writeBatch, updateDoc
 } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js";
 import { getOrderOutbox, queueOrder, removeQueuedOrder } from "./storageModel.js";
 import { deductInventoryQuantities } from "./inventoryModel.js";
 
 const ORDERS_COLLECTION = "orders";
+const ORDER_WRITE_TIMEOUT_MS = 4000;
+
+function isOnlineNow() {
+  return typeof navigator === "undefined" ? true : navigator.onLine !== false;
+}
+
+function withTimeout(promise, timeoutMs, label) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(`${label}_timeout`));
+    }, timeoutMs);
+
+    Promise.resolve(promise)
+      .then((value) => {
+        clearTimeout(timer);
+        resolve(value);
+      })
+      .catch((error) => {
+        clearTimeout(timer);
+        reject(error);
+      });
+  });
+}
+
+async function persistInventoryAfterSale(orderRef, orderData) {
+  const inventoryAlerts = [];
+  const inventoryDeductions = [];
+
+  try {
+    for (const item of orderData.items) {
+      if (item.recipe && item.recipe.length > 0) {
+        const result = await deductInventoryQuantities(item.recipe, item.quantity);
+        if (Array.isArray(result?.alerts) && result.alerts.length > 0) {
+          inventoryAlerts.push(...result.alerts);
+        }
+        if (Array.isArray(result?.audit) && result.audit.length > 0) {
+          inventoryDeductions.push(...result.audit);
+        }
+      }
+    }
+
+    if (inventoryAlerts.length || inventoryDeductions.length) {
+      await updateDoc(orderRef, {
+        inventoryAlerts,
+        inventoryDeductions,
+      });
+    }
+  } catch (error) {
+    console.warn("[Orders] Inventory update finished after sale with an error.", error);
+  }
+}
 
 // Get today's date range as Timestamps
 export function todayRange() {
@@ -82,9 +133,10 @@ export async function clearAllOrders() {
 // Save a completed order to Firestore
 export async function saveOrder(cart, total, subtotal, paymentMethod, isPwdSenior, amountTendered, cashierUid = null) {
   const change = amountTendered - total;
+  const orderId = Date.now().toString();
 
   const orderData = {
-    orderId:        Date.now().toString(),
+    orderId:        orderId,
     timestamp:      new Date().toLocaleString(),
     createdAtMs:    Date.now(),
     createdAt:      new Date(),
@@ -109,9 +161,21 @@ export async function saveOrder(cart, total, subtotal, paymentMethod, isPwdSenio
     })),
   };
 
-  let orderRef = null;
+  const orderRef = doc(db, ORDERS_COLLECTION, orderId);
+
+  if (!isOnlineNow()) {
+    queueOrder(orderData);
+    return {
+      ...orderData,
+      queued: true,
+      queueError: "offline",
+      inventoryAlerts: [],
+      inventoryDeductions: [],
+    };
+  }
+
   try {
-    orderRef = await addDoc(collection(db, ORDERS_COLLECTION), orderData);
+    await withTimeout(setDoc(orderRef, orderData), ORDER_WRITE_TIMEOUT_MS, "order_save");
   } catch (e) {
     queueOrder(orderData);
     return {
@@ -123,40 +187,14 @@ export async function saveOrder(cart, total, subtotal, paymentMethod, isPwdSenio
     };
   }
 
-  const inventoryAlerts = [];
-  const inventoryDeductions = [];
-  let inventoryDeductionError = null;
-
-  try {
-    // Deduct inventory items based on recipe usage.
-    for (const item of orderData.items) {
-      if (item.recipe && item.recipe.length > 0) {
-        const result = await deductInventoryQuantities(item.recipe, item.quantity);
-        if (Array.isArray(result?.alerts) && result.alerts.length > 0) {
-          inventoryAlerts.push(...result.alerts);
-        }
-        if (Array.isArray(result?.audit) && result.audit.length > 0) {
-          inventoryDeductions.push(...result.audit);
-        }
-      }
-    }
-
-    if (inventoryAlerts.length || inventoryDeductions.length) {
-      await updateDoc(orderRef, {
-        inventoryAlerts,
-        inventoryDeductions,
-      });
-    }
-  } catch (deductionError) {
-    inventoryDeductionError = deductionError?.message || "inventory_deduction_failed";
-  }
+  void persistInventoryAfterSale(orderRef, orderData);
 
   return {
     ...orderData,
     queued: false,
-    inventoryAlerts,
-    inventoryDeductions,
-    inventoryDeductionError,
+    inventoryAlerts: [],
+    inventoryDeductions: [],
+    inventoryDeductionError: null,
   };
 }
 
@@ -169,7 +207,9 @@ export async function syncQueuedOrders() {
   let deductionFailures = 0;
   for (const item of outbox) {
     try {
-      const orderRef = await addDoc(collection(db, ORDERS_COLLECTION), item.payload);
+      const payloadOrderId = String(item.payload?.orderId || item.id || Date.now());
+      const orderRef = doc(db, ORDERS_COLLECTION, payloadOrderId);
+      await withTimeout(setDoc(orderRef, item.payload), ORDER_WRITE_TIMEOUT_MS, "order_sync");
 
       try {
         const payloadItems = Array.isArray(item.payload?.items) ? item.payload.items : [];

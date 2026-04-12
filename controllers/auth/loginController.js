@@ -1,6 +1,8 @@
 import { loginWithEmail, watchAuth, logout as authLogout, createAuthUserByAdmin } from "./firebaseAuth.js";
+import { auth } from "../firebase.js";
 import { getUserProfile, getUserRole, setUserRole, setUserProfile, ensureAdminAccessProfile } from "../../models/userModel.js";
 import { navigateTo } from "../utils/routes.js";
+import { fetchSignInMethodsForEmail } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-auth.js";
 
 const LOGIN_EMAIL_KEY = "bb_admin_remembered_email";
 const DEFAULT_ADMIN_BOOTSTRAP_KEY = "bb_admin_bootstrap_attempted";
@@ -21,6 +23,26 @@ const DEFAULT_ADMIN_ACCOUNTS = [
     fullName: "Default Owner",
   },
 ];
+
+const AUTH_OPERATION_TIMEOUT_MS = 6000;
+
+function withTimeout(promise, timeoutMs, label) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(`${label}_timeout`));
+    }, timeoutMs);
+
+    Promise.resolve(promise)
+      .then((value) => {
+        clearTimeout(timer);
+        resolve(value);
+      })
+      .catch((error) => {
+        clearTimeout(timer);
+        reject(error);
+      });
+  });
+}
 
 function setLoginLoadingState(message = "Checking session...") {
   const overlay = document.getElementById("login-loading");
@@ -69,6 +91,11 @@ async function ensureDefaultAdminAccount() {
 
     for (const account of DEFAULT_ADMIN_ACCOUNTS) {
       try {
+        const methods = await fetchSignInMethodsForEmail(auth, account.email).catch(() => []);
+        if (Array.isArray(methods) && methods.length > 0) {
+          continue;
+        }
+
         const created = await createAuthUserByAdmin(account.email, account.password);
         await setUserRole(created.uid, "admin", account.email);
         await setUserProfile(created.uid, {
@@ -165,7 +192,7 @@ window.login = async function () {
     setLoginBusy(true);
     setLoginLoadingState("Signing in...");
     if (status) status.textContent = "Authenticating account...";
-    const user = await loginWithEmail(email, password);
+    const user = await withTimeout(loginWithEmail(email, password), AUTH_OPERATION_TIMEOUT_MS, "login");
 
     if (remember) {
       localStorage.setItem(LOGIN_EMAIL_KEY, email);
@@ -174,7 +201,7 @@ window.login = async function () {
     }
 
     if (status) status.textContent = "Login successful. Redirecting...";
-    const routeResult = await routeByRole(user);
+    const routeResult = await withTimeout(routeByRole(user), AUTH_OPERATION_TIMEOUT_MS, "route");
     if (routeResult?.blocked) {
       if (err) err.textContent = routeResult.reason;
       if (status) status.textContent = "";
@@ -189,7 +216,9 @@ window.login = async function () {
       "auth/too-many-requests": "Too many failed attempts. Please wait and try again.",
     };
 
-    if (err) err.textContent = messageByCode[e?.code] || "Login failed. Check your credentials.";
+    if (err) err.textContent = e?.message === "login_timeout" || e?.message === "route_timeout"
+      ? "Login is taking too long. Please try again."
+      : messageByCode[e?.code] || "Login failed. Check your credentials.";
     if (status) status.textContent = "";
     showLoginScreen();
   } finally {
@@ -221,13 +250,14 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   setLoginLoadingState("Checking session...");
 
-  await ensureDefaultAdminAccount();
-
   if (emailInput && rememberedEmail) {
     emailInput.value = rememberedEmail;
     const remember = document.getElementById("rememberEmail");
     if (remember) remember.checked = true;
   }
+
+  // The default admin accounts are provisioned separately; avoid running
+  // the bootstrap on every login load so we don't add auth noise or delay.
 
   const maybeLoginOnEnter = (e) => {
     if (e.key === "Enter") window.login();
@@ -247,11 +277,12 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   watchAuth(async (user) => {
     if (!user) return;
-    // Only redirect if not already on the login page to prevent redirect loops
-    if (window.location.pathname.includes("/login")) {
-      return;
+    try {
+      await routeByRole(user);
+    } catch (error) {
+      console.warn("[Auth] Login redirect failed:", error);
+      showLoginScreen();
     }
-    await routeByRole(user);
   });
 
   showLoginScreen();

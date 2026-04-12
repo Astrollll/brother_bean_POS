@@ -1,64 +1,155 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Brother Bean - Login</title>
-  <link rel="icon" type="image/jpeg" href="/assets/icons/brother-bean-logo.jpg" />
-  <link rel="apple-touch-icon" href="/assets/icons/brother-bean-logo.jpg" />
-  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" rel="stylesheet" />
-  <link rel="stylesheet" href="/assets/adminstyle.css">
-</head>
-<body>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Brother Bean - Login</title>
+    <link
+      rel="icon"
+      type="image/jpeg"
+      href="/assets/icons/brother-bean-logo.jpg"
+    />
+    <link rel="apple-touch-icon" href="/assets/icons/brother-bean-logo.jpg" />
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/assets/adminstyle.css" />
+  </head>
+  <body>
+    <div
+      id="login-loading"
+      style="
+        position: fixed;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: linear-gradient(135deg, #f7f4ef 0%, #efe6d8 100%);
+        z-index: 20;
+      "
+    >
+      <div
+        style="
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 14px;
+          padding: 28px 32px;
+          border-radius: 24px;
+          background: rgba(255, 255, 255, 0.82);
+          backdrop-filter: blur(10px);
+          box-shadow: 0 20px 50px rgba(79, 47, 16, 0.12);
+          text-align: center;
+          max-width: 320px;
+        "
+      >
+        <div
+          style="
+            width: 42px;
+            height: 42px;
+            border-radius: 999px;
+            border: 4px solid rgba(126, 82, 35, 0.12);
+            border-top-color: #7e5223;
+            animation: lsSpin 0.8s linear infinite;
+          "
+        ></div>
+        <div
+          style="
+            font-family: &quot;Playfair Display&quot;, serif;
+            font-size: 22px;
+            color: #2f2318;
+          "
+        >
+          Brother Bean
+        </div>
+        <div id="login-loading-text" style="font-size: 14px; color: #6b5846">
+          Checking session...
+        </div>
+      </div>
+    </div>
 
-<div id="login-loading" style="position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#f7f4ef 0%,#efe6d8 100%);z-index:20;">
-  <div style="display:flex;flex-direction:column;align-items:center;gap:14px;padding:28px 32px;border-radius:24px;background:rgba(255,255,255,0.82);backdrop-filter:blur(10px);box-shadow:0 20px 50px rgba(79,47,16,0.12);text-align:center;max-width:320px;">
-    <div style="width:42px;height:42px;border-radius:999px;border:4px solid rgba(126,82,35,0.12);border-top-color:#7e5223;animation:lsSpin 0.8s linear infinite;"></div>
-    <div style="font-family:'Playfair Display',serif;font-size:22px;color:#2f2318;">Brother Bean</div>
-    <div id="login-loading-text" style="font-size:14px;color:#6b5846;">Checking session...</div>
-  </div>
-</div>
+    <div
+      id="login-screen"
+      style="visibility: hidden; opacity: 0; transition: opacity 180ms ease"
+    >
+      <div class="ls-left">
+        <div class="ls-logo">
+          <img
+            src="/assets/icons/brother-bean-logo.jpg"
+            alt="Brother Bean Coffee House logo"
+          />
+        </div>
+        <div class="ls-name">Brother Bean</div>
+        <div class="ls-sub">Coffee House</div>
+        <div class="ls-divider"></div>
+        <div class="ls-portal">Brewed for Better Service</div>
+      </div>
+      <div class="ls-right">
+        <div class="ls-title">Welcome Back!</div>
+        <div class="ls-desc">Sign in to continue</div>
+        <div class="ls-badges">
+          <span class="ls-badge">Admin or Staff</span>
+          <span class="ls-badge">Secure sign-in</span>
+        </div>
+        <div class="ls-label">Email Address</div>
+        <input
+          class="ls-input"
+          type="email"
+          id="u"
+          name="email"
+          placeholder="you@brotherbean.com"
+          autocomplete="username email"
+          inputmode="email"
+        />
+        <div class="ls-label">Password</div>
+        <div class="ls-password-wrap">
+          <input
+            class="ls-input"
+            type="password"
+            id="p"
+            name="password"
+            placeholder="Enter your password"
+            autocomplete="current-password"
+          />
+          <button
+            class="ls-password-toggle"
+            type="button"
+            onclick="window.toggleLoginPassword()"
+            aria-label="Show password"
+            aria-controls="p"
+            aria-pressed="false"
+            id="togglePwdBtn"
+          >
+            Show
+          </button>
+        </div>
+        <div class="ls-caps" id="capsWarn" aria-live="polite">
+          Caps Lock appears to be ON.
+        </div>
+        <div class="ls-meta-row">
+          <label class="ls-remember">
+            <input type="checkbox" id="rememberEmail" /> Remember email
+          </label>
+          <button
+            class="ls-link-btn"
+            type="button"
+            onclick="window.forgotPasswordHelp()"
+          >
+            Forgot password?
+          </button>
+        </div>
+        <div class="ls-error" id="err"></div>
+        <button class="ls-btn" id="loginBtn" onclick="window.login()">
+          <span id="loginBtnText">Sign In</span>
+        </button>
+        <div class="ls-status" id="loginStatus" aria-live="polite"></div>
+      </div>
+    </div>
 
-<div id="login-screen" style="visibility:hidden;opacity:0;transition:opacity 180ms ease;">
-  <div class="ls-left">
-    <div class="ls-logo">
-      <img src="/assets/icons/brother-bean-logo.jpg" alt="Brother Bean Coffee House logo" />
-    </div>
-    <div class="ls-name">Brother Bean</div>
-    <div class="ls-sub">Coffee House</div>
-    <div class="ls-divider"></div>
-    <div class="ls-portal">Brewed for Better Service</div>
-  </div>
-  <div class="ls-right">
-    <div class="ls-title">Welcome Back!</div>
-    <div class="ls-desc">Sign in to continue</div>
-    <div class="ls-badges">
-      <span class="ls-badge">Admin or Staff</span>
-      <span class="ls-badge">Secure sign-in</span>
-    </div>
-    <div class="ls-label">Email Address</div>
-    <input class="ls-input" type="email" id="u" name="email" placeholder="you@brotherbean.com" autocomplete="username email" inputmode="email">
-    <div class="ls-label">Password</div>
-    <div class="ls-password-wrap">
-      <input class="ls-input" type="password" id="p" name="password" placeholder="Enter your password" autocomplete="current-password">
-      <button class="ls-password-toggle" type="button" onclick="window.toggleLoginPassword()" aria-label="Show password" aria-controls="p" aria-pressed="false" id="togglePwdBtn">Show</button>
-    </div>
-    <div class="ls-caps" id="capsWarn" aria-live="polite">Caps Lock appears to be ON.</div>
-    <div class="ls-meta-row">
-      <label class="ls-remember">
-        <input type="checkbox" id="rememberEmail"> Remember email
-      </label>
-      <button class="ls-link-btn" type="button" onclick="window.forgotPasswordHelp()">Forgot password?</button>
-    </div>
-    <div class="ls-error" id="err"></div>
-    <button class="ls-btn" id="loginBtn" onclick="window.login()">
-      <span id="loginBtnText">Sign In</span>
-    </button>
-    <div class="ls-status" id="loginStatus" aria-live="polite"></div>
-  </div>
-</div>
-
-<script type="module" src="/controllers/auth/loginController.js?v=20260405b"></script>
-</body>
+    <script
+      type="module"
+      src="/controllers/auth/loginController.js?v=20260405b"
+    ></script>
+  </body>
 </html>
