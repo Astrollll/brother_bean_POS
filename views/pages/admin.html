@@ -55,6 +55,15 @@
         <div class="topbar-sep"></div>
         <div class="topbar-page" id="topbar-page">Dashboard</div>
         <div class="topbar-right">
+          <button
+            class="topbar-theme"
+            id="themeToggleBtn"
+            type="button"
+            onclick="window.toggleTheme && window.toggleTheme()"
+            aria-label="Toggle theme"
+          >
+            <i class="ri-moon-line" aria-hidden="true"></i> Dark
+          </button>
           <span class="topbar-date" id="topbar-date"
             >Saturday, March 14, 2026</span
           >
@@ -108,6 +117,17 @@
             <span class="nav-icon"
               ><i class="ri-receipt-line" aria-hidden="true"></i></span
             >Transactions
+          </div>
+          <div
+            class="nav-item"
+            id="nav-sales-analytics"
+            onclick="
+              window.showPage('sales-analytics', this, 'Sales Analytics')
+            "
+          >
+            <span class="nav-icon"
+              ><i class="ri-line-chart-line" aria-hidden="true"></i></span
+            >Sales Analytics
           </div>
           <div class="nav-item" onclick="window.showPage('menu', this, 'Menu')">
             <span class="nav-icon"
@@ -460,6 +480,23 @@
               <div style="color: var(--muted); font-size: 13px">
                 Loading menu data...
               </div>
+            </div>
+          </div>
+
+          <!-- ── SALES ANALYTICS ── -->
+          <div id="sales-analytics" class="page">
+            <div class="page-header">
+              <div>
+                <div class="sa-breadcrumb">Dashboard / Sales Analytics</div>
+                <div class="page-title">Sales Analytics</div>
+                <div class="page-sub">
+                  Compare periods, spot trends, and export actionable coffee
+                  shop insights.
+                </div>
+              </div>
+            </div>
+            <div id="salesAnalyticsContent" class="sa-root">
+              <div class="section-state muted">Loading sales analytics...</div>
             </div>
           </div>
 
@@ -909,6 +946,8 @@
     </div>
 
     <script src="/assets/bootstrap-5.3.8-dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dayjs@1/dayjs.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
     <script>
       (function () {
         const loading = document.getElementById("auth-loading");

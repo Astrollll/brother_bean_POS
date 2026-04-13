@@ -11,6 +11,7 @@ import { renderStats, renderRecentOrders, renderTopItems, renderStaffOnDuty } fr
 import { renderAdminMenu } from "../../views/menuView.js";
 import { renderStaffList, renderScheduleEditor, readScheduleFromDOM } from "../../views/staffView.js";
 import { navigateTo } from "../utils/routes.js";
+import { createSalesAnalyticsPageController } from "./salesAnalyticsController.js";
 
 const ModalUtils = window.ModalUtils || {
   async confirm(title, message) {
@@ -57,9 +58,12 @@ const state = {
   orderStockExpanded: {},
 };
 
+const salesAnalyticsPage = createSalesAnalyticsPageController({ getAllOrders });
+
 const DASHBOARD_SYNC_INTERVAL_MS = 60_000;
 let dashboardSyncInProgress = false;
 const AUTH_OPERATION_TIMEOUT_MS = 4000;
+const THEME_STORAGE_KEY = "bb-pos-theme";
 
 function withTimeout(promise, timeoutMs, label) {
   return new Promise((resolve, reject) => {
@@ -251,6 +255,38 @@ function setupTopbarActions() {
   makeKeyboardClickable(document.getElementById("topbarNotifBtn"), openTopbarNotifications);
   makeKeyboardClickable(document.getElementById("topbarAvatarBtn"), openTopbarAccount);
 }
+
+function setThemeButton(theme) {
+  const btn = document.getElementById("themeToggleBtn");
+  if (!btn) return;
+  btn.innerHTML = theme === "dark"
+    ? '<i class="ri-sun-line" aria-hidden="true"></i> Light'
+    : '<i class="ri-moon-line" aria-hidden="true"></i> Dark';
+}
+
+function applyTheme(theme) {
+  const normalized = theme === "dark" ? "dark" : "light";
+  document.body.setAttribute("data-theme", normalized);
+  setThemeButton(normalized);
+  localStorage.setItem(THEME_STORAGE_KEY, normalized);
+  if (state.page === "sales-analytics") {
+    window.setTimeout(() => {
+      salesAnalyticsPage.load().catch((error) => {
+        console.warn("[SalesAnalytics] Theme refresh failed:", error);
+      });
+    }, 0);
+  }
+}
+
+function applySavedTheme() {
+  const saved = localStorage.getItem(THEME_STORAGE_KEY);
+  applyTheme(saved === "dark" ? "dark" : "light");
+}
+
+window.toggleTheme = function() {
+  const current = document.body.getAttribute("data-theme") === "dark" ? "dark" : "light";
+  applyTheme(current === "dark" ? "light" : "dark");
+};
 
 function showPage(pageId) {
   document.querySelectorAll(".page").forEach(p => p.classList.remove("active"));
@@ -930,7 +966,19 @@ function renderOrdersTable(orders) {
   const rows = orders.map((order) => {
     const shortId = (order.orderId || order.id || "").slice(-6);
     const items = (order.items || [])
-      .map((i) => `${i.name}${i.quantity > 1 ? ` x${i.quantity}` : ""}`)
+      .map((i) => {
+        const addonNames = (Array.isArray(i?.addons) ? i.addons : [])
+          .map((addon) => {
+            if (typeof addon === "string") return addon.trim();
+            return String(addon?.name || "").trim();
+          })
+          .filter(Boolean)
+          .join(", ");
+        const addonSuffix = addonNames ? ` (${addonNames})` : "";
+        const qtySuffix = i.quantity > 1 ? ` x${i.quantity}` : "";
+        return `${String(i?.name || "").trim()}${addonSuffix}${qtySuffix}`;
+      })
+      .filter(Boolean)
       .join(", ");
     const date = getOrderDate(order);
     const time = date
@@ -985,7 +1033,7 @@ function renderOrdersTable(orders) {
     return `
       <tr>
       <td>#${shortId}</td>
-      <td>${items || "-"}</td>
+      <td>${escapeHtml(items || "-")}</td>
       <td>${type}</td>
       <td>${time}</td>
       <td>₱${total}</td>
@@ -1210,6 +1258,7 @@ async function loadInventoryPage() {
   }
 
   bindInventoryForm();
+  bindInventoryEditPopup();
 }
 
 function inventoryStatus(item) {
@@ -1288,32 +1337,7 @@ function renderInventorySection() {
     btn.addEventListener("click", () => {
       const item = state.inventoryItems.find((i) => i.id === btn.dataset.invId);
       if (!item) return;
-
-      const idEl = document.getElementById("invId");
-      const nameEl = document.getElementById("invName");
-      const catEl = document.getElementById("invCategory");
-      const unitEl = document.getElementById("invUnit");
-      const qtyEl = document.getElementById("invQuantity");
-      const reorderEl = document.getElementById("invReorder");
-      const priceEl = document.getElementById("invPrice");
-      const saveBtn = document.getElementById("invSaveBtn");
-
-      if (idEl) idEl.value = item.id;
-      if (nameEl) nameEl.value = item.name || "";
-      if (catEl) catEl.value = item.category || "";
-      if (unitEl) {
-        const nextUnit = String(item.unit || "").trim();
-        if (nextUnit) {
-          ensureInventoryUnitOption(unitEl, nextUnit);
-          unitEl.value = nextUnit;
-        } else {
-          unitEl.value = "";
-        }
-      }
-      if (qtyEl) qtyEl.value = String(item.quantity || 0);
-      if (reorderEl) reorderEl.value = String(item.reorderLevel || 0);
-      if (priceEl) priceEl.value = String(item.price || 0);
-      if (saveBtn) saveBtn.textContent = "Update Item";
+      openInventoryEditPopup(item);
     });
   });
 
@@ -1339,6 +1363,203 @@ function ensureInventoryUnitOption(selectEl, unitValue) {
   custom.textContent = unitValue;
   custom.dataset.dynamic = "true";
   selectEl.appendChild(custom);
+}
+
+function closeInventoryEditPopup(resetForm = true) {
+  const modal = document.getElementById("inventoryEditModal");
+  const form = document.getElementById("inventoryEditForm");
+  const unitEl = document.getElementById("invEditUnit");
+  if (modal) {
+    modal.style.display = "none";
+    modal.setAttribute("aria-hidden", "true");
+  }
+  document.body.classList.remove("modal-open");
+  if (resetForm && form) form.reset();
+  if (resetForm && unitEl) {
+    unitEl.querySelectorAll("option[data-dynamic='true']").forEach((opt) => opt.remove());
+    unitEl.value = "";
+  }
+}
+
+function ensureInventoryEditPopup() {
+  let modal = document.getElementById("inventoryEditModal");
+  if (modal) return modal;
+  const isDark = document.body.getAttribute("data-theme") === "dark";
+
+  const sourceUnitEl = document.getElementById("invUnit");
+  const unitOptionsHtml = sourceUnitEl ? sourceUnitEl.innerHTML : `
+    <option value="" disabled selected>Select unit of measure</option>
+    <option value="pcs">pcs - pieces</option>
+    <option value="pack">pack - package</option>
+    <option value="box">box - boxed item</option>
+    <option value="tray">tray - tray unit</option>
+    <option value="bottle">bottle - bottled item</option>
+    <option value="can">can - canned item</option>
+    <option value="jar">jar - jar unit</option>
+    <option value="sachet">sachet - single-use packet</option>
+    <option value="g">g - grams</option>
+    <option value="kg">kg - kilograms</option>
+    <option value="oz">oz - ounces</option>
+    <option value="lb">lb - pounds</option>
+    <option value="ml">ml - milliliters</option>
+    <option value="L">L - liters</option>
+    <option value="fl oz">fl oz - fluid ounces</option>
+    <option value="gal">gal - gallons</option>
+    <option value="shot">shot - espresso shot</option>
+    <option value="cup">cup - cup serving</option>
+    <option value="serving">serving - serving size</option>
+    <option value="portion">portion - portion size</option>
+    <option value="slice">slice - sliced serving</option>
+    <option value="set">set - grouped set</option>
+  `;
+
+  modal = document.createElement("div");
+  modal.id = "inventoryEditModal";
+  modal.setAttribute("aria-hidden", "true");
+  modal.style.display = "none";
+  modal.style.position = "fixed";
+  modal.style.inset = "0";
+  modal.style.zIndex = "10040";
+  modal.style.background = isDark ? "rgba(0,0,0,0.8)" : "rgba(0,0,0,0.45)";
+  modal.style.backdropFilter = "blur(3px)";
+  modal.style.webkitBackdropFilter = "blur(3px)";
+  modal.style.padding = "20px";
+  modal.style.alignItems = "center";
+  modal.style.justifyContent = "center";
+  modal.style.overflow = "auto";
+
+  modal.innerHTML = `
+    <div role="dialog" aria-modal="true" aria-label="Edit inventory item" class="inventory-edit-modal-shell"
+      style="width:min(760px, 96vw); border-radius:16px; overflow:hidden;">
+      <div class="inventory-edit-modal-header" style="display:flex; align-items:center; justify-content:space-between; padding:14px 16px; border-bottom:1px solid var(--border-color);">
+        <div>
+          <div class="inventory-edit-modal-title" style="font-weight:800; letter-spacing:.04em; text-transform:uppercase; font-size:14px;">Edit Stock Item</div>
+          <div class="inventory-edit-modal-subtitle" style="font-size:12px;">Update item details and stock levels.</div>
+        </div>
+        <button type="button" id="invEditCloseBtn" class="orders-btn ghost" style="min-width:34px; padding:6px 10px;">X</button>
+      </div>
+      <form id="inventoryEditForm" class="inventory-edit-modal-body" style="padding:14px; display:grid; gap:10px; grid-template-columns:repeat(2,minmax(0,1fr));">
+        <input id="invEditId" type="hidden" />
+        <div>
+          <div class="ls-label">Item Name</div>
+          <input id="invEditName" class="ls-input" required style="margin-bottom:0;" />
+        </div>
+        <div>
+          <div class="ls-label">Category</div>
+          <input id="invEditCategory" class="ls-input" required style="margin-bottom:0;" />
+        </div>
+        <div>
+          <div class="ls-label">Unit</div>
+          <select id="invEditUnit" class="ls-input" required style="margin-bottom:0;">
+            ${unitOptionsHtml}
+          </select>
+        </div>
+        <div>
+          <div class="ls-label">Current Stock</div>
+          <input id="invEditQuantity" type="number" min="0" step="0.01" class="ls-input" required style="margin-bottom:0;" />
+        </div>
+        <div>
+          <div class="ls-label">Restock Alert Level</div>
+          <input id="invEditReorder" type="number" min="0" step="0.01" class="ls-input" required style="margin-bottom:0;" />
+        </div>
+        <div>
+          <div class="ls-label">Price (Per Unit)</div>
+          <input id="invEditPrice" type="number" min="0" step="0.01" class="ls-input" required style="margin-bottom:0;" />
+        </div>
+        <div style="grid-column:1/-1; display:flex; justify-content:flex-end; gap:8px; padding-top:6px;">
+          <button type="button" id="invEditCancelBtn" class="orders-btn ghost">Cancel</button>
+          <button type="submit" id="invEditSaveBtn" class="orders-btn">Save Changes</button>
+        </div>
+      </form>
+    </div>
+  `;
+
+  document.body.appendChild(modal);
+  return modal;
+}
+
+function openInventoryEditPopup(item) {
+  const modal = ensureInventoryEditPopup();
+  const idEl = document.getElementById("invEditId");
+  const nameEl = document.getElementById("invEditName");
+  const catEl = document.getElementById("invEditCategory");
+  const unitEl = document.getElementById("invEditUnit");
+  const qtyEl = document.getElementById("invEditQuantity");
+  const reorderEl = document.getElementById("invEditReorder");
+  const priceEl = document.getElementById("invEditPrice");
+
+  if (!modal || !idEl || !nameEl || !catEl || !unitEl || !qtyEl || !reorderEl || !priceEl) return;
+
+  idEl.value = item.id || "";
+  nameEl.value = item.name || "";
+  catEl.value = item.category || "";
+
+  const nextUnit = String(item.unit || "").trim();
+  if (nextUnit) {
+    ensureInventoryUnitOption(unitEl, nextUnit);
+    unitEl.value = nextUnit;
+  } else {
+    unitEl.value = "";
+  }
+
+  qtyEl.value = String(item.quantity || 0);
+  reorderEl.value = String(item.reorderLevel || 0);
+  priceEl.value = String(item.price || 0);
+
+  modal.style.display = "flex";
+  modal.setAttribute("aria-hidden", "false");
+  document.body.classList.add("modal-open");
+  nameEl.focus();
+}
+
+function bindInventoryEditPopup() {
+  const modal = ensureInventoryEditPopup();
+  const form = document.getElementById("inventoryEditForm");
+  const closeBtn = document.getElementById("invEditCloseBtn");
+  const cancelBtn = document.getElementById("invEditCancelBtn");
+  if (!modal || !form || form.dataset.bound) return;
+
+  form.dataset.bound = "1";
+
+  closeBtn?.addEventListener("click", () => closeInventoryEditPopup(true));
+  cancelBtn?.addEventListener("click", () => closeInventoryEditPopup(true));
+
+  modal.addEventListener("click", (event) => {
+    if (event.target === modal) {
+      closeInventoryEditPopup(true);
+    }
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && modal.style.display === "flex") {
+      closeInventoryEditPopup(true);
+    }
+  });
+
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const id = document.getElementById("invEditId")?.value?.trim();
+    const name = document.getElementById("invEditName")?.value?.trim();
+    const category = document.getElementById("invEditCategory")?.value?.trim();
+    const unit = document.getElementById("invEditUnit")?.value?.trim();
+    const quantity = Number(document.getElementById("invEditQuantity")?.value || 0);
+    const reorderLevel = Number(document.getElementById("invEditReorder")?.value || 0);
+    const price = Number(document.getElementById("invEditPrice")?.value || 0);
+
+    if (!id || !name || !category || !unit) {
+      await ModalUtils.warning("Validation Error", "Name, category, and unit are required.");
+      return;
+    }
+    if (!Number.isFinite(quantity) || quantity < 0 || !Number.isFinite(reorderLevel) || reorderLevel < 0 || !Number.isFinite(price) || price < 0) {
+      await ModalUtils.warning("Validation Error", "Quantity, reorder level, and price must be valid positive values.");
+      return;
+    }
+
+    await saveInventoryItem({ id, name, category, unit, quantity, reorderLevel, price });
+    await ModalUtils.success("Success", "Inventory item has been updated successfully.");
+    closeInventoryEditPopup(true);
+    await loadInventoryPage();
+  });
 }
 
 function clearInventoryForm() {
@@ -2375,6 +2596,7 @@ window.showPage = async function (pageId, navEl, title) {
   try {
     if (pageId === "dashboard") await loadDashboard();
     if (pageId === "orders") await loadOrdersPage();
+    if (pageId === "sales-analytics") await salesAnalyticsPage.load();
     if (pageId === "menu") await loadMenuPage();
     if (pageId === "inventory") await loadInventoryPage();
     if (pageId === "staff") await loadStaffPage();
@@ -2581,6 +2803,7 @@ window.addEventListener("keydown", (event) => {
 });
 
 document.addEventListener("DOMContentLoaded", async () => {
+  applySavedTheme();
   setupTopbarDate();
   setupTopbarActions();
   startDashboardAutoSync();
@@ -2696,6 +2919,11 @@ document.addEventListener("DOMContentLoaded", async () => {
 function openMenuEditor(itemId, preset = {}) {
   const slot = document.getElementById("menuEditorSlot");
   if (!slot) return;
+  const previousModal = document.getElementById("menuEditModal");
+  if (previousModal) previousModal.remove();
+  document.body.classList.add("menu-editor-modal-open");
+  let menuEditorDirty = false;
+  let menuEditorKeydownHandler = null;
 
   const existing = state.menuItems.find(i => i.id === itemId);
   const isNew = !existing;
@@ -2770,14 +2998,16 @@ function openMenuEditor(itemId, preset = {}) {
     : "";
 
   slot.innerHTML = `
-    <div class="card mm-menu-editor" style="margin:14px 0;border:1px solid rgba(107,68,35,0.12);border-radius:18px;box-shadow:0 12px 34px rgba(30,20,12,0.08);overflow:hidden;background:linear-gradient(180deg,#ffffff 0%,#fdfaf6 100%);">
-      <div class="card-head" style="padding:14px 16px;border-bottom:1px solid rgba(107,68,35,0.12);background:linear-gradient(135deg,rgba(107,68,35,0.08) 0%,rgba(221,184,146,0.16) 100%);">
-        <div style="display:flex;flex-direction:column;gap:4px;">
-          <span class="card-title" style="font-size:15px;letter-spacing:0.04em;text-transform:uppercase;color:#5f3c1f;">${isNew ? (presetItem.id ? "Customize menu item" : "Add menu item") : "Edit menu item"}</span>
-          <span style="font-size:12px;color:#7b6652;">Set details, recipe, and pricing before saving.</span>
+    <div id="menuEditModal" class="modal-overlay-custom menu-editor-modal-overlay" aria-hidden="false">
+      <div class="card mm-menu-editor menu-editor-modal-shell" role="dialog" aria-modal="true" aria-labelledby="menuEditModalTitle" style="margin:0;border:1px solid rgba(107,68,35,0.12);border-radius:18px;box-shadow:0 12px 34px rgba(30,20,12,0.08);overflow:hidden;background:linear-gradient(180deg,#ffffff 0%,#fdfaf6 100%);">
+        <div class="menu-editor-modal-header card-head" style="padding:14px 16px;border-bottom:1px solid rgba(107,68,35,0.12);background:linear-gradient(135deg,rgba(107,68,35,0.08) 0%,rgba(221,184,146,0.16) 100%);display:flex;align-items:flex-start;justify-content:space-between;gap:12px;">
+          <div style="display:flex;flex-direction:column;gap:4px;">
+            <span id="menuEditModalTitle" class="card-title" style="font-size:15px;letter-spacing:0.04em;text-transform:uppercase;color:#5f3c1f;">Edit Menu Item</span>
+            <span style="font-size:12px;color:#7b6652;">Set details, recipe, and pricing before saving.</span>
+          </div>
+          <button type="button" id="mm_close" class="menu-editor-modal-close" aria-label="Close edit menu item modal">×</button>
         </div>
-      </div>
-      <div class="mm-menu-editor-grid" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;padding:14px;">
+        <div class="menu-editor-modal-body mm-menu-editor-grid" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;padding:14px;">
         <div ${isNew && !presetItem.id ? 'style="display:none;"' : 'style="grid-column:1/-1;"'}>
           <div class="ls-label">ID</div>
           <input class="ls-input" id="mm_id" value="${isNew && !presetItem.id ? 'Auto-generated' : item.id}" readonly style="margin-bottom:0;">
@@ -2805,23 +3035,23 @@ function openMenuEditor(itemId, preset = {}) {
           <div class="ls-label">Note (optional)</div>
           <input class="ls-input" id="mm_note" value="${(item.note || "").replaceAll('"', "&quot;")}" style="margin-bottom:0;">
         </div>
-        <div style="display:flex;gap:12px;align-items:center;background:rgba(107,68,35,0.06);border:1px solid rgba(107,68,35,0.14);padding:8px 10px;border-radius:12px;">
-          <label style="display:flex;gap:8px;align-items:center;font-size:13px;color:var(--text-secondary);font-weight:600;cursor:pointer;">
+        <div class="mm-flag-card" style="display:flex;gap:12px;align-items:center;background:rgba(107,68,35,0.06);border:1px solid rgba(107,68,35,0.14);padding:8px 10px;border-radius:12px;">
+          <label class="mm-flag-label" style="display:flex;gap:8px;align-items:center;font-size:13px;color:var(--text-secondary);font-weight:600;cursor:pointer;">
             <input type="checkbox" id="mm_hasTemp" ${item.hasTemp ? "checked" : ""}> Has temperature
           </label>
         </div>
-        <div style="display:flex;gap:12px;align-items:center;background:rgba(107,68,35,0.06);border:1px solid rgba(107,68,35,0.14);padding:8px 10px;border-radius:12px;">
-          <label style="display:flex;gap:8px;align-items:center;font-size:13px;color:var(--text-secondary);font-weight:600;cursor:pointer;">
+        <div class="mm-flag-card" style="display:flex;gap:12px;align-items:center;background:rgba(107,68,35,0.06);border:1px solid rgba(107,68,35,0.14);padding:8px 10px;border-radius:12px;">
+          <label class="mm-flag-label" style="display:flex;gap:8px;align-items:center;font-size:13px;color:var(--text-secondary);font-weight:600;cursor:pointer;">
             <input type="checkbox" id="mm_hasVariant" ${item.hasVariant ? "checked" : ""}> Has variants
           </label>
         </div>
-        <div style="display:flex;gap:12px;align-items:center;background:rgba(107,68,35,0.06);border:1px solid rgba(107,68,35,0.14);padding:8px 10px;border-radius:12px;">
-          <label style="display:flex;gap:8px;align-items:center;font-size:13px;color:var(--text-secondary);font-weight:600;cursor:pointer;">
+        <div class="mm-flag-card" style="display:flex;gap:12px;align-items:center;background:rgba(107,68,35,0.06);border:1px solid rgba(107,68,35,0.14);padding:8px 10px;border-radius:12px;">
+          <label class="mm-flag-label" style="display:flex;gap:8px;align-items:center;font-size:13px;color:var(--text-secondary);font-weight:600;cursor:pointer;">
             <input type="checkbox" id="mm_popular" ${item.popular ? "checked" : ""}> Popular
           </label>
         </div>
-        <div style="display:flex;gap:12px;align-items:center;background:rgba(107,68,35,0.06);border:1px solid rgba(107,68,35,0.14);padding:8px 10px;border-radius:12px;">
-          <label style="display:flex;gap:8px;align-items:center;font-size:13px;color:var(--text-secondary);font-weight:600;cursor:pointer;">
+        <div class="mm-flag-card" style="display:flex;gap:12px;align-items:center;background:rgba(107,68,35,0.06);border:1px solid rgba(107,68,35,0.14);padding:8px 10px;border-radius:12px;">
+          <label class="mm-flag-label" style="display:flex;gap:8px;align-items:center;font-size:13px;color:var(--text-secondary);font-weight:600;cursor:pointer;">
             <input type="checkbox" id="mm_bestseller" ${item.bestseller ? "checked" : ""}> Bestseller
           </label>
         </div>
@@ -2834,8 +3064,8 @@ function openMenuEditor(itemId, preset = {}) {
           </div>
           <div id="mm_recipeRows" style="display:grid;gap:8px;"></div>
           <div id="mm_recipeWarnings" style="display:none;margin-top:8px;padding:8px 10px;border-radius:8px;background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.28);color:#991B1B;font-size:12px;" aria-live="polite"></div>
-          <div style="display:flex;justify-content:space-between;margin-top:12px;padding:8px;background:rgba(0,0,0,0.02);border-radius:8px;">
-            <div style="font-size:13px;color:var(--text-secondary);font-weight:600;">Calculated Base Cost:</div>
+          <div class="mm-cost-row" style="display:flex;justify-content:space-between;margin-top:12px;padding:8px;background:rgba(0,0,0,0.02);border-radius:8px;">
+            <div class="mm-cost-label" style="font-size:13px;color:var(--text-secondary);font-weight:600;">Calculated Base Cost:</div>
             <div id="mm_basePriceDisplay" style="font-size:14px;font-weight:bold;color:var(--text-main);" aria-live="polite">₱0.00</div>
           </div>
         </div>
@@ -2863,13 +3093,60 @@ function openMenuEditor(itemId, preset = {}) {
           <div style="font-size:11px;color:var(--text-muted);margin-top:6px;">Add each size/option as a row (example: Small - 120, Large - 150)</div>
         </div>
       </div>
-      <div style="display:flex;gap:10px;padding:14px;justify-content:flex-end;border-top:1px solid rgba(107,68,35,0.12);background:rgba(255,252,248,0.95);">
-        <div id="mm_formHint" class="mm-form-hint" aria-live="polite"></div>
-        <button id="mm_cancel" type="button" style="background:white;border:1px solid rgba(107,68,35,0.24);padding:10px 16px;border-radius:12px;font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif;color:#5f3c1f;font-weight:600;">Cancel</button>
-        <button id="mm_save" type="button" style="background:linear-gradient(135deg,#7c4e28 0%,#5f3c1f 100%);color:white;border:none;padding:10px 18px;border-radius:12px;font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif;font-weight:700;box-shadow:0 8px 18px rgba(95,60,31,0.25);" aria-label="Save menu item">Save</button>
+        <div class="menu-editor-modal-footer mm-action-bar" style="display:flex;gap:10px;padding:14px;justify-content:flex-end;border-top:1px solid rgba(107,68,35,0.12);background:rgba(255,252,248,0.95);">
+          <div id="mm_formHint" class="mm-form-hint" aria-live="polite"></div>
+          <button id="mm_cancel" class="mm-cancel-btn" type="button" style="background:white;border:1px solid rgba(107,68,35,0.24);padding:10px 16px;border-radius:12px;font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif;color:#5f3c1f;font-weight:600;">Cancel</button>
+          <button id="mm_save" class="mm-save-btn" type="button" style="background:linear-gradient(135deg,#7c4e28 0%,#5f3c1f 100%);color:white;border:none;padding:10px 18px;border-radius:12px;font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif;font-weight:700;box-shadow:0 8px 18px rgba(95,60,31,0.25);" aria-label="Save menu item">Save</button>
+        </div>
       </div>
     </div>
   `;
+
+  const modal = document.getElementById("menuEditModal");
+  const closeModal = async (force = false) => {
+    if (!modal) return;
+    if (!force && menuEditorDirty) {
+      const confirmed = await ModalUtils.confirm(
+        "Discard changes?",
+        "You have unsaved changes in the menu editor. Close without saving?"
+      );
+      if (confirmed !== 1) return;
+    }
+    document.body.classList.remove("menu-editor-modal-open");
+    modal.remove();
+    slot.innerHTML = "";
+    if (menuEditorKeydownHandler) {
+      document.removeEventListener("keydown", menuEditorKeydownHandler);
+      menuEditorKeydownHandler = null;
+    }
+  };
+
+  if (modal) {
+    modal.addEventListener("click", async (event) => {
+      if (event.target === modal) {
+        await closeModal(false);
+      }
+    });
+    modal.addEventListener("input", () => {
+      menuEditorDirty = true;
+    }, true);
+    modal.addEventListener("change", () => {
+      menuEditorDirty = true;
+    }, true);
+    modal.addEventListener("click", (event) => {
+      if (event.target.closest("#mm_addRecipeIngredient") || event.target.closest("#mm_addAddon") || event.target.closest("#mm_addVariant") || event.target.closest(".mm-remove-recipe") || event.target.closest(".mm-remove-addon") || event.target.closest(".mm-remove-variant") || event.target.closest(".mm-duplicate-recipe") || event.target.closest(".mm-duplicate-addon")) {
+        menuEditorDirty = true;
+      }
+    });
+  }
+
+  menuEditorKeydownHandler = (event) => {
+    if (event.key !== "Escape") return;
+    if (!document.getElementById("menuEditModal")) return;
+    event.preventDefault();
+    closeModal(false);
+  };
+  document.addEventListener("keydown", menuEditorKeydownHandler);
 
   const nameInput = document.getElementById("mm_name");
   if (nameInput) {
@@ -3299,7 +3576,7 @@ function openMenuEditor(itemId, preset = {}) {
       updateRecipeRowConversion(row);
       calculateBasePrice();
     });
-    
+
     recipeRows.appendChild(row);
     if (shouldFocus) {
       row.querySelector(".mm-recipe-inv")?.focus();
@@ -3343,10 +3620,16 @@ function openMenuEditor(itemId, preset = {}) {
   });
   validateMenuEditorForm(false);
 
+  document.getElementById("mm_close")?.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    closeModal(false);
+  });
+
   document.getElementById("mm_cancel")?.addEventListener("click", (event) => {
     event.preventDefault();
     event.stopPropagation();
-    slot.innerHTML = "";
+    closeModal(false);
   });
 
   document.getElementById("mm_save")?.addEventListener("click", async () => {
@@ -3409,21 +3692,21 @@ function openMenuEditor(itemId, preset = {}) {
       })
       .filter(Boolean);
 
-    let recipe = Array.from(document.querySelectorAll("#mm_recipeRows .mm-recipe-row"))
-        .map((row) => {
+    const recipe = Array.from(document.querySelectorAll("#mm_recipeRows .mm-recipe-row"))
+      .map((row) => {
         const invSelect = row.querySelector(".mm-recipe-inv");
         const selectedOption = invSelect?.options?.[invSelect.selectedIndex];
         const selectedInventoryId = row.querySelector(".mm-recipe-inv")?.value || "";
         const selectedInventoryItem = state.inventoryItems.find((item) => item.id === selectedInventoryId);
         const fallbackInvUnit = normalizeUnit(selectedOption?.dataset?.unit || "") || "";
-            return {
-                inventoryId: selectedInventoryId,
-              name: String(selectedInventoryItem?.name || selectedOption?.textContent || "").replace(/\s*\(₱.*$/, "").trim(),
-              quantity: Number(row.querySelector(".mm-recipe-qty")?.value || 0),
-          unit: normalizeUnit(row.querySelector(".mm-recipe-unit")?.value || "") || fallbackInvUnit
-            };
-        })
-        .filter(ing => ing.inventoryId && ing.quantity > 0);
+        return {
+          inventoryId: selectedInventoryId,
+          name: String(selectedInventoryItem?.name || selectedOption?.textContent || "").replace(/\s*\(₱.*$/, "").trim(),
+          quantity: Number(row.querySelector(".mm-recipe-qty")?.value || 0),
+          unit: normalizeUnit(row.querySelector(".mm-recipe-unit")?.value || "") || fallbackInvUnit,
+        };
+      })
+      .filter((ing) => ing.inventoryId && ing.quantity > 0);
 
     const incompatibleRecipe = recipe
       .map((ing) => {
@@ -3464,9 +3747,11 @@ function openMenuEditor(itemId, preset = {}) {
     };
 
     try {
+      setButtonLoadingState(saveBtn, true, "Saving...");
       await saveMenuItem(payload);
-      slot.innerHTML = "";
+      await closeModal(true);
       await loadMenuPage();
+      await ModalUtils.success("Menu Item Saved", `${name} has been updated successfully.`);
     } catch (saveError) {
       const message = saveError?.message || "Unable to save menu item.";
       if (typeof ModalUtils !== "undefined" && ModalUtils.error) {
@@ -3475,6 +3760,8 @@ function openMenuEditor(itemId, preset = {}) {
         alert(message);
       }
       console.error("Menu save failed:", saveError, payload);
+    } finally {
+      setButtonLoadingState(saveBtn, false);
     }
   });
 }

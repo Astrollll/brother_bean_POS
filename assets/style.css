@@ -17,15 +17,18 @@
   --danger: #EF4444;
   --info: #3B82F6;
 
-  /* Neutral Colors */
-  --bg-primary: #F9F7F4;
-  --bg-secondary: #F3F0ED;
-  --bg-tertiary: #EFEFEA;
-  --text-primary: #1F2937;
-  --text-secondary: #6B7280;
-  --text-muted: #9CA3AF;
-  --border-color: #E5E0D7;
-  --border-light: #F0EBE6;
+  /* Neutral Colors (Exact Light Theme System) */
+  --bg-primary: #ffffff;
+  --bg-secondary: #f3f4f6;
+  --bg-tertiary: #f3f4f6;
+  --text-primary: #111827;
+  --text-secondary: #6b7280;
+  --text-muted: #9ca3af;
+  --border-color: #e5e7eb;
+  --border-light: #e5e7eb;
+  --card-bg: #ffffff;
+  --card-secondary: #f3f4f6;
+  --accent-currency: #d97706;
   --scrollbar-track: rgba(199, 162, 102, 0.18);
   --scrollbar-thumb: #C99A61;
   --scrollbar-thumb-hover: #A8703D;
@@ -78,6 +81,11 @@ body {
   overflow: hidden;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+.card {
+  background: var(--card-bg);
+  color: var(--text-primary);
 }
 
 button,
@@ -4598,6 +4606,115 @@ body[data-theme="dark"] .category-nav-btn:hover {
 body[data-theme="dark"] .nav-btn-logout {
   color: #FFB4B4;
   border-color: rgba(255, 120, 120, 0.45);
+}
+
+/* Exact dark theme system overrides (final authority layer) */
+body[data-theme="dark"],
+body.dark,
+.dark {
+  --bg-primary: #0f172a;
+  --bg-secondary: #1e293b;
+  --bg-tertiary: #334155;
+  --text-primary: #f8fafc;
+  --text-secondary: #94a3b8;
+  --text-muted: #64748b;
+  --border-color: #475569;
+  --border-light: #475569;
+  --card-bg: #1e293b;
+  --card-secondary: #334155;
+  --accent-currency: #fbbf24;
+}
+
+body[data-theme="dark"],
+body[data-theme="dark"] .app-wrapper,
+body[data-theme="dark"] .app-container,
+body[data-theme="dark"] .main-grid,
+body.dark,
+.dark {
+  background: var(--bg-primary) !important;
+  color: var(--text-primary) !important;
+}
+
+body[data-theme="dark"] .card,
+body[data-theme="dark"] .sidebar-nav,
+body[data-theme="dark"] .products-section,
+body[data-theme="dark"] .cart-section,
+body[data-theme="dark"] .sidebar-sales-chart,
+body[data-theme="dark"] .sidebar-pending-box,
+body[data-theme="dark"] .bb-modal,
+body[data-theme="dark"] .modal,
+body.dark .card,
+.dark .card {
+  background: var(--card-bg) !important;
+  color: var(--text-primary) !important;
+  border-color: var(--border-color) !important;
+}
+
+/* Cash Drawer button card-like appearance */
+body[data-theme="dark"] .nav-btn,
+body[data-theme="dark"] .sidebar-tool-btn,
+body[data-theme="dark"] .category-nav-btn,
+body[data-theme="dark"] .category-quick-select {
+  background: var(--card-bg) !important;
+  color: var(--text-primary) !important;
+  border-color: var(--border-color) !important;
+}
+
+/* Sidebar stats readability */
+body[data-theme="dark"] .sidebar-stats {
+  background: var(--card-bg) !important;
+  border-color: var(--border-color) !important;
+}
+
+body[data-theme="dark"] .sidebar-stats > div,
+body[data-theme="dark"] .sidebar-pending-header,
+body[data-theme="dark"] .sidebar-pending-order,
+body[data-theme="dark"] .sidebar-sales-chart-title,
+body[data-theme="dark"] .sidebar-sales-note {
+  color: var(--text-primary) !important;
+}
+
+body[data-theme="dark"] .sidebar-sales-chart-range,
+body[data-theme="dark"] .sidebar-pending-meta,
+body[data-theme="dark"] .sidebar-pending-empty {
+  color: var(--text-secondary) !important;
+}
+
+/* TOTAL / ORDERS / PEAK stat boxes */
+body[data-theme="dark"] .sidebar-sales-pill {
+  background: var(--card-secondary) !important;
+  border-color: var(--border-color) !important;
+}
+
+body[data-theme="dark"] .sidebar-sales-pill-label {
+  color: var(--text-secondary) !important;
+}
+
+body[data-theme="dark"] .sidebar-sales-pill-value {
+  color: var(--text-primary) !important;
+}
+
+body[data-theme="dark"] #salesSummaryTotal,
+body[data-theme="dark"] #totalSales,
+body[data-theme="dark"] .bb-drawer-value,
+body[data-theme="dark"] .sales-kpi-value,
+body[data-theme="dark"] .summary-row.total span:last-child {
+  color: var(--accent-currency) !important;
+}
+
+/* Pending orders card + controls */
+body[data-theme="dark"] .sidebar-pending-box,
+body[data-theme="dark"] .sidebar-pending-item,
+body[data-theme="dark"] .sidebar-pending-open-btn,
+body[data-theme="dark"] .sidebar-pending-refresh {
+  background: var(--card-bg) !important;
+  color: var(--text-primary) !important;
+  border-color: var(--border-color) !important;
+}
+
+body[data-theme="dark"] #pendingOrdersOpenCount {
+  background: var(--card-secondary) !important;
+  color: var(--text-primary) !important;
 }
 
 @media (max-width: 767px) {
