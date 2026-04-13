@@ -5,7 +5,6 @@ import { getCategories, saveCategory, deleteCategory, getCategoryIconForName } f
 import { getTodayOrders, getAllOrders, deleteOrder, clearAllOrders } from "../../models/orderModel.js";
 import { resetDay as archiveResetDay } from "../../models/resetModel.js";
 import { getInventoryItems, saveInventoryItem, deleteInventoryItem, clearInventoryItems, getDeletedInventoryIds, convertQuantityBetweenUnits, normalizeUnit } from "../../models/inventoryModel.js";
-import { inventorySeedItems } from "../../models/defaultSeedData.js";
 import { getAllStaff as getStaff, getSchedule, getOnDutyNowFromSchedule, addStaff, removeStaff, removeStaffByName, removeStaffByAccountUid, updateStaffAccountLink, saveSchedule } from "../../models/staffModel.js";
 import { renderStats, renderRecentOrders, renderTopItems, renderStaffOnDuty } from "../../views/dashboardView.js";
 import { renderAdminMenu } from "../../views/menuView.js";
@@ -1431,44 +1430,44 @@ function ensureInventoryEditPopup() {
   modal.innerHTML = `
     <div role="dialog" aria-modal="true" aria-label="Edit inventory item" class="inventory-edit-modal-shell"
       style="width:min(760px, 96vw); border-radius:16px; overflow:hidden;">
-      <div class="inventory-edit-modal-header" style="display:flex; align-items:center; justify-content:space-between; padding:14px 16px; border-bottom:1px solid var(--border-color);">
+      <div class="inventory-edit-modal-header modal-header" style="display:flex; align-items:center; justify-content:space-between; padding:14px 16px; border-bottom:1px solid var(--border-color);">
         <div>
-          <div class="inventory-edit-modal-title" style="font-weight:800; letter-spacing:.04em; text-transform:uppercase; font-size:14px;">Edit Stock Item</div>
-          <div class="inventory-edit-modal-subtitle" style="font-size:12px;">Update item details and stock levels.</div>
+          <div class="inventory-edit-modal-title modal-title" style="font-weight:800; letter-spacing:.04em; text-transform:uppercase; font-size:14px;">Edit Stock Item</div>
+          <div class="inventory-edit-modal-subtitle modal-subtitle" style="font-size:12px;">Update item details and stock levels.</div>
         </div>
-        <button type="button" id="invEditCloseBtn" class="orders-btn ghost" style="min-width:34px; padding:6px 10px;">X</button>
+        <button type="button" id="invEditCloseBtn" class="modal-close-btn" style="min-width:34px; padding:6px 10px;">X</button>
       </div>
-      <form id="inventoryEditForm" class="inventory-edit-modal-body" style="padding:14px; display:grid; gap:10px; grid-template-columns:repeat(2,minmax(0,1fr));">
+      <form id="inventoryEditForm" class="inventory-edit-modal-body modal-body" style="padding:14px; display:grid; gap:10px; grid-template-columns:repeat(2,minmax(0,1fr));">
         <input id="invEditId" type="hidden" />
         <div>
-          <div class="ls-label">Item Name</div>
-          <input id="invEditName" class="ls-input" required style="margin-bottom:0;" />
+          <div class="ls-label modal-label">Item Name</div>
+          <input id="invEditName" class="ls-input modal-input" required style="margin-bottom:0;" />
         </div>
         <div>
-          <div class="ls-label">Category</div>
-          <input id="invEditCategory" class="ls-input" required style="margin-bottom:0;" />
+          <div class="ls-label modal-label">Category</div>
+          <input id="invEditCategory" class="ls-input modal-input" required style="margin-bottom:0;" />
         </div>
         <div>
-          <div class="ls-label">Unit</div>
-          <select id="invEditUnit" class="ls-input" required style="margin-bottom:0;">
+          <div class="ls-label modal-label">Unit</div>
+          <select id="invEditUnit" class="ls-input modal-input" required style="margin-bottom:0;">
             ${unitOptionsHtml}
           </select>
         </div>
         <div>
-          <div class="ls-label">Current Stock</div>
-          <input id="invEditQuantity" type="number" min="0" step="0.01" class="ls-input" required style="margin-bottom:0;" />
+          <div class="ls-label modal-label">Current Stock</div>
+          <input id="invEditQuantity" type="number" min="0" step="0.01" class="ls-input modal-input" required style="margin-bottom:0;" />
         </div>
         <div>
-          <div class="ls-label">Restock Alert Level</div>
-          <input id="invEditReorder" type="number" min="0" step="0.01" class="ls-input" required style="margin-bottom:0;" />
+          <div class="ls-label modal-label">Restock Alert Level</div>
+          <input id="invEditReorder" type="number" min="0" step="0.01" class="ls-input modal-input" required style="margin-bottom:0;" />
         </div>
         <div>
-          <div class="ls-label">Price (Per Unit)</div>
-          <input id="invEditPrice" type="number" min="0" step="0.01" class="ls-input" required style="margin-bottom:0;" />
+          <div class="ls-label modal-label">Price (Per Unit)</div>
+          <input id="invEditPrice" type="number" min="0" step="0.01" class="ls-input modal-input" required style="margin-bottom:0;" />
         </div>
         <div style="grid-column:1/-1; display:flex; justify-content:flex-end; gap:8px; padding-top:6px;">
-          <button type="button" id="invEditCancelBtn" class="orders-btn ghost">Cancel</button>
-          <button type="submit" id="invEditSaveBtn" class="orders-btn">Save Changes</button>
+          <button type="button" id="invEditCancelBtn" class="orders-btn ghost cancel-btn">Cancel</button>
+          <button type="submit" id="invEditSaveBtn" class="orders-btn save-btn">Save Changes</button>
         </div>
       </form>
     </div>
@@ -2636,40 +2635,6 @@ window.clearAllInventory = async function () {
   } catch (error) {
     await ModalUtils.error("Clear Failed", error?.message || "Unable to clear inventory.");
   }
-};
-
-window.seedInventory = async function () {
-  const hasExisting = Array.isArray(state.inventoryItems) && state.inventoryItems.length > 0;
-  const title = hasExisting ? "Seed Inventory" : "Seed Inventory";
-  const message = hasExisting
-    ? "Inventory already has items. Seeding will update/insert sample items. Continue?"
-    : "Seed sample inventory items?";
-  const confirmed = await ModalUtils.confirm(title, message);
-  if (confirmed !== 1) return;
-
-  const deletedIdSet = await getDeletedInventoryIds();
-
-  let seededCount = 0;
-  let skippedCount = 0;
-  for (const item of inventorySeedItems) {
-    if (deletedIdSet.has(String(item.id || "").trim())) {
-      skippedCount += 1;
-      continue;
-    }
-    try {
-      await saveInventoryItem(item);
-      seededCount += 1;
-    } catch (error) {
-      skippedCount += 1;
-      console.warn("Skipping deleted inventory seed item", item.id, error);
-    }
-  }
-
-  await loadInventoryPage();
-  const summary = skippedCount > 0
-    ? `Seeded ${seededCount} item(s). ${skippedCount} deleted item(s) were skipped.`
-    : "Sample inventory items are ready.";
-  await ModalUtils.success("Inventory Seeded", summary);
 };
 
 window.openQuickAction = async function (action) {
