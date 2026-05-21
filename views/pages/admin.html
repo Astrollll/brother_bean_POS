@@ -18,6 +18,10 @@
       href="https://cdn.jsdelivr.net/npm/remixicon@4.6.0/fonts/remixicon.css"
       rel="stylesheet"
     />
+    <link
+      href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css"
+      rel="stylesheet"
+    />
     <link rel="stylesheet" href="/assets/adminstyle.css?v=20260409A" />
   </head>
   <body>
@@ -91,12 +95,20 @@
         <div class="sidebar">
           <div class="nav-section">Overview</div>
           <div
-            class="nav-item active"
+            class="nav-item"
             onclick="window.showPage('dashboard', this, 'Dashboard')"
           >
             <span class="nav-icon"
-              ><i class="ri-bar-chart-box-line" aria-hidden="true"></i></span
+              ><i class="ri-dashboard-line" aria-hidden="true"></i></span
             >Dashboard
+          </div>
+          <div
+            class="nav-item active"
+            onclick="window.showPage('salesAnalytics', this, 'Sales Analytics')"
+          >
+            <span class="nav-icon"
+              ><i class="ri-bar-chart-box-line" aria-hidden="true"></i></span
+            >Sales Analytics
           </div>
 
           <div class="nav-section">Shop</div>
@@ -153,172 +165,8 @@
         <!-- Main Content -->
         <div class="main">
           <!-- ── DASHBOARD ── -->
-          <div id="dashboard" class="page active">
-            <div class="page-header">
-              <div class="page-title">Good morning</div>
-              <div class="page-sub">
-                Here's what's happening at Brother Bean today.
-              </div>
-            </div>
-
-            <div class="stats-grid">
-              <div class="stat-card">
-                <div class="stat-top">
-                  <div class="stat-icon-wrap">
-                    <i
-                      class="ri-money-dollar-circle-line"
-                      aria-hidden="true"
-                    ></i>
-                  </div>
-                  <span class="stat-trend trend-up" id="salesTrend">—</span>
-                </div>
-                <div class="stat-val" id="statSales">₱0.00</div>
-                <div class="stat-label">Today's Sales</div>
-              </div>
-              <div class="stat-card">
-                <div class="stat-top">
-                  <div class="stat-icon-wrap">
-                    <i class="ri-receipt-line" aria-hidden="true"></i>
-                  </div>
-                  <span class="stat-trend trend-up" id="ordersTrend">—</span>
-                </div>
-                <div class="stat-val" id="statOrders">0</div>
-                <div class="stat-label">Transactions Today</div>
-              </div>
-              <div class="stat-card">
-                <div class="stat-top">
-                  <div class="stat-icon-wrap">
-                    <i class="ri-fire-line" aria-hidden="true"></i>
-                  </div>
-                  <span class="stat-trend trend-neutral" id="bestSellerCount"
-                    >—</span
-                  >
-                </div>
-                <div
-                  class="stat-val"
-                  id="statBestSeller"
-                  style="font-size: 1.1rem; padding-top: 4px"
-                >
-                  —
-                </div>
-                <div class="stat-label">Best Seller</div>
-              </div>
-              <div class="stat-card">
-                <div class="stat-top">
-                  <div class="stat-icon-wrap">
-                    <i class="ri-team-line" aria-hidden="true"></i>
-                  </div>
-                  <span class="stat-trend trend-neutral" id="staffTotal"
-                    >of 0</span
-                  >
-                </div>
-                <div class="stat-val" id="statStaff">0</div>
-                <div class="stat-label">Staff on Duty</div>
-              </div>
-            </div>
-
-            <div class="card quick-actions-card">
-              <div class="card-head">
-                <span class="card-title">Quick Actions</span>
-              </div>
-              <div class="quick-actions-grid">
-                <button
-                  class="quick-action-btn"
-                  onclick="
-                    window.openQuickAction && window.openQuickAction('orders')
-                  "
-                >
-                  View Transactions
-                </button>
-                <button
-                  class="quick-action-btn"
-                  onclick="
-                    window.openQuickAction &&
-                      window.openQuickAction('inventory')
-                  "
-                >
-                  Manage Inventory
-                </button>
-                <button
-                  class="quick-action-btn"
-                  onclick="
-                    window.openQuickAction && window.openQuickAction('menu-add')
-                  "
-                >
-                  Add Menu Item
-                </button>
-                <button
-                  class="quick-action-btn"
-                  onclick="
-                    window.openQuickAction &&
-                      window.openQuickAction('staff-add')
-                  "
-                >
-                  Add Staff Member
-                </button>
-              </div>
-            </div>
-
-            <div class="grid-2">
-              <div class="card">
-                <div class="card-head">
-                  <span class="card-title">Recent Transactions</span>
-                  <span
-                    class="card-action"
-                    onclick="
-                      window.showPage(
-                        'orders',
-                        document.getElementById('nav-orders'),
-                        'Transactions',
-                      )
-                    "
-                    >View all →</span
-                  >
-                </div>
-                <div id="recentOrdersList">
-                  <div style="color: var(--muted); font-size: 13px">
-                    Loading...
-                  </div>
-                </div>
-              </div>
-              <div class="card">
-                <div class="card-head">
-                  <span class="card-title">Staff on Duty</span>
-                </div>
-                <div id="dashStaffList">
-                  <div style="color: var(--muted); font-size: 13px">
-                    Loading...
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div class="card">
-              <div class="card-head">
-                <span class="card-title">Top Selling Items Today</span>
-                <button
-                  onclick="window.resetDay()"
-                  style="
-                    background: var(--red);
-                    color: white;
-                    border: none;
-                    padding: 6px 16px;
-                    border-radius: 20px;
-                    font-size: 12px;
-                    cursor: pointer;
-                    font-family: &quot;DM Sans&quot;, sans-serif;
-                  "
-                >
-                  <i class="ri-refresh-line" aria-hidden="true"></i> Reset Day
-                </button>
-              </div>
-              <div id="topItemsList">
-                <div style="color: var(--muted); font-size: 13px">
-                  Loading...
-                </div>
-              </div>
-            </div>
-          </div>
+          <div id="dashboard" class="page"></div>
+          <div id="salesAnalytics" class="page"></div>
 
           <!-- ── TRANSACTIONS ── -->
           <div id="orders" class="page">
@@ -1088,6 +936,7 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
     <script>
       (function () {
         const loading = document.getElementById("auth-loading");

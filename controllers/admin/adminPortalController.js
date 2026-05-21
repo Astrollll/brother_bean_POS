@@ -2,12 +2,12 @@ import { logout as authLogout, watchAuth, createAuthUserByAdmin, getCurrentUser 
 import { getUserRole, getUserProfile, listUsers, setUserRole, setUserProfile, ensureAdminAccessProfile } from "../../models/userModel.js";
 import { getMenuItems, saveMenuItem, deleteMenuItem, clearMenuItems } from "../../models/menuModel.js";
 import { getCategories, saveCategory, deleteCategory, getCategoryIconForName } from "../../models/categoryModel.js";
-import { getTodayOrders, getAllOrders, deleteOrder, clearAllOrders } from "../../models/orderModel.js";
+import { getTodayOrders, getAllOrders, deleteOrder, clearAllOrders, getPendingOrderCount } from "../../models/orderModel.js";
 import { resetDay as archiveResetDay } from "../../models/resetModel.js";
 import { getInventoryItems, saveInventoryItem, deleteInventoryItem, clearInventoryItems, convertQuantityBetweenUnits, normalizeUnit } from "../../models/inventoryModel.js";
 import { inventorySeedItems } from "../../models/defaultSeedData.js";
 import { getAllStaff as getStaff, getSchedule, getOnDutyNowFromSchedule, addStaff, removeStaff, removeStaffByName, removeStaffByAccountUid, updateStaffAccountLink, saveSchedule } from "../../models/staffModel.js";
-import { renderStats, renderRecentOrders, renderTopItems, renderStaffOnDuty } from "../../views/dashboardView.js";
+import { renderSalesAnalyticsDashboard, renderAdminDashboard } from "../../views/dashboardView.js";
 import { renderAdminMenu } from "../../views/menuView.js";
 import { renderStaffList, renderScheduleEditor, readScheduleFromDOM } from "../../views/staffView.js";
 import { navigateTo } from "../utils/routes.js";
@@ -422,56 +422,29 @@ async function backfillStaffAccountLinks(staff, users) {
 
 async function loadDashboard() {
   try {
-    const [menuItems, ordersToday, staff, schedule] = await Promise.all([
-      getMenuItems(),
-      getTodayOrders(),
-      getStaff(),
-      getSchedule(),
+    // Fetch live data and render both dashboard and analytics as needed
+    const [menuItems, ordersToday, allOrders, staff, schedule] = await Promise.all([
+      getMenuItems().catch(() => []),
+      getTodayOrders().catch(() => []),
+      getAllOrders().catch(() => []),
+      getStaff().catch(() => []),
+      getSchedule().catch(() => ({})),
     ]);
 
-    // Inventory should not block dashboard rendering in slow/unreliable networks.
-    const inventoryItems = await getInventoryItems().catch((error) => {
-      console.warn("[Inventory] Dashboard prefetch failed:", error);
-      return state.inventoryItems || [];
-    });
+    // Render legacy dashboard (uses today's orders, menu items, and staff schedule)
+    try {
+      renderAdminDashboard({ orders: ordersToday, menuItems, staff, schedule });
+    } catch (e) {
+      console.warn("[Dashboard] renderAdminDashboard failed:", e);
+    }
 
-    state.menuItems = menuItems;
-    state.ordersToday = ordersToday;
-    state.staff = staff;
-    state.schedule = schedule;
-    state.inventoryItems = inventoryItems;
-
-    const navBadge = document.getElementById("inventoryNavBadge");
-    if (navBadge) navBadge.textContent = String(inventoryItems.length);
-
-    const totalSales = ordersToday.reduce((s, o) => s + (o.total || 0), 0);
-    const totalOrders = ordersToday.length;
-
-    // Best seller
-    state.soldMap = buildSoldMapFromOrders(ordersToday);
-    const bestByName = {};
-    ordersToday.forEach((o) => (o.items || []).forEach((i) => {
-      const label = String(i?.name || "").trim();
-      if (!label) return;
-      bestByName[label] = (bestByName[label] || 0) + (Number(i?.quantity || 1) || 1);
-    }));
-    const best = Object.entries(bestByName).sort((a, b) => b[1] - a[1])[0];
-
-    // Staff on duty should be time-aware, not just checkbox-based.
-    const { onDuty } = getOnDutyNowFromSchedule(staff, schedule, new Date());
-
-    renderStats({
-      totalSales,
-      totalOrders,
-      bestSeller: best ? best[0] : "—",
-      bestSellerCount: best ? best[1] : 0,
-      staffOnDuty: onDuty.length,
-      totalStaff: staff.length,
-    });
-
-    renderRecentOrders(ordersToday);
-    renderTopItems(ordersToday, menuItems);
-    renderStaffOnDuty(onDuty);
+    // Render analytics (uses full order history and menuItems)
+    try {
+      const pendingSyncCount = typeof getPendingOrderCount === "function" ? getPendingOrderCount() : 0;
+      renderSalesAnalyticsDashboard({ allOrders, menuItems, pendingSyncCount });
+    } catch (e) {
+      console.warn("[Analytics] renderSalesAnalyticsDashboard failed:", e);
+    }
   } finally {
     showApp();
   }
@@ -479,7 +452,7 @@ async function loadDashboard() {
 
 function startDashboardAutoSync() {
   window.setInterval(async () => {
-    if (state.page !== "dashboard") return;
+    if (state.page !== "dashboard" && state.page !== "salesAnalytics") return;
     if (dashboardSyncInProgress) return;
 
     dashboardSyncInProgress = true;
@@ -2479,7 +2452,7 @@ window.showPage = async function (pageId, navEl, title) {
   setTopbarTitle(title || "Admin");
   showPage(pageId);
   try {
-    if (pageId === "dashboard") await loadDashboard();
+    if (pageId === "dashboard" || pageId === "salesAnalytics") await loadDashboard();
     if (pageId === "orders") await loadOrdersPage();
     if (pageId === "menu") await loadMenuPage();
     if (pageId === "inventory") await loadInventoryPage();
@@ -2771,7 +2744,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       // Admin role enforcement is handled by Firestore security rules + role doc.
       showApp();
       try {
-        await window.showPage("dashboard", document.querySelector('.nav-item[onclick*="dashboard"]'), "Dashboard");
+        await window.showPage("salesAnalytics", document.querySelector('.nav-item[onclick*="salesAnalytics"]'), "Sales Analytics");
       } catch (pageError) {
         console.error("[Admin] Page initialization failed:", pageError);
         const loading = document.getElementById("auth-loading");
