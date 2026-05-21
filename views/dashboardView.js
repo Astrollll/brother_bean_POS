@@ -307,15 +307,27 @@ function computePeakBucket(series, period) {
 
 function buildDashboardTemplate() {
   return `
-    <div class="page-header">
+    <div class="page-header dashboard-hello">
       <div>
-        <div class="page-title">Dashboard</div>
-        <div class="page-sub">Live overview from the POS system</div>
+        <div class="page-title">Good morning</div>
+        <div class="page-sub">Here's what's happening at Brother Bean today.</div>
       </div>
       <div class="page-sub" id="dashboardUpdatedAt">Updated just now</div>
     </div>
 
     <div class="stats-grid" id="dashboardStats"></div>
+
+    <div class="card compact-card quick-actions" aria-label="Quick actions">
+      <div class="card-head">
+        <span class="card-title">Quick actions</span>
+      </div>
+      <div class="quick-actions-grid">
+        <button class="qa-btn" type="button" onclick="window.showPage && window.showPage('orders', document.getElementById('nav-orders'), 'Transactions')">View Transactions</button>
+        <button class="qa-btn" type="button" onclick="window.showPage && window.showPage('inventory', document.querySelector('.nav-item[onclick*=\"inventory\"]'), 'Inventory')">Manage Inventory</button>
+        <button class="qa-btn" type="button" onclick="(window.showPage && window.showPage('menu', document.querySelector('.nav-item[onclick*=\"menu\"]'), 'Menu'), window.openMenuEditor && window.openMenuEditor(null))">Add Menu Item</button>
+        <button class="qa-btn" type="button" onclick="(window.showPage && window.showPage('staff', document.querySelector('.nav-item[onclick*=\"staff\"]'), 'Staff'), window.showAddStaff && window.showAddStaff())">Add Staff Member</button>
+      </div>
+    </div>
 
     <div class="row g-3">
       <div class="col-12 col-xl-6">
