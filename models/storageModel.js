@@ -103,4 +103,14 @@ export function removeKitchenOrder(orderId) {
   return orders.length;
 }
 
+export function getSavedSalesHistory() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.salesHistory);
+    return raw ? JSON.parse(raw) : [];
+  } catch (err) {
+    console.warn('[Storage] failed to read saved sales history', err);
+    return [];
+  }
+}
+
 

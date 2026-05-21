@@ -6,28 +6,8 @@ import { getOrderOutbox, queueOrder, removeQueuedOrder } from "./storageModel.js
 import { deductInventoryQuantities } from "./inventoryModel.js";
 
 const ORDERS_COLLECTION = "orders";
-const ORDER_WRITE_TIMEOUT_MS = 4000;
-
 function isOnlineNow() {
   return typeof navigator === "undefined" ? true : navigator.onLine !== false;
-}
-
-function withTimeout(promise, timeoutMs, label) {
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => {
-      reject(new Error(`${label}_timeout`));
-    }, timeoutMs);
-
-    Promise.resolve(promise)
-      .then((value) => {
-        clearTimeout(timer);
-        resolve(value);
-      })
-      .catch((error) => {
-        clearTimeout(timer);
-        reject(error);
-      });
-  });
 }
 
 async function persistInventoryAfterSale(orderRef, orderData) {
@@ -159,6 +139,8 @@ export async function saveOrder(cart, total, subtotal, paymentMethod, isPwdSenio
       addons:     (item.addons || []).map(a => ({ name: a.name, price: a.price })),
       recipe:     item.recipe || [],
     })),
+    status: "paid",
+    paidAt: new Date(),
   };
 
   const orderRef = doc(db, ORDERS_COLLECTION, orderId);
@@ -175,7 +157,7 @@ export async function saveOrder(cart, total, subtotal, paymentMethod, isPwdSenio
   }
 
   try {
-    await withTimeout(setDoc(orderRef, orderData), ORDER_WRITE_TIMEOUT_MS, "order_save");
+    await setDoc(orderRef, orderData);
   } catch (e) {
     queueOrder(orderData);
     return {
@@ -209,7 +191,7 @@ export async function syncQueuedOrders() {
     try {
       const payloadOrderId = String(item.payload?.orderId || item.id || Date.now());
       const orderRef = doc(db, ORDERS_COLLECTION, payloadOrderId);
-      await withTimeout(setDoc(orderRef, item.payload), ORDER_WRITE_TIMEOUT_MS, "order_sync");
+      await setDoc(orderRef, item.payload);
 
       try {
         const payloadItems = Array.isArray(item.payload?.items) ? item.payload.items : [];
@@ -246,6 +228,23 @@ export async function syncQueuedOrders() {
   }
 
   return { synced, pending: getOrderOutbox().length, syncedAlerts, deductionFailures };
+}
+
+// Return queued orders from local outbox as order-like objects
+export function getQueuedOrders() {
+  try {
+    const outbox = getOrderOutbox();
+    return (Array.isArray(outbox) ? outbox : []).map((entry) => {
+      const payload = entry.payload || {};
+      return {
+        ...payload,
+        queued: true,
+        queueId: entry.id,
+      };
+    });
+  } catch (e) {
+    return [];
+  }
 }
 
 export function getPendingOrderCount() {

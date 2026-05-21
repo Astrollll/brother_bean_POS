@@ -2,7 +2,8 @@ import { logout as authLogout, watchAuth, createAuthUserByAdmin, getCurrentUser 
 import { getUserRole, getUserProfile, listUsers, setUserRole, setUserProfile, ensureAdminAccessProfile } from "../../models/userModel.js";
 import { getMenuItems, saveMenuItem, deleteMenuItem, clearMenuItems } from "../../models/menuModel.js";
 import { getCategories, saveCategory, deleteCategory, getCategoryIconForName } from "../../models/categoryModel.js";
-import { getTodayOrders, getAllOrders, deleteOrder, clearAllOrders, getPendingOrderCount } from "../../models/orderModel.js";
+import { getTodayOrders, getAllOrders, deleteOrder, clearAllOrders, getPendingOrderCount, getQueuedOrders, syncQueuedOrders } from "../../models/orderModel.js";
+import { getSavedSalesHistory } from "../../models/storageModel.js";
 import { resetDay as archiveResetDay } from "../../models/resetModel.js";
 import { getInventoryItems, saveInventoryItem, deleteInventoryItem, clearInventoryItems, convertQuantityBetweenUnits, normalizeUnit } from "../../models/inventoryModel.js";
 import { inventorySeedItems } from "../../models/defaultSeedData.js";
@@ -422,6 +423,18 @@ async function backfillStaffAccountLinks(staff, users) {
 
 async function loadDashboard() {
   try {
+    // Make sure any queued POS transactions are pushed to Firestore before analytics reads them.
+    try {
+      if (typeof syncQueuedOrders === "function") {
+        const syncResult = await syncQueuedOrders();
+        if (syncResult && (syncResult.synced || syncResult.pending)) {
+          console.debug("[Admin] syncQueuedOrders result:", syncResult);
+        }
+      }
+    } catch (syncError) {
+      console.warn("[Admin] queued order sync failed before dashboard load:", syncError);
+    }
+
     // Fetch live data and render both dashboard and analytics as needed
     const [menuItems, ordersToday, allOrders, staff, schedule] = await Promise.all([
       getMenuItems().catch(() => []),
@@ -441,7 +454,74 @@ async function loadDashboard() {
     // Render analytics (uses full order history and menuItems)
     try {
       const pendingSyncCount = typeof getPendingOrderCount === "function" ? getPendingOrderCount() : 0;
-      renderSalesAnalyticsDashboard({ allOrders, menuItems, pendingSyncCount });
+      // If there are queued orders locally, include them in analytics so offline sales are visible
+      let queuedOrders = [];
+      try {
+        queuedOrders = typeof getQueuedOrders === "function" ? getQueuedOrders() : [];
+      } catch (err) {
+        queuedOrders = [];
+      }
+      // Prefer the live POS transaction store first, then add Firestore history as backup.
+      const mergedOrders = [];
+      // Also include locally saved salesHistory (POS local storage) to ensure analytics reflects POS totals
+      try {
+        const saved = typeof getSavedSalesHistory === "function" ? getSavedSalesHistory() : [];
+        if (Array.isArray(saved) && saved.length) {
+          let added = 0;
+          for (const s of saved) {
+            const id = String(s?.orderId || s?.id || "");
+            const exists = mergedOrders.some((o) => String(o?.orderId || o?.id || "") === id);
+            if (!exists) {
+              mergedOrders.unshift(s);
+              added += 1;
+            }
+          }
+          if (added) console.debug(`[Analytics] merged ${added} local saved sale(s) into analytics`);
+        }
+      } catch (err) {
+        console.warn("[Analytics] failed to merge saved sales history", err);
+      }
+      if (Array.isArray(queuedOrders) && queuedOrders.length) {
+        // Append queued orders (they already have timestamps/createdAtMs)
+        mergedOrders.unshift(...queuedOrders);
+      }
+      if (Array.isArray(allOrders) && allOrders.length) {
+        for (const order of allOrders) {
+          const id = String(order?.orderId || order?.id || "");
+          const exists = mergedOrders.some((o) => String(o?.orderId || o?.id || "") === id);
+          if (!exists) mergedOrders.push(order);
+        }
+      }
+      // Normalize merged orders to ensure date and total fields are usable by analytics
+      const normalized = (Array.isArray(mergedOrders) ? mergedOrders : []).map((o) => {
+        try {
+          const copy = Object.assign({}, o || {});
+          // ensure numeric total
+          copy.total = Number(copy.total) || 0;
+          // createdAtMs precedence
+          if (Number.isFinite(Number(copy.createdAtMs)) && Number(copy.createdAtMs) > 0) {
+            copy.createdAtMs = Number(copy.createdAtMs);
+          } else if (copy.createdAt && copy.createdAt?.toDate) {
+            // Firestore Timestamp
+            try { copy.createdAtMs = copy.createdAt.toDate().getTime(); } catch (e) {}
+          } else if (copy.createdAt) {
+            const parsed = Date.parse(copy.createdAt);
+            if (!Number.isNaN(parsed)) copy.createdAtMs = parsed;
+          } else if (copy.timestamp) {
+            const parsed2 = Date.parse(copy.timestamp);
+            if (!Number.isNaN(parsed2)) copy.createdAtMs = parsed2;
+          }
+          // fallback
+          if (!Number.isFinite(copy.createdAtMs)) copy.createdAtMs = Date.now();
+          return copy;
+        } catch (err) {
+          return o;
+        }
+      });
+
+      console.debug(`[Admin] analytics source orders: firestore=${Array.isArray(allOrders) ? allOrders.length : 0}, queued=${Array.isArray(queuedOrders) ? queuedOrders.length : 0}, local=${Array.isArray(getSavedSalesHistory?.()) ? getSavedSalesHistory().length : 0}, merged=${normalized.length}`);
+
+      renderSalesAnalyticsDashboard({ allOrders: normalized, todayOrders: ordersToday, menuItems, pendingSyncCount });
     } catch (e) {
       console.warn("[Analytics] renderSalesAnalyticsDashboard failed:", e);
     }

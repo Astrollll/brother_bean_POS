@@ -52,9 +52,23 @@ function formatShortDate(value) {
 function getOrderDate(order) {
   if (order?.createdAt?.toDate) return order.createdAt.toDate();
   if (order?.createdAtMs) return new Date(order.createdAtMs);
+  if (order?.paidAt?.toDate) return order.paidAt.toDate();
+  if (order?.paidAt) {
+    const paidDate = new Date(order.paidAt);
+    if (!Number.isNaN(paidDate.getTime())) return paidDate;
+  }
   if (order?.timestamp) {
     const date = new Date(order.timestamp);
     if (!Number.isNaN(date.getTime())) return date;
+  }
+  if (order?.date) {
+    const date = new Date(order.date);
+    if (!Number.isNaN(date.getTime())) return date;
+  }
+  const numericOrderId = Number(order?.orderId || order?.id);
+  if (Number.isFinite(numericOrderId) && numericOrderId > 0) {
+    const idDate = new Date(numericOrderId);
+    if (!Number.isNaN(idDate.getTime())) return idDate;
   }
   return new Date();
 }
@@ -322,10 +336,10 @@ function buildDashboardTemplate() {
         <span class="card-title">Quick actions</span>
       </div>
       <div class="quick-actions-grid">
-        <button class="qa-btn" type="button" onclick="window.showPage && window.showPage('orders', document.getElementById('nav-orders'), 'Transactions')">View Transactions</button>
-        <button class="qa-btn" type="button" onclick="window.showPage && window.showPage('inventory', document.querySelector('.nav-item[onclick*=\"inventory\"]'), 'Inventory')">Manage Inventory</button>
-        <button class="qa-btn" type="button" onclick="(window.showPage && window.showPage('menu', document.querySelector('.nav-item[onclick*=\"menu\"]'), 'Menu'), window.openMenuEditor && window.openMenuEditor(null))">Add Menu Item</button>
-        <button class="qa-btn" type="button" onclick="(window.showPage && window.showPage('staff', document.querySelector('.nav-item[onclick*=\"staff\"]'), 'Staff'), window.showAddStaff && window.showAddStaff())">Add Staff Member</button>
+        <button class="qa-btn" type="button" data-action="orders">View Transactions</button>
+        <button class="qa-btn" type="button" data-action="inventory">Manage Inventory</button>
+        <button class="qa-btn" type="button" data-action="add-menu">Add Menu Item</button>
+        <button class="qa-btn" type="button" data-action="add-staff">Add Staff Member</button>
       </div>
     </div>
 
@@ -361,6 +375,32 @@ function buildDashboardTemplate() {
       </div>
     </div>
   `;
+}
+
+function bindDashboardQuickActions() {
+  const root = document.getElementById("dashboard");
+  if (!root) return;
+  root.querySelectorAll('.quick-actions-grid [data-action]').forEach((btn) => {
+    const action = btn.dataset.action;
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      try {
+        if (action === 'orders') {
+          if (window.showPage) window.showPage('orders', document.getElementById('nav-orders'), 'Transactions');
+        } else if (action === 'inventory') {
+          if (window.showPage) window.showPage('inventory', document.querySelector('.nav-item[onclick*=\"inventory\"]'), 'Inventory');
+        } else if (action === 'add-menu') {
+          if (window.showPage) window.showPage('menu', document.querySelector('.nav-item[onclick*=\"menu\"]'), 'Menu');
+          if (window.openMenuEditor) window.openMenuEditor(null);
+        } else if (action === 'add-staff') {
+          if (window.showPage) window.showPage('staff', document.querySelector('.nav-item[onclick*=\"staff\"]'), 'Staff');
+          if (window.showAddStaff) window.showAddStaff();
+        }
+      } catch (err) {
+        console.warn('[Dashboard] quick action failed', action, err);
+      }
+    });
+  });
 }
 
 function buildStatCard({ icon, value, label, trend, trendClass }) {
@@ -520,6 +560,9 @@ export function renderAdminDashboard({ orders = [], menuItems = [], staff = [], 
 
   const updatedAt = document.getElementById("dashboardUpdatedAt");
   if (updatedAt) updatedAt.textContent = `Updated ${formatDateTime(new Date())}`;
+
+  // bind quick action buttons
+  bindDashboardQuickActions();
 }
 
 function buildDeltaMarkup(deltaText, deltaType) {
@@ -809,10 +852,13 @@ function buildAnalyticsSeries(periodData) {
   });
 }
 
-function buildAnalyticsPeriodData(period, orders, menuItems, pendingSyncCount = 0, now = new Date()) {
+function buildAnalyticsPeriodData(period, orders, menuItems, pendingSyncCount = 0, now = new Date(), todayOrders = []) {
   const range = getPeriodRange(period, now);
   const previousRange = getPreviousRange(period, range);
-  const currentOrders = filterOrdersByRange(orders, range);
+  const sourceOrders = period === "today" && Array.isArray(todayOrders) && todayOrders.length
+    ? todayOrders
+    : orders;
+  const currentOrders = filterOrdersByRange(sourceOrders, range);
   const previousOrders = filterOrdersByRange(orders, previousRange);
   const currentRevenue = sumRevenue(currentOrders);
   const previousRevenue = sumRevenue(previousOrders);
@@ -924,7 +970,14 @@ function renderAnalyticsFooter(periodData) {
 }
 
 function setAnalyticsPeriod(period) {
-  const periodData = buildAnalyticsPeriodData(period, viewState.analyticsData?.orders || [], viewState.analyticsData?.menuItems || [], viewState.analyticsData?.pendingSyncCount || 0);
+  const periodData = buildAnalyticsPeriodData(
+    period,
+    viewState.analyticsData?.orders || [],
+    viewState.analyticsData?.menuItems || [],
+    viewState.analyticsData?.pendingSyncCount || 0,
+    new Date(),
+    viewState.analyticsData?.todayOrders || []
+  );
   viewState.analyticsPeriod = period;
 
   document.querySelectorAll(".sales-period-tab").forEach((button) => {
@@ -946,12 +999,34 @@ function bindAnalyticsEvents() {
   });
 }
 
+function handleOrderSavedEvent(e) {
+  try {
+    const sale = e?.detail;
+    if (!sale) return;
+    // Ensure analytics data store exists
+    if (!viewState.analyticsData) viewState.analyticsData = { orders: [], menuItems: [], pendingSyncCount: 0 };
+    // Append the new sale so it's included in current analytics
+    viewState.analyticsData.orders = viewState.analyticsData.orders || [];
+    // Avoid duplicates: check by orderId if present
+    const exists = viewState.analyticsData.orders.some((o) => String(o?.orderId || o?.id || "") === String(sale?.orderId || sale?.id || ""));
+    if (!exists) {
+      // Normalize dates: if createdAt is a string, keep it — getOrderDate will handle it
+      viewState.analyticsData.orders.unshift(sale);
+      // Recompute current period view
+      setAnalyticsPeriod(viewState.analyticsPeriod || "today");
+    }
+  } catch (err) {
+    console.warn("[Analytics] order saved handler failed", err);
+  }
+}
+
 export function renderSalesAnalyticsDashboard(data = {}) {
   const dashboardRoot = document.getElementById("salesAnalytics") || document.getElementById("dashboard");
   if (!dashboardRoot) return;
 
   viewState.analyticsData = {
     orders: Array.isArray(data.allOrders) ? data.allOrders : Array.isArray(data.orders) ? data.orders : [],
+    todayOrders: Array.isArray(data.todayOrders) ? data.todayOrders : Array.isArray(data.ordersToday) ? data.ordersToday : [],
     menuItems: Array.isArray(data.menuItems) ? data.menuItems : [],
     pendingSyncCount: toNumber(data.pendingSyncCount || 0),
   };
@@ -959,6 +1034,32 @@ export function renderSalesAnalyticsDashboard(data = {}) {
   if (!viewState.analyticsInitialized) {
     dashboardRoot.innerHTML = buildAnalyticsTemplate();
     bindAnalyticsEvents();
+    // Listen for new orders saved in POS so analytics updates live
+    try {
+      if (typeof window !== "undefined" && window.addEventListener) {
+        window.addEventListener("bb:order:saved", handleOrderSavedEvent);
+      }
+    } catch (err) {
+      console.warn("[Analytics] failed to bind order saved listener", err);
+    }
+    // If any orders were saved before analytics initialized, merge them
+    try {
+      const buf = (typeof window !== "undefined" && Array.isArray(window.__bbOrderEventBuffer)) ? window.__bbOrderEventBuffer.slice() : [];
+      if (buf.length) {
+        viewState.analyticsData.orders = viewState.analyticsData.orders || [];
+        let added = 0;
+        for (const sale of buf) {
+          const exists = viewState.analyticsData.orders.some((o) => String(o?.orderId || o?.id || "") === String(sale?.orderId || sale?.id || ""));
+          if (!exists) {
+            viewState.analyticsData.orders.unshift(sale);
+            added += 1;
+          }
+        }
+        console.debug(`[Analytics] merged ${added} buffered order(s) into analytics`);
+      }
+    } catch (err) {
+      console.warn("[Analytics] failed to merge buffered orders", err);
+    }
     viewState.analyticsInitialized = true;
   }
 
