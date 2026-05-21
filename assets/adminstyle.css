@@ -1289,6 +1289,7 @@ button,
 .main {
   flex: 1;
   overflow-y: auto;
+  overflow-x: visible;
   padding: var(--spacing-2xl);
   background: var(--bg-secondary);
 }
@@ -1334,9 +1335,15 @@ button,
 /* ── STAT CARDS ── */
 .stats-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: var(--spacing-2xl);
-  margin-bottom: var(--spacing-2xl);
+  margin: 0 auto var(--spacing-2xl);
+  max-width: 1200px;
+}
+
+/* Dashboard-specific tweaks to avoid clipping and improve card sizing */
+#dashboard .stat-card {
+  padding: 16px;
 }
 
 .stat-card {
