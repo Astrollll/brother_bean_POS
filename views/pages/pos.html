@@ -26,7 +26,7 @@
     />
     <link rel="stylesheet" href="/assets/style.css" />
   </head>
-  <body>
+  <body data-theme="light">
     <div class="app-wrapper">
       <!-- Left Sidebar -->
       <aside class="sidebar-nav d-flex flex-column" id="sidebarNav">
@@ -56,9 +56,7 @@
           <i class="ri-database-2-line" aria-hidden="true"></i> Ready
         </div>
 
-        <div class="sidebar-tools d-flex" aria-label="Display controls">
-          <!-- Theme toggle removed (light-only UI) -->
-        </div>
+        <div class="sidebar-tools d-flex" aria-label="Display controls"></div>
 
         <div class="sidebar-divider"></div>
 
@@ -131,6 +129,21 @@
             onclick="openPendingOrdersModal()"
           >
             View pending orders
+          </button>
+        </div>
+
+        <div class="sidebar-pending-box sidebar-unpaid-box">
+          <div class="sidebar-pending-header">
+            <span>Unpaid order</span>
+            <span id="unpaidOrderOpenCount">0</span>
+          </div>
+          <button
+            class="sidebar-pending-open-btn"
+            id="unpaidOrderOpenBtn"
+            type="button"
+            onclick="openUnpaidOrderReceipt()"
+          >
+            View unpaid order
           </button>
         </div>
 
@@ -366,15 +379,26 @@
                 <span>Total Amount</span>
                 <span id="total">₱0.00</span>
               </div>
-              <button
-                class="checkout-btn"
-                id="checkoutBtn"
-                onclick="openPaymentModal()"
-                disabled
-              >
-                <i class="ri-bank-card-line" aria-hidden="true"></i> Proceed to
-                Payment
-              </button>
+              <div class="cart-summary-actions">
+                <button
+                  class="move-unpaid-btn"
+                  id="moveUnpaidBtn"
+                  type="button"
+                  onclick="moveCurrentOrderToUnpaid()"
+                  disabled
+                >
+                  Move to UN-PAID
+                </button>
+                <button
+                  class="checkout-btn"
+                  id="checkoutBtn"
+                  onclick="openPaymentModal()"
+                  disabled
+                >
+                  <i class="ri-bank-card-line" aria-hidden="true"></i> Proceed
+                  to Payment
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -609,7 +633,11 @@
     </div>
 
     <!-- Receipt Modal -->
-    <div class="modal-overlay" id="receiptModal">
+    <div
+      class="modal-overlay"
+      id="receiptModal"
+      onclick="if (event.target === this) closeReceipt();"
+    >
       <div
         class="modal bb-modal"
         role="dialog"

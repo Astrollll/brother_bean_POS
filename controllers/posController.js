@@ -39,7 +39,44 @@ let dailyStats       = { orders: 0, totalSales: 0, discountsApplied: 0 };
 let isOnline         = navigator.onLine;
 const THEME_STORAGE_KEY = "bb-pos-theme";
 const CART_DENSITY_STORAGE_KEY = "bb-pos-cart-density";
+const UNPAID_ORDER_STORAGE_KEY = "bb-pos-unpaid-order";
 const AUTH_OPERATION_TIMEOUT_MS = 6000;
+
+function cloneValue(value) {
+  return value == null ? value : JSON.parse(JSON.stringify(value));
+}
+
+function getCartSummary(sourceCart = cart) {
+  const items = Array.isArray(sourceCart) ? sourceCart : [];
+  const subtotal = items.reduce((sum, item) => {
+    const addonTotal = (item.addons || []).reduce((addonSum, addon) => addonSum + (Number(addon?.price) || 0), 0);
+    const basePrice = Number(item.price) || 0;
+    const discountedUnitPrice = (basePrice + addonTotal) * (1 - (Number(item.discountPercent) || 0));
+    return sum + discountedUnitPrice * (Number(item.quantity) || 1);
+  }, 0);
+  const total = isPwdSenior ? subtotal * 0.8 : subtotal;
+  return { subtotal, total };
+}
+
+function loadUnpaidOrder() {
+  try {
+    const raw = localStorage.getItem(UNPAID_ORDER_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || !Array.isArray(parsed.items)) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function saveUnpaidOrder(order) {
+  localStorage.setItem(UNPAID_ORDER_STORAGE_KEY, JSON.stringify(order));
+}
+
+function clearUnpaidOrder() {
+  localStorage.removeItem(UNPAID_ORDER_STORAGE_KEY);
+}
 
 function setButtonBusyState(button, isBusy, busyLabel = "Working...") {
   if (!button) return;
@@ -774,29 +811,27 @@ export function updateCart() {
   const subtotalEl = document.getElementById("subtotal");
   const totalEl   = document.getElementById("total");
   const checkoutBtn = document.getElementById("checkoutBtn");
+  const moveUnpaidBtn = document.getElementById("moveUnpaidBtn");
   const clearOrderBtn = document.getElementById("clearOrderBtn");
+  updateUnpaidOrderSidebar();
 
   if (!cart.length) {
     cartEl.innerHTML = `<div class="empty-cart"><div class="empty-cart-icon"><i class="ri-shopping-cart-line" aria-hidden="true"></i></div><p>Your order is empty</p><p style="font-size:13px;margin-top:5px;">Click items from the menu to add</p></div>`;
     subtotalEl.textContent = "₱0.00";
     totalEl.textContent    = "₱0.00";
     checkoutBtn.disabled   = true;
+    if (moveUnpaidBtn) moveUnpaidBtn.disabled = true;
     if (clearOrderBtn) clearOrderBtn.disabled = true;
+    updateUnpaidOrderSidebar();
     return;
   }
 
-const subtotal = cart.reduce((s, item) => {
-    const addonTotal = (item.addons || []).reduce((a, x) => a + x.price, 0);
-    const discountedUnitPrice = (item.price + addonTotal) * (1 - (item.discountPercent || 0));
-    return s + discountedUnitPrice * item.quantity;
-  }, 0);
-
-  const total = isPwdSenior ? subtotal * 0.8 : subtotal;
+  const { subtotal, total } = getCartSummary(cart);
 
   cartEl.innerHTML = cart.map((item, idx) => {
     const addonTotal = (item.addons || []).reduce((a, x) => a + x.price, 0);
-const discountedUnit = (item.price + addonTotal) * (1 - (item.discountPercent || 0));
-  const lineTotal  = discountedUnit * item.quantity;
+    const discountedUnit = (item.price + addonTotal) * (1 - (item.discountPercent || 0));
+    const lineTotal  = discountedUnit * item.quantity;
     return `<div class="cart-item">
       <div class="cart-item-details">
         <div class="cart-item-name">${item.name}</div>
@@ -823,6 +858,7 @@ const discountedUnit = (item.price + addonTotal) * (1 - (item.discountPercent ||
   subtotalEl.textContent = `₱${subtotal.toFixed(2)}`;
   totalEl.textContent    = `₱${total.toFixed(2)}`;
   checkoutBtn.disabled   = false;
+  if (moveUnpaidBtn) moveUnpaidBtn.disabled = false;
   if (clearOrderBtn) clearOrderBtn.disabled = false;
 
   // Discount rows
@@ -839,6 +875,8 @@ const discountedUnit = (item.price + addonTotal) * (1 - (item.discountPercent ||
     discountRow.classList.add("hidden");
     originalTotalRow.classList.add("hidden");
   }
+
+  updateUnpaidOrderSidebar();
 }
 
 window._updateQty = function(idx, change) {
@@ -870,6 +908,100 @@ window.clearCart = function() {
   document.querySelector(".discount-section")?.classList.remove("is-active");
   updateCart();
   showToast("Order cleared", "success");
+};
+
+function updateUnpaidOrderSidebar() {
+  const unpaidCountEl = document.getElementById("unpaidOrderOpenCount");
+  const unpaidBtn = document.getElementById("unpaidOrderOpenBtn");
+  const unpaidOrder = loadUnpaidOrder();
+  const unpaidCount = unpaidOrder ? 1 : 0;
+
+  if (unpaidCountEl) unpaidCountEl.textContent = String(unpaidCount);
+  if (unpaidBtn) {
+    unpaidBtn.disabled = unpaidCount === 0;
+    unpaidBtn.textContent = unpaidCount === 0 ? "No unpaid orders" : "View unpaid order";
+  }
+}
+
+function buildUnpaidOrderFromCart() {
+  const summary = getCartSummary(cart);
+  return {
+    id: `unpaid_${Date.now()}`,
+    orderId: `UN-${String(Date.now()).slice(-6)}`,
+    timestamp: new Date().toLocaleString(),
+    paymentMethod: currentPayMethod,
+    isPwdSenior,
+    subtotal: summary.subtotal,
+    total: summary.total,
+    amountTendered: summary.total,
+    change: 0,
+    items: cloneValue(cart) || [],
+    unpaid: true,
+  };
+}
+
+window.moveCurrentOrderToUnpaid = function() {
+  if (!cart.length) return;
+  const existing = loadUnpaidOrder();
+  if (existing) {
+    const shouldReplace = window.confirm("An unpaid order already exists. Replace it with the current order?");
+    if (!shouldReplace) return;
+  }
+
+  saveUnpaidOrder(buildUnpaidOrderFromCart());
+  cart = [];
+  isPwdSenior = false;
+  enteredAmount = "";
+  const pwdCheck = document.getElementById("pwdSeniorCheck");
+  const discountToggle = document.getElementById("discountToggle");
+  if (pwdCheck) pwdCheck.checked = false;
+  if (discountToggle) discountToggle.classList.remove("active");
+  document.querySelector(".discount-section")?.classList.remove("is-active");
+  updateCart();
+  showToast("Current order moved to unpaid.", "success");
+};
+
+window.openUnpaidOrderReceipt = function() {
+  const unpaid = loadUnpaidOrder();
+  if (!unpaid) {
+    showToast("No unpaid order to open.", "warning");
+    return;
+  }
+
+  generateReceipt({ ...unpaid, unpaid: true });
+  const receiptModal = document.getElementById("receiptModal");
+  if (receiptModal) {
+    receiptModal.style.zIndex = '11000';
+    receiptModal.classList.add("active");
+    receiptModal.setAttribute('aria-hidden', 'false');
+  }
+};
+
+window.restoreUnpaidOrderToCart = function() {
+  const unpaid = loadUnpaidOrder();
+  if (!unpaid) {
+    showToast("No unpaid order to restore.", "warning");
+    return;
+  }
+
+  if (cart.length) {
+    const replace = window.confirm("Current order has items. Replace it with the unpaid order?");
+    if (!replace) return;
+  }
+
+  cart = cloneValue(unpaid.items) || [];
+  isPwdSenior = !!unpaid.isPwdSenior;
+  currentPayMethod = unpaid.paymentMethod || currentPayMethod;
+  const pwdCheck = document.getElementById("pwdSeniorCheck");
+  const discountToggle = document.getElementById("discountToggle");
+  if (pwdCheck) pwdCheck.checked = isPwdSenior;
+  if (discountToggle) discountToggle.classList.toggle("active", isPwdSenior);
+  document.querySelector(".discount-section")?.classList.toggle("is-active", isPwdSenior);
+  clearUnpaidOrder();
+  closeReceipt();
+  updateCart();
+  setMainView("order");
+  showToast("Unpaid order moved back to current order.", "success");
 };
 
 window.toggleDiscount = function() {
@@ -926,6 +1058,72 @@ window.clearAmount = function() {
   updateChangeDisplay();
   updateDoneButton();
 };
+
+// ── KEYBOARD NUMPAD SUPPORT ──
+// Allows 0-9, period, and Backspace/Delete keys when the payment modal is open.
+document.addEventListener("keydown", function(e) {
+  const modal = document.getElementById("paymentModal");
+  if (!modal || !modal.classList.contains("active")) return;
+
+  // Ignore when the user is typing inside an actual input/textarea
+  const tag = document.activeElement?.tagName?.toLowerCase();
+  if (tag === "input" || tag === "textarea") return;
+
+  const numpadVisible = document.getElementById("cashNumpad");
+  const isNumpadShowing = numpadVisible && numpadVisible.style.display !== "none";
+
+  if (e.key >= "0" && e.key <= "9") {
+    if (isNumpadShowing) {
+      e.preventDefault();
+      window.enterDigit(e.key);
+      // Visual flash on the matching button
+      _flashNumpadBtn(e.key);
+    }
+  } else if (e.key === ".") {
+    if (isNumpadShowing) {
+      e.preventDefault();
+      window.enterDigit(".");
+      _flashNumpadBtn(".");
+    }
+  } else if (e.key === "Backspace" || e.key === "Delete") {
+    if (isNumpadShowing) {
+      e.preventDefault();
+      // Backspace removes last character; Delete clears all
+      if (e.key === "Backspace" && enteredAmount.length > 0) {
+        enteredAmount = enteredAmount.slice(0, -1);
+        updateChangeDisplay();
+        updateDoneButton();
+      } else {
+        window.clearAmount();
+      }
+      _flashNumpadBtn("clear");
+    }
+  } else if (e.key === "Enter") {
+    const doneBtn = document.getElementById("doneBtn");
+    if (doneBtn && !doneBtn.disabled) {
+      e.preventDefault();
+      window.completePayment();
+    }
+  } else if (e.key === "Escape") {
+    e.preventDefault();
+    window.closePaymentModal();
+  }
+});
+
+/** Briefly highlights a numpad button to give visual keyboard feedback. */
+function _flashNumpadBtn(value) {
+  const buttons = document.querySelectorAll("#cashNumpad .bb-pad");
+  buttons.forEach(btn => {
+    const matches =
+      value === "clear"
+        ? btn.textContent.trim().toLowerCase() === "clear"
+        : btn.textContent.trim() === value;
+    if (matches) {
+      btn.classList.add("bb-pad-active");
+      setTimeout(() => btn.classList.remove("bb-pad-active"), 120);
+    }
+  });
+}
 
 function updateDoneButton() {
   const doneBtn = document.getElementById("doneBtn");
@@ -1031,93 +1229,108 @@ function generateReceipt(sale) {
   const orderShort = sale.orderId ? String(sale.orderId).slice(-6) : "—";
   const titleEl = document.getElementById("receiptTitle");
   if (titleEl) {
-    titleEl.textContent = sale.queued ? "Pending order" : "Receipt";
+    titleEl.textContent = sale.unpaid ? "Unpaid order" : sale.queued ? "Pending order" : "Receipt";
   }
 
-  const receiptHTML = `
-    <div class="receipt">
-      <div class="receipt-brand">
-        <div class="receipt-mark"><i class="ri-cup-line" aria-hidden="true"></i></div>
-        <div class="receipt-brand-text">
-          <div class="receipt-title">Brother Bean Cafe</div>
-          <div class="receipt-subtitle">Warmth in Every Cup</div>
+  const itemRows = (sale.items || []).map((item) => {
+    const basePrice = Number(item.price) || 0;
+    const qty = Number(item.quantity) || 1;
+    const addons = Array.isArray(item.addons) ? item.addons : [];
+    const addonsTotal = addons.reduce((sum, addon) => sum + (Number(addon?.price) || 0), 0);
+    const unitPrice = basePrice + addonsTotal;
+    const lineTotal = unitPrice * qty;
+    const variantText = [item.variant, item.temperature && item.temperature !== "N/A" ? item.temperature : null]
+      .filter(Boolean)
+      .join(" · ");
+
+    return `
+      <div class="item">
+        <div class="item-name"><span>${item.name}</span></div>
+        ${variantText ? `<div class="item-variant">${variantText}</div>` : ""}
+        <div class="item-calc">
+          <span class="qty">${qty} x ${formatMoney(unitPrice)}</span>
+          <span>${formatMoney(lineTotal)}</span>
         </div>
       </div>
+    `;
+  }).join("");
 
-      <div class="receipt-meta">
-        <div class="receipt-meta-row"><span>Date</span><span>${sale.timestamp || "—"}</span></div>
-        <div class="receipt-meta-row"><span>Order</span><span>#${orderShort}</span></div>
-        <div class="receipt-meta-row"><span>Payment</span><span>${(sale.paymentMethod || "—").toUpperCase()}</span></div>
-        <div class="receipt-meta-row"><span>Cashier</span><span>Staff</span></div>
-        ${sale.isPwdSenior ? `<div class="receipt-badge"><i class="ri-wheelchair-line" aria-hidden="true"></i> PWD / Senior (20% OFF)</div>` : ""}
+  const discountBlock = sale.isPwdSenior
+    ? `<div class="totals-row sub"><span>Discount</span><span>− ${formatMoney(sale.discountAmount)}</span></div>`
+    : "";
+
+  const paidStamp = sale.unpaid ? "UNPAID" : sale.queued ? "PENDING" : "PAID";
+
+  const receiptHTML = `
+    <div class="receipt-wrap">
+      <button
+        type="button"
+        class="receipt-close-btn"
+        aria-label="Close receipt"
+        title="Close receipt"
+        onclick="closeReceipt()"
+      >&times;</button>
+      <div class="zigzag-top" aria-hidden="true"></div>
+      <div class="receipt">
+        <div class="center">
+          <div class="brand-mark">
+            <img src="/assets/icons/brother-bean-logo.jpg" alt="Brother Bean Coffeehouse logo" />
+          </div>
+          <div class="brand-name">Brother Bean Coffee House</div>
+          <div class="brand-tag">anytime is coffee time.</div>
+          <div class="brand-addr">N. Guevarra St. Brgy. Zone 1 Poblacion Dasmariñas City Cavite</div>
+        </div>
+
+        <hr class="rule">
+
+        <div class="meta-row"><span class="label">Date</span><span class="value">${sale.timestamp || "—"}</span></div>
+        <div class="meta-row"><span class="label">Order #</span><span class="value">${orderShort}</span></div>
+        <div class="meta-row"><span class="label">Payment</span><span class="value">${(sale.paymentMethod || "—").toUpperCase()}</span></div>
+        <div class="meta-row"><span class="label">Cashier</span><span class="value">Staff</span></div>
+
+        <hr class="rule">
+
+        ${itemRows}
+
+        <hr class="rule">
+
+        <div class="totals-row sub"><span>Subtotal</span><span>${formatMoney(sale.subtotal)}</span></div>
+        ${discountBlock}
+        <div class="totals-row grand"><span>TOTAL</span><span>${formatMoney(sale.total)}</span></div>
+        <div class="totals-row sub"><span>Tendered</span><span>${formatMoney(sale.amountTendered)}</span></div>
+        <div class="totals-row sub"><span>Change</span><span>${formatMoney(sale.change)}</span></div>
+
+        <div class="stamp"><span>${paidStamp}</span></div>
+
+        <div class="barcode" aria-hidden="true"></div>
+
+        <hr class="rule">
+
+        <div class="center">
+          <div class="footer-msg">Thank you for visiting!</div>
+          <div class="footer-sub">Please come again</div>
+          <div class="footer-legal">
+            VAT Registered TIN: 000-000-000-000<br>
+            Permit No: 0000000
+          </div>
+          ${sale.unpaid ? `
+            <button type="button" class="receipt-return-btn" onclick="restoreUnpaidOrderToCart()">Move to current order</button>
+          ` : ""}
+        </div>
       </div>
-
-      <div class="receipt-divider"></div>
-
-      <div class="receipt-items">
-        ${(sale.items || []).map(item => {
-          const basePrice = Number(item.price) || 0;
-          const addons = (item.addons || []).map(a => ({ name: a.name, price: Number(a.price) || 0 }));
-          const addonsTotal = addons.reduce((s, a) => s + a.price, 0);
-          const unitPrice = basePrice + addonsTotal;
-          const qty = Number(item.quantity) || 1;
-          const lineTotal = unitPrice * qty;
-
-          const meta = [
-            item.variant ? String(item.variant) : null,
-            item.temperature && item.temperature !== "N/A" ? String(item.temperature) : null,
-          ].filter(Boolean);
-
-          return `
-            <div class="receipt-item">
-              <div class="receipt-item-main">
-                <div class="receipt-item-name">${item.name}</div>
-                ${(meta.length || addons.length) ? `
-                  <div class="receipt-item-details">
-                    ${meta.map(m => `<span>${m}</span>`).join("")}
-                    <span>Retail: ${formatMoney(basePrice)}</span>
-                    ${addons.map(a => `<span>+ ${a.name}: ${formatMoney(a.price)}</span>`).join("")}
-                    ${qty > 1 ? `<span>Unit: ${formatMoney(unitPrice)} × ${qty}</span>` : `<span>Unit: ${formatMoney(unitPrice)}</span>`}
-                  </div>
-                ` : `
-                  <div class="receipt-item-details">
-                    <span>Retail: ${formatMoney(basePrice)}</span>
-                    <span>Unit: ${formatMoney(unitPrice)}</span>
-                  </div>
-                `}
-              </div>
-              <div class="receipt-item-right">
-                <div class="receipt-item-qty">×${qty}</div>
-                <div class="receipt-item-total">${formatMoney(lineTotal)}</div>
-              </div>
-            </div>
-          `;
-        }).join("")}
-      </div>
-
-      <div class="receipt-divider"></div>
-
-      <div class="receipt-totals">
-        <div class="receipt-row"><span>Subtotal</span><span>${formatMoney(sale.subtotal)}</span></div>
-        ${sale.isPwdSenior ? `<div class="receipt-row discount"><span>Discount</span><span>− ${formatMoney(sale.discountAmount)}</span></div>` : ""}
-        <div class="receipt-row total"><span>Total</span><span>${formatMoney(sale.total)}</span></div>
-        <div class="receipt-row"><span>Tendered</span><span>${formatMoney(sale.amountTendered)}</span></div>
-        <div class="receipt-row"><span>Change</span><span>${formatMoney(sale.change)}</span></div>
-      </div>
-
-      <div class="receipt-footer">
-        <div class="receipt-thanks">Thank you for visiting Brother Bean Cafe!</div>
-        <div class="receipt-small">Please come again</div>
-        <div class="receipt-small" style="margin-top:10px;">VAT Registered TIN: 000-000-000-000</div>
-        <div class="receipt-small">Permit No: 0000000</div>
-      </div>
+      <div class="zigzag-bottom" aria-hidden="true"></div>
     </div>
   `;
   document.getElementById("receiptContent").innerHTML = receiptHTML;
 }
 
 window.closeReceipt = function() {
-  document.getElementById("receiptModal").classList.remove("active");
+  const receiptModal = document.getElementById("receiptModal");
+  if (receiptModal) {
+    receiptModal.classList.remove("active");
+    // reset any inline z-index applied when opening over other overlays
+    receiptModal.style.zIndex = '';
+  }
   const titleEl = document.getElementById("receiptTitle");
   if (titleEl) titleEl.textContent = "Receipt";
 };
@@ -1143,7 +1356,15 @@ window.openPendingOrder = function(orderId) {
   };
 
   generateReceipt(sale);
-  document.getElementById("receiptModal").classList.add("active");
+  const receiptModal = document.getElementById("receiptModal");
+  if (receiptModal) {
+    // Ensure receipt modal overlays other open modals (pending orders)
+    receiptModal.style.zIndex = '11000';
+    receiptModal.classList.add("active");
+    receiptModal.setAttribute('aria-hidden', 'false');
+  } else {
+    document.getElementById("receiptModal").classList.add("active");
+  }
 };
 
 window.printReceipt = function() {
@@ -1179,7 +1400,8 @@ window.printReceipt = function() {
       }
 
       .receipt-brand { display:flex; align-items:center; gap:8px; justify-content:center; margin-bottom: 10px; }
-      .receipt-mark { display:none; } /* keep it ink-friendly */
+      .receipt-mark { width: 34px; height: 34px; border: 2px solid #2b2620; border-radius: 6px; display:flex; align-items:center; justify-content:center; overflow:hidden; }
+      .receipt-mark img { width: 100%; height: 100%; object-fit: cover; filter: none; } 
       .receipt-title { font-size: 14px; font-weight: 800; text-align:center; }
       .receipt-subtitle { font-size: 10px; text-align:center; color:#444; margin-top: 2px; }
 
@@ -1304,17 +1526,23 @@ window.confirmLogout = async function() {
 function setThemeButton(theme) {
   const btn = document.getElementById("themeToggleBtn");
   if (!btn) return;
-  btn.innerHTML = '<i class="ri-sun-line" aria-hidden="true"></i> Light';
-  btn.disabled = true;
+  if (theme === "dark") {
+    btn.innerHTML = '<i class="ri-moon-line" aria-hidden="true"></i> Dark Mode';
+  } else {
+    btn.innerHTML = '<i class="ri-sun-line" aria-hidden="true"></i> Light Mode';
+  }
+  btn.disabled = false;
 }
 
 function applyTheme(theme) {
-  const normalized = 'light';
+  // Dark mode removed: always use light theme and do not persist.
+  const normalized = "light";
   document.body.setAttribute("data-theme", normalized);
   setThemeButton(normalized);
 }
 
 function applySavedTheme() {
+  // Ensure theme stays light; ignore saved preference.
   applyTheme('light');
 }
 
@@ -1339,7 +1567,8 @@ function applySavedCartDensity() {
 }
 
 window.toggleTheme = function() {
-  // Dark mode removed — no-op to preserve compatibility with existing markup.
+  // Theme toggling removed; keep light theme for compatibility.
+  applyTheme('light');
 };
 
 window.toggleCartDensity = function() {

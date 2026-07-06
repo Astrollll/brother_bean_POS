@@ -24,13 +24,12 @@
     />
     <link rel="stylesheet" href="/assets/adminstyle.css?v=20260409A" />
   </head>
-  <body>
+  <body data-theme="light">
     <div
       id="auth-loading"
       style="
         display: flex;
         align-items: center;
-        justify-content: center;
         height: 100vh;
         background: #f9fafb;
         color: #6b7280;
@@ -73,6 +72,7 @@
             <i class="ri-notification-3-line" aria-hidden="true"></i>
             <div class="notif-dot"></div>
           </div>
+
           <div
             class="topbar-avatar"
             id="topbarAvatarBtn"
@@ -932,6 +932,42 @@
             Save Changes
           </button>
         </div>
+      </div>
+    </div>
+
+    <div
+      class="modal-overlay-custom admin-receipt-overlay"
+      id="orderReceiptModal"
+      aria-hidden="true"
+      style="display: none"
+      onclick="
+        if (event.target === this)
+          window.closeOrderReceipt && window.closeOrderReceipt();
+      "
+    >
+      <div
+        class="admin-receipt-shell"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="orderReceiptTitle"
+      >
+        <div class="admin-receipt-topbar">
+          <div>
+            <div class="admin-receipt-kicker">Transaction</div>
+            <div class="admin-receipt-title" id="orderReceiptTitle">
+              Receipt
+            </div>
+          </div>
+          <button
+            type="button"
+            class="admin-receipt-close close-btn"
+            aria-label="Close receipt"
+            onclick="window.closeOrderReceipt && window.closeOrderReceipt()"
+          >
+            &times;
+          </button>
+        </div>
+        <div class="admin-receipt-body" id="orderReceiptContent"></div>
       </div>
     </div>
 

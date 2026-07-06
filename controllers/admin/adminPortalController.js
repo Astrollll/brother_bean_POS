@@ -272,6 +272,10 @@ function escapeHtml(value) {
     .replaceAll("'", "&#39;");
 }
 
+function formatMoney(value) {
+  return `₱${(Number(value) || 0).toFixed(2)}`;
+}
+
 function renderSectionState(message, tone = "muted") {
   const safeTone = ["muted", "warning", "error"].includes(tone) ? tone : "muted";
   return `<div class="section-state ${safeTone}">${escapeHtml(message || "")}</div>`;
@@ -933,6 +937,185 @@ function toggleOrderStockDetails(orderKey) {
   state.orderStockExpanded = next;
 }
 
+function buildAdminReceiptHTML(order) {
+  const date = getOrderDate(order);
+  const orderShort = String(order.orderId || order.id || "—").slice(-6) || "—";
+  const payment = String(order.paymentMethod || "cash").toUpperCase();
+  const cashier = String(order.cashierName || order.staffName || order.staff || "Staff");
+  const paidStamp = String(order.status || "paid").toLowerCase() === "paid" ? "PAID" : String(order.status || "PENDING").toUpperCase();
+  const items = Array.isArray(order.items) ? order.items : [];
+
+  const rows = items.map((item) => {
+    const qty = Number(item.quantity || 1) || 1;
+    const addonTotal = Array.isArray(item.addons) ? item.addons.reduce((sum, addon) => sum + (Number(addon?.price) || 0), 0) : 0;
+    const unit = (Number(item.price) || 0) + addonTotal;
+    const lineTotal = unit * qty;
+    const variant = [item.variant, item.temperature && item.temperature !== "N/A" ? item.temperature : null].filter(Boolean).join(" · ");
+
+    return `
+      <tr>
+        <td>
+          ${escapeHtml(item.name || "Item")}
+          ${variant ? `<div class="admin-receipt-variant">${escapeHtml(variant)}</div>` : ""}
+        </td>
+        <td class="num">${qty}</td>
+        <td class="num">${formatMoney(unit)}</td>
+        <td class="num">${formatMoney(lineTotal)}</td>
+      </tr>
+    `;
+  }).join("");
+
+  const discountRow = Number(order.discountAmount || 0) > 0
+    ? `<div class="row"><span>Discount</span><span>− ${formatMoney(order.discountAmount)}</span></div>`
+    : "";
+
+  const timestamp = date
+    ? date.toLocaleString("en-PH", { month: "numeric", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" })
+    : "-";
+
+  return `
+    <div class="admin-receipt-card">
+      <div class="card-header">
+        <div class="brand">
+          <div class="brand-mark" aria-hidden="true">
+            <img src="/assets/icons/brother-bean-logo.jpg" alt="Brother Bean Coffeehouse logo" />
+          </div>
+          <div>
+            <div class="brand-name">Brother Bean Cafe</div>
+            <div class="brand-tag">Warmth in Every Cup</div>
+          </div>
+        </div>
+        <div class="status-pill">${escapeHtml(paidStamp)}</div>
+      </div>
+
+      <div class="meta-strip">
+        <div class="meta-cell">
+          <div class="label">Order #</div>
+          <div class="value">${escapeHtml(orderShort)}</div>
+        </div>
+        <div class="meta-cell">
+          <div class="label">Date</div>
+          <div class="value">${escapeHtml(timestamp)}</div>
+        </div>
+        <div class="meta-cell">
+          <div class="label">Payment</div>
+          <div class="value">${escapeHtml(payment)}</div>
+        </div>
+        <div class="meta-cell">
+          <div class="label">Cashier</div>
+          <div class="value">${escapeHtml(cashier)}</div>
+        </div>
+      </div>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Item</th>
+            <th class="num">Qty</th>
+            <th class="num">Unit</th>
+            <th class="num">Line Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows || `<tr><td colspan="4" style="padding:12px 20px;color:#6b6255;">No item details available.</td></tr>`}
+        </tbody>
+      </table>
+
+      <div class="totals">
+        <div class="totals-table">
+          <div class="row"><span>Subtotal</span><span>${formatMoney(order.subtotal)}</span></div>
+          ${discountRow}
+          <div class="row"><span>Tendered</span><span>${formatMoney(order.amountTendered || order.total || 0)}</span></div>
+          <div class="row"><span>Change</span><span>${formatMoney(order.change)}</span></div>
+          <div class="row grand"><span>TOTAL</span><span>${formatMoney(order.total)}</span></div>
+        </div>
+      </div>
+
+      <div class="footer">
+        <span>VAT TIN: 000-000-000-000 &nbsp;|&nbsp; Permit No: 0000000</span>
+        <span class="actions">
+          <button type="button" class="admin-receipt-link">View</button>
+          <button type="button" class="admin-receipt-link" onclick="window.refundOrderReceipt && window.refundOrderReceipt()">Refund</button>
+          <button type="button" class="admin-receipt-link" onclick="window.printOrderReceipt && window.printOrderReceipt()">Print</button>
+        </span>
+      </div>
+    </div>
+  `;
+}
+
+window.openOrderReceipt = function(orderId) {
+  const order = findOrderByKey(orderId);
+  const modal = document.getElementById("orderReceiptModal");
+  const content = document.getElementById("orderReceiptContent");
+  if (!order || !modal || !content) return;
+
+  content.innerHTML = buildAdminReceiptHTML(order);
+  modal.style.display = "flex";
+  modal.setAttribute("aria-hidden", "false");
+};
+
+window.closeOrderReceipt = function() {
+  const modal = document.getElementById("orderReceiptModal");
+  if (!modal) return;
+  modal.style.display = "none";
+  modal.setAttribute("aria-hidden", "true");
+};
+
+document.addEventListener("keydown", (event) => {
+  if (event.key !== "Escape") return;
+  const modal = document.getElementById("orderReceiptModal");
+  if (modal && modal.style.display !== "none") {
+    window.closeOrderReceipt();
+  }
+});
+
+window.printOrderReceipt = function() {
+  const content = document.getElementById("orderReceiptContent");
+  if (!content) return;
+  const printWindow = window.open("", "_blank", "width=900,height=900");
+  if (!printWindow) return;
+
+  const baseStyles = `
+    <style>
+      body { margin: 0; padding: 32px 16px; background: #e7e2d6; font-family: 'Courier New', ui-monospace, 'IBM Plex Mono', monospace; }
+      .admin-receipt-card { width: 560px; margin: 0 auto; background: #fbf9f4; color: #2b2620; border: 1px solid #a89d87; border-radius: 4px; overflow: hidden; }
+      .card-header { display:flex; justify-content:space-between; align-items:center; padding:14px 20px; border-bottom:1px solid #a89d87; background:#f1ece1; }
+      .brand { display:flex; align-items:center; gap:10px; }
+      .brand-mark { width:28px; height:28px; border:2px solid #2b2620; border-radius:5px; display:flex; align-items:center; justify-content:center; overflow:hidden; }
+      .brand-mark img { width:100%; height:100%; object-fit:cover; filter: none; }
+      .brand-name { font-weight:700; font-size:14px; letter-spacing:0.5px; }
+      .brand-tag { color:#6b6255; font-size:10px; font-style:italic; }
+      .status-pill { font-size:11px; font-weight:700; letter-spacing:1px; color:#a6493a; border:1.5px solid #a6493a; border-radius:3px; padding:3px 10px; }
+      .meta-strip { display:grid; grid-template-columns:repeat(4, 1fr); border-bottom:1px dashed #cfc7b8; }
+      .meta-cell { padding:10px 20px; border-right:1px dashed #cfc7b8; font-size:11px; }
+      .meta-cell:last-child { border-right:none; }
+      .meta-cell .label { color:#6b6255; text-transform:uppercase; font-size:9px; letter-spacing:0.5px; margin-bottom:3px; }
+      .meta-cell .value { font-weight:700; font-size:12px; }
+      table { width:100%; border-collapse:collapse; font-size:12px; }
+      thead th { text-align:left; color:#6b6255; text-transform:uppercase; font-size:10px; letter-spacing:0.5px; font-weight:700; padding:10px 20px 6px; border-bottom:1px solid #a89d87; }
+      thead th.num { text-align:right; }
+      tbody td { padding:8px 20px; border-bottom:1px dashed #cfc7b8; vertical-align:top; }
+      tbody td.num { text-align:right; font-weight:700; white-space:nowrap; }
+      .admin-receipt-variant { color:#6b6255; font-size:10px; margin-top:2px; }
+      .totals { padding:12px 20px 16px; display:flex; justify-content:flex-end; }
+      .totals-table { width:230px; font-size:12px; }
+      .row { display:flex; justify-content:space-between; padding:3px 0; color:#6b6255; }
+      .row.grand { color:#2b2620; font-weight:700; font-size:15px; border-top:1px solid #a89d87; margin-top:4px; padding-top:6px; }
+      .footer { display:flex; justify-content:space-between; align-items:center; padding:10px 20px 14px; border-top:1px dashed #cfc7b8; font-size:10px; color:#6b6255; }
+      .actions { display:flex; gap:14px; }
+      .admin-receipt-link { background:none; border:none; padding:0; color:#2b2620; text-decoration:none; font-weight:700; border-bottom:1px solid #2b2620; cursor:pointer; font:inherit; }
+    </style>`;
+
+  printWindow.document.write(`<!doctype html><html><head><title>Order Receipt</title>${baseStyles}</head><body>${content.innerHTML}</body></html>`);
+  printWindow.document.close();
+  printWindow.focus();
+  printWindow.print();
+};
+
+window.refundOrderReceipt = function() {
+  ModalUtils.warning("Refund", "Refund flow is not implemented yet.");
+};
+
 function renderOrdersPagination(totalPages) {
   const pager = document.getElementById("ordersPagination");
   if (!pager) return;
@@ -1045,6 +1228,7 @@ function renderOrdersTable(orders) {
       <td>${status}</td>
       <td>${stockCell}</td>
       <td>
+        <button class="orders-btn ghost inventory-mini-btn order-view-btn" type="button" data-order-action="view" data-order-id="${escapeHtml(orderKey)}" title="View receipt" aria-label="View receipt"><i class="ri-receipt-line" aria-hidden="true"></i></button>
         <button class="orders-btn ghost inventory-mini-btn danger order-delete-btn" type="button" data-order-action="delete" data-order-id="${escapeHtml(orderKey)}" title="Delete transaction" aria-label="Delete transaction"><i class="ri-delete-bin-line" aria-hidden="true"></i></button>
       </td>
     </tr>
@@ -1069,6 +1253,11 @@ function renderOrdersTable(orders) {
       if (action === "toggle-stock") {
         toggleOrderStockDetails(orderId);
         renderOrdersTable(state.pagedOrders);
+        return;
+      }
+
+      if (action === "view") {
+        window.openOrderReceipt && window.openOrderReceipt(orderId);
         return;
       }
 
