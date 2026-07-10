@@ -76,14 +76,17 @@ service cloud.firestore {
 
     match /orders/{docId} {
       allow create: if isWorker();
-      allow read, update, delete: if isAdmin();
+      allow read: if isSignedIn();
+      allow update, delete: if isAdmin();
     }
 
     match /resets/{dateId} {
-      allow read, write: if isAdmin();
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
 
       match /orders/{orderDocId} {
-        allow read, write: if isAdmin();
+        allow read: if isSignedIn();
+        allow write: if isAdmin();
       }
     }
   }

@@ -4,7 +4,7 @@ const WEEKDAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const viewState = {
   dashboardInitialized: false,
   analyticsInitialized: false,
-  analyticsPeriod: "today",
+  analyticsPeriod: "all",
   analyticsChart: null,
   analyticsData: null,
 };
@@ -119,9 +119,58 @@ function sortOrdersNewestFirst(orders) {
   return [...(Array.isArray(orders) ? orders : [])].sort((a, b) => getOrderDate(b).getTime() - getOrderDate(a).getTime());
 }
 
-function getPeriodRange(period, now = new Date()) {
+function readStoredSalesHistory() {
+  try {
+    if (typeof window === "undefined" || !window.localStorage) return [];
+    const raw = window.localStorage.getItem("brotherBean_salesHistory");
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function mergeUniqueOrders(baseOrders = [], fallbackOrders = []) {
+  const merged = [];
+  const seen = new Set();
+
+  for (const order of [...(Array.isArray(baseOrders) ? baseOrders : []), ...(Array.isArray(fallbackOrders) ? fallbackOrders : [])]) {
+    const id = String(order?.orderId || order?.id || order?.queueId || "").trim();
+    const key = id || `${String(order?.timestamp || order?.createdAtMs || order?.createdAt || Date.now())}:${String(order?.total || 0)}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    merged.push(order);
+  }
+
+  return merged;
+}
+
+function getPeriodRange(period, now = new Date(), orders = []) {
   const end = new Date(now);
   const start = new Date(now);
+
+  if (period === "all") {
+    const source = Array.isArray(orders) ? orders : [];
+    const dates = source
+      .map((order) => getOrderDate(order))
+      .filter((date) => date instanceof Date && !Number.isNaN(date.getTime()));
+
+    if (!dates.length) {
+      start.setHours(0, 0, 0, 0);
+      end.setDate(start.getDate() + 1);
+      end.setHours(0, 0, 0, 0);
+      return { start, end };
+    }
+
+    const minDate = new Date(Math.min(...dates.map((date) => date.getTime())));
+    const maxDate = new Date(Math.max(...dates.map((date) => date.getTime())));
+    start.setFullYear(minDate.getFullYear(), minDate.getMonth(), 1);
+    start.setHours(0, 0, 0, 0);
+    end.setFullYear(maxDate.getFullYear(), maxDate.getMonth() + 1, 1);
+    end.setHours(0, 0, 0, 0);
+    return { start, end };
+  }
 
   if (period === "week") {
     const day = now.getDay();
@@ -146,6 +195,14 @@ function getPeriodRange(period, now = new Date()) {
 function getPreviousRange(period, range) {
   const start = new Date(range.start);
   const end = new Date(range.end);
+
+  if (period === "all") {
+    const duration = end.getTime() - start.getTime();
+    return {
+      start: new Date(start.getTime() - duration),
+      end: new Date(end.getTime() - duration),
+    };
+  }
 
   if (period === "month") {
     const previousEnd = new Date(range.start);
@@ -174,7 +231,12 @@ function filterOrdersByRange(orders, range) {
   });
 }
 
-function bucketLabelForOrder(orderDate, period) {
+function bucketLabelForOrder(orderDate, period, range = null) {
+  if (period === "all") {
+    const base = range?.start instanceof Date ? range.start : new Date();
+    const monthIndex = (orderDate.getFullYear() - base.getFullYear()) * 12 + (orderDate.getMonth() - base.getMonth());
+    return monthIndex;
+  }
   if (period === "week") {
     return WEEKDAY_NAMES[orderDate.getDay()];
   }
@@ -192,7 +254,21 @@ function bucketLabelForOrder(orderDate, period) {
   return `${formatHour(hour)}-${formatHour(nextHour)}`;
 }
 
-function buildPeriodBuckets(period) {
+function buildPeriodBuckets(period, range = null) {
+  if (period === "all") {
+    const labels = [];
+    const start = range?.start instanceof Date ? new Date(range.start) : new Date();
+    const end = range?.end instanceof Date ? new Date(range.end) : new Date();
+    const cursor = new Date(start.getFullYear(), start.getMonth(), 1);
+    const limit = new Date(end.getFullYear(), end.getMonth(), 1);
+
+    while (cursor <= limit) {
+      labels.push(`${MONTH_NAMES[cursor.getMonth()]} ${String(cursor.getFullYear()).slice(-2)}`);
+      cursor.setMonth(cursor.getMonth() + 1, 1);
+    }
+
+    return labels.length ? labels : ["No data"];
+  }
   if (period === "week") {
     return WEEKDAY_NAMES.slice(1).concat(WEEKDAY_NAMES[0]);
   }
@@ -212,7 +288,12 @@ function buildPeriodBuckets(period) {
   return labels;
 }
 
-function getBucketIndex(orderDate, period) {
+function getBucketIndex(orderDate, period, range = null) {
+  if (period === "all") {
+    const base = range?.start instanceof Date ? range.start : new Date();
+    const index = (orderDate.getFullYear() - base.getFullYear()) * 12 + (orderDate.getMonth() - base.getMonth());
+    return Math.max(0, index);
+  }
   if (period === "week") {
     return (orderDate.getDay() + 6) % 7;
   }
@@ -223,13 +304,13 @@ function getBucketIndex(orderDate, period) {
   return Math.max(0, Math.min(13, hour - 7));
 }
 
-function buildTrendSeries(orders, period) {
-  const labels = buildPeriodBuckets(period);
+function buildTrendSeries(orders, period, range = null) {
+  const labels = buildPeriodBuckets(period, range);
   const values = labels.map(() => 0);
 
   for (const order of orders) {
     const date = getOrderDate(order);
-    const index = getBucketIndex(date, period);
+    const index = getBucketIndex(date, period, range);
     if (index >= 0 && index < values.length) {
       values[index] += toNumber(order?.total);
     }
@@ -304,17 +385,22 @@ function computeCategoryBreakdown(orders, menuItems) {
   }));
 }
 
-function computePeakBucket(series, period) {
+function computePeakBucket(series, period, range = null) {
+  const values = Array.isArray(series?.values)
+    ? series.values
+    : Array.isArray(series)
+      ? series
+      : [];
   let index = 0;
   let maxValue = 0;
-  series.values.forEach((value, idx) => {
+  values.forEach((value, idx) => {
     if (value >= maxValue) {
       maxValue = value;
       index = idx;
     }
   });
 
-  const labels = buildPeriodBuckets(period);
+  const labels = buildPeriodBuckets(period, range);
   const label = labels[index] || "—";
   return { label, value: maxValue };
 }
@@ -595,7 +681,8 @@ function buildAnalyticsTemplate() {
             <span>Cloud synced</span>
           </div>
           <div class="sales-period-tabs" role="tablist" aria-label="Period selector">
-            <button class="sales-period-tab" type="button" data-period="today" aria-pressed="true">Today</button>
+            <button class="sales-period-tab" type="button" data-period="all" aria-pressed="true">All</button>
+            <button class="sales-period-tab" type="button" data-period="today" aria-pressed="false">Today</button>
             <button class="sales-period-tab" type="button" data-period="week" aria-pressed="false">Week</button>
             <button class="sales-period-tab" type="button" data-period="month" aria-pressed="false">Month</button>
           </div>
@@ -853,7 +940,7 @@ function buildAnalyticsSeries(periodData) {
 }
 
 function buildAnalyticsPeriodData(period, orders, menuItems, pendingSyncCount = 0, now = new Date(), todayOrders = []) {
-  const range = getPeriodRange(period, now);
+  const range = getPeriodRange(period, now, orders);
   const previousRange = getPreviousRange(period, range);
   const sourceOrders = period === "today" && Array.isArray(todayOrders) && todayOrders.length
     ? todayOrders
@@ -867,9 +954,9 @@ function buildAnalyticsPeriodData(period, orders, menuItems, pendingSyncCount = 
   const currentAvg = currentCount ? currentRevenue / currentCount : 0;
   const previousAvg = previousCount ? previousRevenue / previousCount : 0;
   const currentDiscounts = sumDiscounts(currentOrders);
-  const trend = buildTrendSeries(currentOrders, period);
-  const previousTrend = buildTrendSeries(previousOrders, period);
-  const peakBucket = computePeakBucket(trend.values.map((value, index) => ({ value, index })), period);
+  const trend = buildTrendSeries(currentOrders, period, range);
+  const previousTrend = buildTrendSeries(previousOrders, period, previousRange);
+  const peakBucket = computePeakBucket(trend, period, range);
   const topSellers = computeTopItems(currentOrders, menuItems);
   const categories = computeCategoryBreakdown(currentOrders, menuItems);
 
@@ -877,12 +964,14 @@ function buildAnalyticsPeriodData(period, orders, menuItems, pendingSyncCount = 
     ? `${peakBucket.label}`
     : period === "week"
       ? `Peak day: ${peakBucket.label}`
-      : `Peak week: ${peakBucket.label}`;
+      : period === "month"
+        ? `Peak week: ${peakBucket.label}`
+        : `Peak month: ${peakBucket.label}`;
 
   return {
     period,
-    periodLabel: period.charAt(0).toUpperCase() + period.slice(1),
-    title: `Revenue trend — ${period.charAt(0).toUpperCase() + period.slice(1)} (${period === "today" ? "hourly" : period === "week" ? "daily" : "weekly"})`,
+    periodLabel: period === "all" ? "All time" : period.charAt(0).toUpperCase() + period.slice(1),
+    title: `Revenue trend — ${period === "all" ? "All time" : period.charAt(0).toUpperCase() + period.slice(1)} (${period === "today" ? "hourly" : period === "week" ? "daily" : period === "month" ? "weekly" : "monthly"})`,
     kicker: `Revenue trend`,
     stats: {
       revenue: {
@@ -923,7 +1012,11 @@ function buildAnalyticsPeriodData(period, orders, menuItems, pendingSyncCount = 
       current: trend.values,
       previous: previousTrend.values,
     },
-    footerLabel: period === "today" ? formatShortDate(now) : `${formatShortDate(range.start)} → ${formatShortDate(new Date(range.end.getTime() - 1))}`,
+    footerLabel: period === "today"
+      ? formatShortDate(now)
+      : period === "all"
+        ? `${formatShortDate(range.start)} → ${formatShortDate(new Date(range.end.getTime() - 1))}`
+        : `${formatShortDate(range.start)} → ${formatShortDate(new Date(range.end.getTime() - 1))}`,
   };
 }
 
@@ -1024,12 +1117,23 @@ export function renderSalesAnalyticsDashboard(data = {}) {
   const dashboardRoot = document.getElementById("salesAnalytics") || document.getElementById("dashboard");
   if (!dashboardRoot) return;
 
+  const storedSalesHistory = readStoredSalesHistory();
+  const bufferedOrders = typeof window !== "undefined" && Array.isArray(window.__bbOrderEventBuffer)
+    ? window.__bbOrderEventBuffer
+    : [];
+  const providedOrders = Array.isArray(data.allOrders) ? data.allOrders : Array.isArray(data.orders) ? data.orders : [];
+  const fallbackOrders = mergeUniqueOrders(bufferedOrders, storedSalesHistory);
+
   viewState.analyticsData = {
-    orders: Array.isArray(data.allOrders) ? data.allOrders : Array.isArray(data.orders) ? data.orders : [],
+    orders: mergeUniqueOrders(providedOrders, fallbackOrders),
     todayOrders: Array.isArray(data.todayOrders) ? data.todayOrders : Array.isArray(data.ordersToday) ? data.ordersToday : [],
     menuItems: Array.isArray(data.menuItems) ? data.menuItems : [],
     pendingSyncCount: toNumber(data.pendingSyncCount || 0),
   };
+
+  if (!viewState.analyticsData.orders.length && fallbackOrders.length) {
+    viewState.analyticsData.orders = fallbackOrders;
+  }
 
   if (!viewState.analyticsInitialized) {
     dashboardRoot.innerHTML = buildAnalyticsTemplate();

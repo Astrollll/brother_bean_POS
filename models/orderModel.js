@@ -6,8 +6,32 @@ import { getOrderOutbox, queueOrder, removeQueuedOrder } from "./storageModel.js
 import { deductInventoryQuantities } from "./inventoryModel.js";
 
 const ORDERS_COLLECTION = "orders";
+const RESETS_COLLECTION = "resets";
 function isOnlineNow() {
   return typeof navigator === "undefined" ? true : navigator.onLine !== false;
+}
+
+function orderSortKey(order) {
+  const created = order?.createdAt?.toDate
+    ? order.createdAt.toDate()
+    : (order?.createdAtMs ? new Date(order.createdAtMs) : (order?.timestamp ? new Date(order.timestamp) : null));
+  return created instanceof Date && !Number.isNaN(created.getTime()) ? created.getTime() : 0;
+}
+
+function mergeUniqueOrders(...groups) {
+  const merged = [];
+  const seen = new Set();
+
+  for (const group of groups) {
+    for (const order of Array.isArray(group) ? group : []) {
+      const key = String(order?.orderId || order?.id || order?.queueId || "").trim() || `${String(order?.createdAtMs || order?.timestamp || order?.createdAt || Date.now())}:${String(order?.total || 0)}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      merged.push(order);
+    }
+  }
+
+  return merged;
 }
 
 async function persistInventoryAfterSale(orderRef, orderData) {
@@ -85,6 +109,59 @@ export async function getAllOrders(fromDate = null, toDate = null) {
     const bMs = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : (b.createdAtMs || 0);
     return bMs - aMs;
   });
+}
+
+async function getArchivedOrders() {
+  const resetsSnap = await getDocs(collection(db, RESETS_COLLECTION));
+  if (resetsSnap.empty) return [];
+
+  const archivedGroups = await Promise.all(
+    resetsSnap.docs.map(async (resetDoc) => {
+      try {
+        const archivedSnap = await getDocs(collection(db, RESETS_COLLECTION, resetDoc.id, ORDERS_COLLECTION));
+        return archivedSnap.docs.map((d) => ({ id: d.id, archivedFrom: resetDoc.id, ...d.data() }));
+      } catch (error) {
+        console.warn(`[Orders] failed to read archived orders for ${resetDoc.id}`, error);
+        return [];
+      }
+    })
+  );
+
+  return archivedGroups.flat();
+}
+
+// Fetch every sale the system knows about, including archived orders under resets/{date}/orders.
+export async function getAllSalesOrders(fromDate = null, toDate = null) {
+  try {
+    const [activeOrders, archivedOrders] = await Promise.all([
+      getAllOrders(),
+      getArchivedOrders(),
+    ]);
+    const orders = mergeUniqueOrders(activeOrders, archivedOrders).sort((a, b) => orderSortKey(b) - orderSortKey(a));
+
+    const from = fromDate ? new Date(`${fromDate}T00:00:00`) : null;
+    const to = toDate ? new Date(`${toDate}T23:59:59`) : null;
+
+    const filtered = orders.filter((order) => {
+      const created = order.createdAt?.toDate
+        ? order.createdAt.toDate()
+        : (order.createdAtMs ? new Date(order.createdAtMs) : (order.timestamp ? new Date(order.timestamp) : null));
+
+      if (!created) return true;
+      if (from && created < from) return false;
+      if (to && created > to) return false;
+      return true;
+    });
+
+    return filtered.sort((a, b) => {
+      const aMs = a.createdAt?.toDate ? a.createdAt.toDate().getTime() : (a.createdAtMs || 0);
+      const bMs = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : (b.createdAtMs || 0);
+      return bMs - aMs;
+    });
+  } catch (error) {
+    console.warn("[Orders] collectionGroup sales query failed; falling back to active orders.", error);
+    return getAllOrders(fromDate, toDate);
+  }
 }
 
 export async function deleteOrder(orderId) {

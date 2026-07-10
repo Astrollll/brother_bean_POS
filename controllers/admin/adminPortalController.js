@@ -2,13 +2,13 @@ import { logout as authLogout, watchAuth, createAuthUserByAdmin, getCurrentUser 
 import { getUserRole, getUserProfile, listUsers, setUserRole, setUserProfile, ensureAdminAccessProfile } from "../../models/userModel.js";
 import { getMenuItems, saveMenuItem, deleteMenuItem, clearMenuItems } from "../../models/menuModel.js";
 import { getCategories, saveCategory, deleteCategory, getCategoryIconForName } from "../../models/categoryModel.js";
-import { getTodayOrders, getAllOrders, deleteOrder, clearAllOrders, getPendingOrderCount, getQueuedOrders, syncQueuedOrders } from "../../models/orderModel.js";
+import { getTodayOrders, getAllSalesOrders, deleteOrder, clearAllOrders, getPendingOrderCount, getQueuedOrders, syncQueuedOrders } from "../../models/orderModel.js?v=20260710A";
 import { getSavedSalesHistory } from "../../models/storageModel.js";
 import { resetDay as archiveResetDay } from "../../models/resetModel.js";
 import { getInventoryItems, saveInventoryItem, deleteInventoryItem, clearInventoryItems, convertQuantityBetweenUnits, normalizeUnit } from "../../models/inventoryModel.js";
 import { inventorySeedItems } from "../../models/defaultSeedData.js";
 import { getAllStaff as getStaff, getSchedule, getOnDutyNowFromSchedule, addStaff, removeStaff, removeStaffByName, removeStaffByAccountUid, updateStaffAccountLink, saveSchedule } from "../../models/staffModel.js";
-import { renderSalesAnalyticsDashboard, renderAdminDashboard } from "../../views/dashboardView.js";
+import { renderSalesAnalyticsDashboard, renderAdminDashboard } from "../../views/dashboardView.js?v=20260710A";
 import { renderAdminMenu } from "../../views/menuView.js";
 import { renderStaffList, renderScheduleEditor, readScheduleFromDOM } from "../../views/staffView.js";
 import { navigateTo } from "../utils/routes.js";
@@ -443,7 +443,7 @@ async function loadDashboard() {
     const [menuItems, ordersToday, allOrders, staff, schedule] = await Promise.all([
       getMenuItems().catch(() => []),
       getTodayOrders().catch(() => []),
-      getAllOrders().catch(() => []),
+      getAllSalesOrders().catch(() => []),
       getStaff().catch(() => []),
       getSchedule().catch(() => ({})),
     ]);
@@ -523,9 +523,24 @@ async function loadDashboard() {
         }
       });
 
+      const normalizedToday = normalized.filter((order) => {
+        try {
+          const created = order?.createdAtMs
+            ? new Date(Number(order.createdAtMs))
+            : (order?.createdAt?.toDate ? order.createdAt.toDate() : (order?.createdAt ? new Date(order.createdAt) : null));
+          if (!created || Number.isNaN(created.getTime())) return false;
+          const now = new Date();
+          return created.getFullYear() === now.getFullYear()
+            && created.getMonth() === now.getMonth()
+            && created.getDate() === now.getDate();
+        } catch {
+          return false;
+        }
+      });
+
       console.debug(`[Admin] analytics source orders: firestore=${Array.isArray(allOrders) ? allOrders.length : 0}, queued=${Array.isArray(queuedOrders) ? queuedOrders.length : 0}, local=${Array.isArray(getSavedSalesHistory?.()) ? getSavedSalesHistory().length : 0}, merged=${normalized.length}`);
 
-      renderSalesAnalyticsDashboard({ allOrders: normalized, todayOrders: ordersToday, menuItems, pendingSyncCount });
+      renderSalesAnalyticsDashboard({ allOrders: normalized, todayOrders: normalizedToday.length ? normalizedToday : ordersToday, menuItems, pendingSyncCount });
     } catch (e) {
       console.warn("[Analytics] renderSalesAnalyticsDashboard failed:", e);
     }
@@ -774,7 +789,7 @@ async function loadOrdersPage() {
   wrap.innerHTML = `<div style="color:var(--muted);font-size:13px;padding:10px 0;">Loading transactions...</div>`;
 
   try {
-    state.allOrders = await getAllOrders();
+    state.allOrders = await getAllSalesOrders();
     bindOrdersControls();
     applyOrderFilters();
   } catch (error) {
