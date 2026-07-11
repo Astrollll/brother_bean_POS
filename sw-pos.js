@@ -8,6 +8,7 @@ const APP_SHELL_FILES = [
   "/controllers/pos/index.js",
   "/controllers/posController.js",
   "/controllers/firebase.js",
+  "/config/app.config.js",
   "/controllers/auth/firebaseAuth.js",
   "/models/menuModel.js",
   "/models/orderModel.js",

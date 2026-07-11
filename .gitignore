@@ -1,5 +1,6 @@
 # IDE folders
 .cursor/
+.vscode/
 
 # Firebase cache and config (local)
 .firebase/
@@ -13,5 +14,10 @@ Thumbs.db
 
 # Dependencies (if any)
 node_modules/
-.DS_Store
+
+# Environment and config files (secrets)
+.env
+.env.local
+.env.*.local
+config/app.config.js
 

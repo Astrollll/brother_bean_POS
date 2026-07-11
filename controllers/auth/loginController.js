@@ -3,26 +3,15 @@ import { auth } from "../firebase.js";
 import { getUserProfile, getUserRole, setUserRole, setUserProfile, ensureAdminAccessProfile } from "../../models/userModel.js";
 import { navigateTo } from "../utils/routes.js";
 import { fetchSignInMethodsForEmail } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-auth.js";
+import { DEFAULT_ADMIN_ACCOUNTS } from "../../config/app.config.js";
 
 const LOGIN_EMAIL_KEY = "bb_admin_remembered_email";
 const DEFAULT_ADMIN_BOOTSTRAP_KEY = "bb_admin_bootstrap_attempted";
 const DEFAULT_ADMIN_BOOTSTRAP_VERSION = "2";
 const DEFAULT_ADMIN_BOOTSTRAP_VERSIONED_KEY = `${DEFAULT_ADMIN_BOOTSTRAP_KEY}_v${DEFAULT_ADMIN_BOOTSTRAP_VERSION}`;
-const DEFAULT_ADMIN_EMAIL = "admin@brotherbean.local";
-const DEFAULT_ADMIN_PASSWORD = "Admin@12345";
-const DEFAULT_ADMIN_NAME = "Default Admin";
-const DEFAULT_ADMIN_ACCOUNTS = [
-  {
-    email: DEFAULT_ADMIN_EMAIL,
-    password: DEFAULT_ADMIN_PASSWORD,
-    fullName: DEFAULT_ADMIN_NAME,
-  },
-  {
-    email: "owner@brotherbean.local",
-    password: "Owner@12345",
-    fullName: "Default Owner",
-  },
-];
+const DEFAULT_ADMIN_EMAIL = DEFAULT_ADMIN_ACCOUNTS[0]?.email || "";
+const DEFAULT_ADMIN_PASSWORD = DEFAULT_ADMIN_ACCOUNTS[0]?.password || "";
+const DEFAULT_ADMIN_NAME = DEFAULT_ADMIN_ACCOUNTS[0]?.fullName || "Default Admin";
 
 const AUTH_OPERATION_TIMEOUT_MS = 6000;
 
