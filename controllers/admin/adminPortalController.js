@@ -3028,7 +3028,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       // Admin role enforcement is handled by Firestore security rules + role doc.
       showApp();
       try {
-        await window.showPage("salesAnalytics", document.querySelector('.nav-item[onclick*="salesAnalytics"]'), "Sales Analytics");
+        await window.showPage("dashboard", document.querySelector('.nav-item[onclick*="dashboard"]'), "Dashboard");
       } catch (pageError) {
         console.error("[Admin] Page initialization failed:", pageError);
         const loading = document.getElementById("auth-loading");
