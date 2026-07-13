@@ -1468,6 +1468,7 @@ async function loadInventoryPage() {
 
   bindInventoryForm();
   bindInventoryEditForm();
+  bindQuickAddStock();
 }
 
 function inventoryStatus(item) {
@@ -1751,6 +1752,238 @@ function bindInventoryForm() {
 
   cancelBtn?.addEventListener("click", clearInventoryForm);
 }
+
+let quickAddSelectedItem = null;
+
+function positionQuickAddDropdown() {
+  const input = document.getElementById("quickAddSearchInput");
+  const resultsEl = document.getElementById("quickAddSearchResults");
+  if (!input || !resultsEl) return;
+  const rect = input.getBoundingClientRect();
+  resultsEl.style.top = (rect.bottom + 4) + "px";
+  resultsEl.style.left = rect.left + "px";
+  resultsEl.style.width = rect.width + "px";
+}
+
+function openQuickAddStock() {
+  const modal = document.getElementById("quickAddStockModal");
+  const searchInput = document.getElementById("quickAddSearchInput");
+  const resultsEl = document.getElementById("quickAddSearchResults");
+  const selectedSection = document.getElementById("quickAddSelectedSection");
+  const fieldsSection = document.getElementById("quickAddFieldsSection");
+  const saveBtn = document.getElementById("quickAddSaveBtn");
+  const qtyInput = document.getElementById("quickAddQty");
+  if (!modal) return;
+
+  quickAddSelectedItem = null;
+  if (searchInput) searchInput.value = "";
+  if (resultsEl) resultsEl.innerHTML = "";
+  if (resultsEl) resultsEl.style.display = "none";
+  if (selectedSection) selectedSection.style.display = "none";
+  if (fieldsSection) fieldsSection.style.display = "none";
+  if (saveBtn) saveBtn.disabled = true;
+  if (qtyInput) qtyInput.value = "";
+
+  modal.style.display = "flex";
+  modal.setAttribute("aria-hidden", "false");
+  window.setTimeout(() => { if (searchInput) searchInput.focus(); }, 0);
+}
+
+function closeQuickAddStock() {
+  const modal = document.getElementById("quickAddStockModal");
+  if (!modal) return;
+  modal.style.display = "none";
+  modal.setAttribute("aria-hidden", "true");
+  quickAddSelectedItem = null;
+}
+
+function renderQuickAddSearchResults(term) {
+  const resultsEl = document.getElementById("quickAddSearchResults");
+  if (!resultsEl) return;
+
+  if (!term || !state.inventoryItems.length) {
+    resultsEl.innerHTML = "";
+    resultsEl.style.display = "none";
+    return;
+  }
+
+  const filtered = state.inventoryItems.filter((item) => {
+    const hay = (String(item.name || "") + " " + String(item.category || "")).toLowerCase();
+    return hay.includes(term);
+  }).slice(0, 8);
+
+  if (!filtered.length) {
+    resultsEl.innerHTML = '<div class="quick-add-result-empty"><i class="ri-search-line" aria-hidden="true"></i>No items found</div>';
+    resultsEl.style.display = "block";
+    return;
+  }
+
+  resultsEl.innerHTML = filtered.map((item) => {
+    const qty = Number(item.quantity || 0);
+    const status = inventoryStatus(item);
+    const statusClass = status === "out" ? "b-red" : status === "critical" ? "b-red" : status === "low" ? "b-orange" : "b-green";
+    return `<div class="quick-add-result-item" data-quick-add-id="${escapeHtml(item.id)}">
+      <div class="quick-add-result-info">
+        <span class="quick-add-result-name">${escapeHtml(item.name)}</span>
+        <span class="quick-add-result-cat">${escapeHtml(item.category)}</span>
+      </div>
+      <div class="quick-add-result-meta">
+        <span class="badge ${statusClass}">${qty} ${escapeHtml(item.unit)}</span>
+      </div>
+    </div>`;
+  }).join("");
+
+  positionQuickAddDropdown();
+  resultsEl.style.display = "block";
+
+  resultsEl.querySelectorAll(".quick-add-result-item").forEach((el) => {
+    el.addEventListener("click", () => {
+      const id = el.dataset.quickAddId;
+      const item = state.inventoryItems.find((i) => i.id === id);
+      if (!item) return;
+      selectQuickAddItem(item);
+    });
+  });
+}
+
+function selectQuickAddItem(item) {
+  quickAddSelectedItem = item;
+  const searchInput = document.getElementById("quickAddSearchInput");
+  const resultsEl = document.getElementById("quickAddSearchResults");
+  const selectedSection = document.getElementById("quickAddSelectedSection");
+  const selectedName = document.getElementById("quickAddSelectedName");
+  const selectedTags = document.getElementById("quickAddSelectedTags");
+  const stockBar = document.getElementById("quickAddStockBar");
+  const stockValue = document.getElementById("quickAddStockValue");
+  const fieldsSection = document.getElementById("quickAddFieldsSection");
+  const qtyInput = document.getElementById("quickAddQty");
+  const qtyUnit = document.getElementById("quickAddQtyUnit");
+  const saveBtn = document.getElementById("quickAddSaveBtn");
+
+  if (searchInput) searchInput.value = item.name;
+  if (resultsEl) { resultsEl.innerHTML = ""; resultsEl.style.display = "none"; }
+  if (selectedSection) selectedSection.style.display = "block";
+  if (fieldsSection) fieldsSection.style.display = "block";
+  if (saveBtn) saveBtn.disabled = false;
+
+  const qty = Number(item.quantity || 0);
+  const reorderLevel = Math.max(1, Number(item.reorderLevel || 1));
+  const status = inventoryStatus(item);
+  const statusLabel = status === "out" ? "Out of stock" : status === "critical" ? "Critical" : status === "low" ? "Low stock" : "Good";
+  const statusClass = status === "out" ? "bar-out" : status === "critical" ? "bar-critical" : status === "low" ? "bar-low" : "";
+  const percent = Math.max(3, Math.min(100, Math.round((qty / (reorderLevel * 2)) * 100)));
+
+  if (selectedName) selectedName.textContent = item.name;
+  if (selectedTags) {
+    selectedTags.innerHTML = `<span class="quick-add-selected-tag">${escapeHtml(item.category)}</span><span class="quick-add-selected-tag">${escapeHtml(item.unit)}</span><span class="quick-add-selected-tag">₱${Number(item.price || 0).toFixed(2)}/unit</span>`;
+  }
+  if (stockBar) {
+    stockBar.style.width = percent + "%";
+    stockBar.className = "quick-add-stock-bar" + (statusClass ? " " + statusClass : "");
+  }
+  if (stockValue) stockValue.textContent = `${qty} ${item.unit} — ${statusLabel}`;
+  if (qtyUnit) qtyUnit.textContent = item.unit;
+  if (qtyInput) { qtyInput.value = ""; qtyInput.focus(); }
+  updateQuickAddPreview();
+}
+
+function quickAddChangeItem() {
+  quickAddSelectedItem = null;
+  const searchInput = document.getElementById("quickAddSearchInput");
+  const selectedSection = document.getElementById("quickAddSelectedSection");
+  const fieldsSection = document.getElementById("quickAddFieldsSection");
+  const saveBtnEl = document.getElementById("quickAddSaveBtn");
+  if (selectedSection) selectedSection.style.display = "none";
+  if (fieldsSection) fieldsSection.style.display = "none";
+  if (saveBtnEl) saveBtnEl.disabled = true;
+  if (searchInput) { searchInput.value = ""; searchInput.focus(); }
+}
+
+function updateQuickAddPreview() {
+  const qtyInput = document.getElementById("quickAddQty");
+  const newTotal = document.getElementById("quickAddNewTotal");
+  if (!qtyInput || !newTotal || !quickAddSelectedItem) return;
+  const addQty = Number(qtyInput.value || 0);
+  const current = Number(quickAddSelectedItem.quantity || 0);
+  if (addQty > 0) {
+    newTotal.textContent = `${current + addQty} ${quickAddSelectedItem.unit}`;
+    newTotal.classList.add("has-value");
+  } else {
+    newTotal.textContent = `${current} ${quickAddSelectedItem.unit}`;
+    newTotal.classList.remove("has-value");
+  }
+}
+
+async function submitQuickAddStock() {
+  if (!quickAddSelectedItem) return;
+  const qtyInput = document.getElementById("quickAddQty");
+  const addQty = Number(qtyInput?.value || 0);
+  if (!Number.isFinite(addQty) || addQty <= 0) {
+    await ModalUtils.warning("Validation Error", "Please enter a valid quantity to add.");
+    return;
+  }
+
+  const newQty = Number(quickAddSelectedItem.quantity || 0) + addQty;
+  await saveInventoryItem({
+    id: quickAddSelectedItem.id,
+    name: quickAddSelectedItem.name,
+    category: quickAddSelectedItem.category,
+    unit: quickAddSelectedItem.unit,
+    quantity: newQty,
+    reorderLevel: quickAddSelectedItem.reorderLevel,
+    price: quickAddSelectedItem.price,
+  });
+
+  await ModalUtils.success("Stock Updated", `${addQty} ${quickAddSelectedItem.unit} added to ${quickAddSelectedItem.name}. New stock: ${newQty} ${quickAddSelectedItem.unit}.`);
+  closeQuickAddStock();
+  await loadInventoryPage();
+}
+
+function bindQuickAddStock() {
+  const searchInput = document.getElementById("quickAddSearchInput");
+  const cancelBtn = document.getElementById("quickAddCancelBtn");
+  const saveBtn = document.getElementById("quickAddSaveBtn");
+  const qtyInput = document.getElementById("quickAddQty");
+  const changeBtn = document.getElementById("quickAddChangeBtn");
+
+  if (searchInput && !searchInput.dataset.bound) {
+    searchInput.dataset.bound = "1";
+    searchInput.addEventListener("input", () => {
+      const term = searchInput.value.trim().toLowerCase();
+      quickAddSelectedItem = null;
+      const selectedSection = document.getElementById("quickAddSelectedSection");
+      const fieldsSection = document.getElementById("quickAddFieldsSection");
+      const saveBtnEl = document.getElementById("quickAddSaveBtn");
+      if (selectedSection) selectedSection.style.display = "none";
+      if (fieldsSection) fieldsSection.style.display = "none";
+      if (saveBtnEl) saveBtnEl.disabled = true;
+      renderQuickAddSearchResults(term);
+    });
+  }
+
+  if (cancelBtn && !cancelBtn.dataset.bound) {
+    cancelBtn.dataset.bound = "1";
+    cancelBtn.addEventListener("click", closeQuickAddStock);
+  }
+
+  if (saveBtn && !saveBtn.dataset.bound) {
+    saveBtn.dataset.bound = "1";
+    saveBtn.addEventListener("click", submitQuickAddStock);
+  }
+
+  if (qtyInput && !qtyInput.dataset.bound) {
+    qtyInput.dataset.bound = "1";
+    qtyInput.addEventListener("input", updateQuickAddPreview);
+  }
+
+  if (changeBtn && !changeBtn.dataset.bound) {
+    changeBtn.dataset.bound = "1";
+    changeBtn.addEventListener("click", quickAddChangeItem);
+  }
+}
+
+window.openQuickAddStock = openQuickAddStock;
+window.closeQuickAddStock = closeQuickAddStock;
 
 async function loadAccountsPage() {
   const host = document.getElementById("accountsContent");
@@ -3034,6 +3267,14 @@ document.addEventListener("DOMContentLoaded", async () => {
         const loading = document.getElementById("auth-loading");
         if (loading) loading.style.display = "none";
       }
+
+      // Pre-load inventory in background so nav badge shows count immediately
+      getInventoryItems().then((items) => {
+        state.inventoryItems = items;
+        state.lastInventorySyncMs = Date.now();
+        const navBadge = document.getElementById("inventoryNavBadge");
+        if (navBadge) navBadge.textContent = String(items.length);
+      }).catch(() => {});
     } catch (error) {
       console.error("[Auth] watchAuth error:", error);
       authSettled = true;

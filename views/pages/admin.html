@@ -490,11 +490,6 @@
                 <div class="inventory-card-head-actions">
                   <span
                     class="card-action inventory-card-action"
-                    onclick="window.seedInventory && window.seedInventory()"
-                    >Seed Sample Items</span
-                  >
-                  <span
-                    class="card-action inventory-card-action"
                     onclick="
                       window.refreshInventory && window.refreshInventory()
                     "
@@ -510,20 +505,11 @@
                   >
                 </div>
               </div>
-              <div
-                class="inventory-search-row"
-                style="
-                  margin: 12px 0 0 0;
-                  display: flex;
-                  gap: 8px;
-                  align-items: center;
-                "
-              >
+              <div class="inventory-search-row">
                 <input
                   id="inventorySearchInput"
                   class="ls-input"
                   placeholder="Search stock item..."
-                  style="flex: 1; max-width: 480px"
                 />
                 <button
                   id="inventorySearchClear"
@@ -532,6 +518,15 @@
                   title="Clear search"
                 >
                   Clear
+                </button>
+                <button
+                  id="quickAddStockBtn"
+                  class="orders-btn quick-add-stock-btn"
+                  type="button"
+                  onclick="window.openQuickAddStock && window.openQuickAddStock()"
+                  title="Quick add stock to an existing item"
+                >
+                  <i class="ri-add-circle-line" aria-hidden="true"></i> Quick Add Stock
                 </button>
               </div>
               <div id="inventoryAlertStrip" class="inventory-alert-strip"></div>
@@ -968,6 +963,122 @@
             id="invEditSaveBtn"
           >
             Save Changes
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div
+      class="modal-overlay-custom quick-add-overlay"
+      id="quickAddStockModal"
+      aria-hidden="true"
+      style="display: none"
+      onclick="if (event.target === this) window.closeQuickAddStock && window.closeQuickAddStock();"
+    >
+      <div
+        class="modal-custom quick-add-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="quickAddStockTitle"
+      >
+        <div class="modal-custom-header quick-add-header">
+          <div class="modal-custom-icon success" aria-hidden="true">
+            <i class="ri-add-circle-line" aria-hidden="true"></i>
+          </div>
+          <div class="modal-custom-title-wrap">
+            <div class="modal-custom-title" id="quickAddStockTitle">
+              Quick Add Stock
+            </div>
+            <div class="quick-add-subtitle">Find an item and restock it instantly</div>
+          </div>
+          <button class="quick-add-close-btn" type="button" onclick="window.closeQuickAddStock && window.closeQuickAddStock()" title="Close">
+            <i class="ri-close-line" aria-hidden="true"></i>
+          </button>
+        </div>
+
+        <div class="modal-custom-body quick-add-body">
+          <div class="quick-add-section">
+            <div class="quick-add-section-label">
+              <i class="ri-search-line" aria-hidden="true"></i> Search Item
+            </div>
+            <div class="quick-add-search-wrap">
+              <i class="ri-search-line quick-add-search-icon" aria-hidden="true"></i>
+              <input
+                id="quickAddSearchInput"
+                class="ls-input quick-add-search-input"
+                placeholder="Type item name or category..."
+                autocomplete="off"
+              />
+              <div id="quickAddSearchResults" class="quick-add-search-results"></div>
+            </div>
+          </div>
+
+          <div id="quickAddSelectedSection" class="quick-add-selected-card" style="display: none;">
+            <div class="quick-add-selected-head">
+              <div class="quick-add-selected-icon">
+                <i class="ri-box-3-line" aria-hidden="true"></i>
+              </div>
+              <div class="quick-add-selected-details">
+                <div class="quick-add-selected-name" id="quickAddSelectedName"></div>
+                <div class="quick-add-selected-tags" id="quickAddSelectedTags"></div>
+              </div>
+              <button class="quick-add-change-btn" type="button" id="quickAddChangeBtn" title="Change item">
+                <i class="ri-refresh-line" aria-hidden="true"></i> Change
+              </button>
+            </div>
+            <div class="quick-add-selected-stock">
+              <div class="quick-add-stock-label">Current Stock</div>
+              <div class="quick-add-stock-display">
+                <div class="quick-add-stock-bar-wrap">
+                  <div class="quick-add-stock-bar" id="quickAddStockBar"></div>
+                </div>
+                <div class="quick-add-stock-value" id="quickAddStockValue"></div>
+              </div>
+            </div>
+          </div>
+
+          <div id="quickAddFieldsSection" class="quick-add-fields-section" style="display: none;">
+            <div class="quick-add-section-label">
+              <i class="ri-add-box-line" aria-hidden="true"></i> Add Quantity
+            </div>
+            <div class="quick-add-qty-row">
+              <div class="quick-add-qty-input-wrap">
+                <input
+                  id="quickAddQty"
+                  type="number"
+                  min="0.01"
+                  step="0.01"
+                  class="ls-input quick-add-qty-input"
+                  placeholder="0"
+                />
+                <span class="quick-add-qty-unit" id="quickAddQtyUnit"></span>
+              </div>
+              <div class="quick-add-arrow" aria-hidden="true">
+                <i class="ri-arrow-right-line"></i>
+              </div>
+              <div class="quick-add-new-total-card">
+                <div class="quick-add-total-label">New Total</div>
+                <div class="quick-add-new-total" id="quickAddNewTotal">—</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="modal-custom-footer quick-add-footer">
+          <button
+            class="modal-custom-btn secondary"
+            type="button"
+            id="quickAddCancelBtn"
+          >
+            Cancel
+          </button>
+          <button
+            class="modal-custom-btn primary success"
+            type="button"
+            id="quickAddSaveBtn"
+            disabled
+          >
+            <i class="ri-add-line" aria-hidden="true"></i> Add Stock
           </button>
         </div>
       </div>
