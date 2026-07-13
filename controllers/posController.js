@@ -181,10 +181,17 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     // Seed stats from Firestore so all cashiers see today's shared sales
     try {
-      const firestoreOrders = await getTodayOrders();
       const now = Date.now();
       const startOfDay = new Date(new Date(now).getFullYear(), new Date(now).getMonth(), new Date(now).getDate()).getTime();
       const endOfDay = startOfDay + 86400000;
+
+      // Purge stale entries (previous days) from localStorage data
+      salesHistory = salesHistory.filter(o => {
+        const ts = getSaleTimestampMs(o);
+        return ts >= startOfDay && ts < endOfDay;
+      });
+
+      const firestoreOrders = await getTodayOrders();
       const todayOrders = (Array.isArray(firestoreOrders) ? firestoreOrders : []).filter(o => {
         const ts = getSaleTimestampMs(o);
         return ts >= startOfDay && ts < endOfDay;
@@ -199,13 +206,13 @@ document.addEventListener("DOMContentLoaded", async () => {
           salesHistory.push(order);
           seenOrderIds.add(oid);
         }
-        dailyStats = {
-          orders: salesHistory.length,
-          totalSales: salesHistory.reduce((sum, s) => sum + (Number(s.total) || 0), 0),
-          discountsApplied: salesHistory.filter(s => s.isPwdSenior || s.discount).length,
-        };
-        persistPosState();
       }
+      dailyStats = {
+        orders: salesHistory.length,
+        totalSales: salesHistory.reduce((sum, s) => sum + (Number(s.total) || 0), 0),
+        discountsApplied: salesHistory.filter(s => s.isPwdSenior || s.discount).length,
+      };
+      persistPosState();
     } catch (err) {
       console.warn("[POS] Failed to seed stats from Firestore:", err);
     }
