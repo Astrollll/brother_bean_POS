@@ -182,11 +182,18 @@ document.addEventListener("DOMContentLoaded", async () => {
     // Seed stats from Firestore so all cashiers see today's shared sales
     try {
       const firestoreOrders = await getTodayOrders();
-      if (Array.isArray(firestoreOrders) && firestoreOrders.length > 0) {
+      const now = Date.now();
+      const startOfDay = new Date(new Date(now).getFullYear(), new Date(now).getMonth(), new Date(now).getDate()).getTime();
+      const endOfDay = startOfDay + 86400000;
+      const todayOrders = (Array.isArray(firestoreOrders) ? firestoreOrders : []).filter(o => {
+        const ts = getSaleTimestampMs(o);
+        return ts >= startOfDay && ts < endOfDay;
+      });
+      if (todayOrders.length > 0) {
         const seenOrderIds = new Set(
           salesHistory.map(s => String(s.orderId || s.id || ""))
         );
-        for (const order of firestoreOrders) {
+        for (const order of todayOrders) {
           const oid = String(order.orderId || order.id || "");
           if (!oid || seenOrderIds.has(oid)) continue;
           salesHistory.push(order);
