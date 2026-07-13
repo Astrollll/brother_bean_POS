@@ -458,7 +458,7 @@ function buildDashboardTemplate() {
       <div class="col-12 col-lg-6 col-xl-3">
         <div class="card compact-card h-100">
           <div class="card-head">
-            <span class="card-title">Top Items</span>
+            <span class="card-title">Best Selling</span>
             <span class="card-action">By quantity</span>
           </div>
           <div id="dashboardTopItems"></div>
