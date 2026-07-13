@@ -183,19 +183,21 @@ document.addEventListener("DOMContentLoaded", async () => {
     try {
       const firestoreOrders = await getTodayOrders();
       if (Array.isArray(firestoreOrders) && firestoreOrders.length > 0) {
-        const seenIds = new Set(salesHistory.map(s => s.id || s.orderId));
-        let addedCount = 0;
+        const seenOrderIds = new Set(
+          salesHistory.map(s => String(s.orderId || s.id || ""))
+        );
         for (const order of firestoreOrders) {
-          const oid = order.id || order.orderId;
-          if (oid && seenIds.has(oid)) continue;
+          const oid = String(order.orderId || order.id || "");
+          if (!oid || seenOrderIds.has(oid)) continue;
           salesHistory.push(order);
-          if (oid) seenIds.add(oid);
-          addedCount++;
+          seenOrderIds.add(oid);
         }
-        dailyStats.orders = salesHistory.length;
-        dailyStats.totalSales = salesHistory.reduce((sum, s) => sum + (Number(s.total) || 0), 0);
-        dailyStats.discountsApplied = salesHistory.filter(s => s.isPwdSenior || s.discount).length;
-        if (addedCount > 0) persistPosState();
+        dailyStats = {
+          orders: salesHistory.length,
+          totalSales: salesHistory.reduce((sum, s) => sum + (Number(s.total) || 0), 0),
+          discountsApplied: salesHistory.filter(s => s.isPwdSenior || s.discount).length,
+        };
+        persistPosState();
       }
     } catch (err) {
       console.warn("[POS] Failed to seed stats from Firestore:", err);
