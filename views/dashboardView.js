@@ -405,12 +405,27 @@ function computePeakBucket(series, period, range = null) {
   return { label, value: maxValue };
 }
 
+function getGreetingByTime() {
+  const hour = new Date().getHours();
+  if (hour >= 5 && hour < 12) return "Good morning";
+  if (hour >= 12 && hour < 14) return "Good noon";
+  if (hour >= 14 && hour < 18) return "Good afternoon";
+  return "Good evening";
+}
+
+function updateDashboardGreeting() {
+  const greetingEl = document.getElementById("dashboardGreeting");
+  const subEl = document.getElementById("dashboardGreetingSub");
+  if (greetingEl) greetingEl.textContent = getGreetingByTime();
+  if (subEl) subEl.textContent = "Here's what's happening at Brother Bean today.";
+}
+
 function buildDashboardTemplate() {
   return `
     <div class="page-header dashboard-hello">
       <div>
-        <div class="page-title">Good morning</div>
-        <div class="page-sub">Here's what's happening at Brother Bean today.</div>
+        <div class="page-title" id="dashboardGreeting">Good morning</div>
+        <div class="page-sub" id="dashboardGreetingSub">Here's what's happening at Brother Bean today.</div>
       </div>
       <div class="page-sub" id="dashboardUpdatedAt">Updated just now</div>
     </div>
@@ -612,6 +627,8 @@ export function renderAdminDashboard({ orders = [], menuItems = [], staff = [], 
     dashboardRoot.innerHTML = buildDashboardTemplate();
     viewState.dashboardInitialized = true;
   }
+
+  updateDashboardGreeting();
 
   const sortedOrders = sortOrdersNewestFirst(orders);
   const topItems = computeTopItems(sortedOrders, menuItems);
