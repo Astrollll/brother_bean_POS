@@ -2628,6 +2628,8 @@ button,
   justify-content: center;
   max-height: 85vh;
   overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--primary) transparent;
 }
 
 #receiptContent::-webkit-scrollbar {
@@ -2637,11 +2639,12 @@ button,
   background: transparent;
 }
 #receiptContent::-webkit-scrollbar-thumb {
-  background: rgba(43, 38, 32, 0.25);
+  background: var(--primary);
   border-radius: 3px;
+  opacity: 0.5;
 }
 #receiptContent::-webkit-scrollbar-thumb:hover {
-  background: rgba(43, 38, 32, 0.45);
+  background: var(--primary-dark);
 }
 
 .receipt-wrap {
