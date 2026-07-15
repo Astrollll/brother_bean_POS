@@ -1297,7 +1297,6 @@ button,
 
 .page {
   display: none;
-  animation: fadeIn var(--transition-fast);
 }
 
 .page.active {
@@ -5780,4 +5779,315 @@ body[data-theme="dark"] .admin-category-chip.active {
   background: var(--primary) !important;
   color: #1A130D !important;
   border-color: var(--primary) !important;
+}
+
+/* ════════════════════════════════════════ */
+/* PARALLAX & ANIMATION EFFECTS */
+/* ════════════════════════════════════════ */
+
+/* ── Page entrance ── */
+@keyframes pageEnter {
+  from {
+    opacity: 0;
+    transform: translateY(18px) scale(0.985);
+    filter: blur(2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0);
+  }
+}
+.page.active {
+  animation: pageEnter 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* ── Scroll-triggered fade-in ── */
+.px-fade-in {
+  opacity: 0;
+  transform: translateY(28px) scale(0.97);
+  transition: opacity 0.55s cubic-bezier(0.22, 1, 0.36, 1),
+              transform 0.55s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.px-fade-in.px-visible {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+.px-fade-in.px-delay-1 { transition-delay: 0.06s; }
+.px-fade-in.px-delay-2 { transition-delay: 0.12s; }
+.px-fade-in.px-delay-3 { transition-delay: 0.18s; }
+.px-fade-in.px-delay-4 { transition-delay: 0.24s; }
+.px-fade-in.px-delay-5 { transition-delay: 0.30s; }
+
+/* ── Stat cards: tilt on hover ── */
+#dashboard .stat-card,
+.stat-card.px-fade-in {
+  transition: transform 0.4s cubic-bezier(0.22, 1, 0.36, 1),
+              box-shadow 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+  transform-style: preserve-3d;
+  will-change: transform;
+}
+#dashboard .stat-card:hover {
+  box-shadow: 0 12px 28px -6px rgba(107, 68, 35, 0.18),
+              0 4px 10px -2px rgba(0, 0, 0, 0.06);
+}
+
+/* ── Stat card icon pulse ── */
+@keyframes iconPulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.08); }
+}
+.stat-card:hover .stat-icon-wrap {
+  animation: iconPulse 0.6s ease-in-out;
+}
+
+/* ── Stat value count-up glow ── */
+@keyframes valGlow {
+  0% { text-shadow: 0 0 0 transparent; }
+  50% { text-shadow: 0 0 12px rgba(107, 68, 35, 0.15); }
+  100% { text-shadow: 0 0 0 transparent; }
+}
+.stat-card.px-visible .stat-val {
+  animation: valGlow 0.8s ease-out 0.2s both;
+}
+
+/* ── Topbar scroll-responsive shadow ── */
+.topbar {
+  transition: box-shadow 0.35s ease, background 0.35s ease;
+}
+.topbar.px-scrolled {
+  box-shadow: 0 4px 20px -4px rgba(0, 0, 0, 0.12);
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+/* ── Topbar brand glow ── */
+.topbar-brand {
+  position: relative;
+}
+.topbar-brand::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 18px;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(107,68,35,0.14) 0%, transparent 70%);
+  transform: translateY(-50%) scale(0.8);
+  pointer-events: none;
+  transition: opacity 0.35s ease, transform 0.35s ease;
+  opacity: 0;
+}
+.topbar-brand:hover::after {
+  opacity: 1;
+  transform: translateY(-50%) scale(1);
+}
+
+/* ── Sidebar nav: slide highlight ── */
+.nav-item {
+  position: relative;
+  overflow: hidden;
+}
+.nav-item::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 0;
+  background: linear-gradient(90deg, rgba(107,68,35,0.1), transparent);
+  border-radius: 0 var(--radius-lg) var(--radius-lg) 0;
+  transition: width 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+  pointer-events: none;
+  z-index: 0;
+}
+.nav-item:hover::before {
+  width: 100%;
+}
+.nav-item.active::before {
+  width: 100%;
+  background: linear-gradient(90deg, rgba(107,68,35,0.12), rgba(107,68,35,0.03));
+}
+
+/* ── Sidebar active indicator bar ── */
+.nav-item.active {
+  border-left-color: var(--primary);
+}
+.nav-item.active .nav-icon {
+  transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.nav-item.active .nav-icon {
+  transform: scale(1.15);
+}
+
+/* ── Cards: hover lift ── */
+.card.compact-card {
+  transition: transform 0.4s cubic-bezier(0.22, 1, 0.36, 1),
+              box-shadow 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.card.compact-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 10px 24px -4px rgba(0, 0, 0, 0.1),
+              0 3px 8px -2px rgba(0, 0, 0, 0.04);
+}
+
+/* ── Quick action buttons: spring press ── */
+.qa-btn {
+  transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1),
+              box-shadow 0.25s ease,
+              background 0.25s ease;
+}
+.qa-btn:hover {
+  transform: translateY(-3px) scale(1.02);
+  box-shadow: 0 8px 20px -4px rgba(107, 68, 35, 0.18);
+}
+.qa-btn:active {
+  transform: translateY(0) scale(0.97);
+  box-shadow: var(--shadow-sm);
+  transition-duration: 0.1s;
+}
+
+/* ── Table rows: stagger slide-in ── */
+@keyframes rowSlideIn {
+  from {
+    opacity: 0;
+    transform: translateX(-12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+.orders-table tbody tr,
+.staff-table tbody tr,
+.menu-table tbody tr {
+  animation: rowSlideIn 0.35s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.orders-table tbody tr:nth-child(1),
+.staff-table tbody tr:nth-child(1),
+.menu-table tbody tr:nth-child(1) { animation-delay: 0.02s; }
+.orders-table tbody tr:nth-child(2),
+.staff-table tbody tr:nth-child(2),
+.menu-table tbody tr:nth-child(2) { animation-delay: 0.05s; }
+.orders-table tbody tr:nth-child(3),
+.staff-table tbody tr:nth-child(3),
+.menu-table tbody tr:nth-child(3) { animation-delay: 0.08s; }
+.orders-table tbody tr:nth-child(4),
+.staff-table tbody tr:nth-child(4),
+.menu-table tbody tr:nth-child(4) { animation-delay: 0.11s; }
+.orders-table tbody tr:nth-child(5),
+.staff-table tbody tr:nth-child(5),
+.menu-table tbody tr:nth-child(5) { animation-delay: 0.14s; }
+
+/* ── Badge pop-in ── */
+@keyframes badgePop {
+  0% { transform: scale(0.6); opacity: 0; }
+  70% { transform: scale(1.08); }
+  100% { transform: scale(1); opacity: 1; }
+}
+.badge {
+  animation: badgePop 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+/* ── Inventory badge shake on update ── */
+@keyframes badgeShake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-3px); }
+  40% { transform: translateX(3px); }
+  60% { transform: translateX(-2px); }
+  80% { transform: translateX(1px); }
+}
+.nav-badge.px-shake {
+  animation: badgeShake 0.4s ease;
+}
+
+/* ── Modal entrance ── */
+@keyframes modalIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px) scale(0.95);
+    filter: blur(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0);
+  }
+}
+.modal-overlay-custom .modal-custom,
+.modal-overlay-custom .modal-custom-sm,
+.modal-overlay-custom .modal-custom-lg {
+  animation: modalIn 0.35s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* ── KPI card shimmer ── */
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.staff-kpi-card,
+.orders-kpi-card {
+  position: relative;
+  overflow: hidden;
+}
+.staff-kpi-card::after,
+.orders-kpi-card::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.06) 40%,
+    rgba(255, 255, 255, 0.12) 50%,
+    rgba(255, 255, 255, 0.06) 60%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  pointer-events: none;
+}
+.staff-kpi-card:hover::after,
+.orders-kpi-card:hover::after {
+  opacity: 1;
+  animation: shimmer 1.2s ease-in-out;
+}
+
+/* ── Scroll progress bar (driven by JS) ── */
+.px-scroll-progress {
+  flex: 0 0 auto;
+  height: 3px;
+  background: linear-gradient(90deg, var(--primary), var(--secondary));
+  border-radius: 0;
+  width: 0%;
+  transition: width 0.1s linear;
+  z-index: 60;
+  pointer-events: none;
+}
+
+/* ── Notification dot pulse ── */
+@keyframes notifPulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.4); opacity: 0.6; }
+}
+.notif-dot {
+  animation: notifPulse 2s ease-in-out infinite;
+}
+
+/* ── Skeleton loading shimmer ── */
+@keyframes skeletonShimmer {
+  0% { background-position: -400px 0; }
+  100% { background-position: 400px 0; }
+}
+.skeleton {
+  background: linear-gradient(90deg, var(--bg-tertiary) 25%, var(--bg-secondary) 50%, var(--bg-tertiary) 75%);
+  background-size: 800px 100%;
+  animation: skeletonShimmer 1.5s ease-in-out infinite;
+  border-radius: var(--radius-md);
 }

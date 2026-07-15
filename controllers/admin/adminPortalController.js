@@ -41,7 +41,7 @@ const ModalUtils = window.ModalUtils || {
 };
 
 const state = {
-  page: "dashboard",
+  page: null,
   categories: [],
   menuItems: [],
   soldMap: {},
@@ -3083,6 +3083,7 @@ async function loadSettingsPage() {
 
 // Public API expected by admin.html
 window.showPage = async function (pageId, navEl, title) {
+  if (state.page === pageId) return;
   state.page = pageId;
   setActiveNav(navEl);
   setTopbarTitle(title || "Admin");
@@ -3394,6 +3395,8 @@ document.addEventListener("DOMContentLoaded", async () => {
         const navBadge = document.getElementById("inventoryNavBadge");
         if (navBadge) navBadge.textContent = String(items.length);
       }).catch(() => {});
+
+      initParallaxEffects();
     } catch (error) {
       console.error("[Auth] watchAuth error:", error);
       authSettled = true;
@@ -3403,6 +3406,109 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   });
 });
+
+/* ── Parallax scroll effects ── */
+let _pxInitialLoadDone = false;
+function initParallaxEffects() {
+  const mainEl = document.querySelector(".main");
+  if (!mainEl) return;
+
+  /* — Scroll progress bar — */
+  const progressBar = document.getElementById("px-scroll-progress");
+
+  /* — IntersectionObserver for fade-in on scroll — */
+  const fadeObserver = new IntersectionObserver((entries) => {
+    entries.forEach((entry) => {
+      if (entry.isIntersecting) {
+        entry.target.classList.add("px-visible");
+        fadeObserver.unobserve(entry.target);
+      }
+    });
+  }, { root: mainEl, threshold: 0.1 });
+
+  function observeFadeTargets() {
+    const selectors = ".stat-card, .card.compact-card, .staff-kpi-card, .menu-card, .inventory-stock-card, .settings-card, .accounts-directory-card, .orders-kpi-card";
+    const newEls = [];
+    const isReRender = _pxInitialLoadDone;
+    mainEl.querySelectorAll(selectors).forEach((el) => {
+      if (el.classList.contains("px-fade-in")) return;
+      el.classList.add("px-fade-in");
+      // Stagger delay based on sibling index
+      const parent = el.parentElement;
+      if (parent) {
+        const siblings = Array.from(parent.children).filter(c => c.classList.contains("px-fade-in"));
+        const idx = siblings.indexOf(el);
+        if (idx >= 0 && idx <= 5) el.classList.add(`px-delay-${idx + 1}`);
+      }
+      // On re-renders, skip animation to avoid flicker
+      if (isReRender) {
+        el.classList.add("px-visible");
+        return;
+      }
+      newEls.push(el);
+    });
+    // Force a frame so the browser renders opacity:0 before observer marks visible
+    if (newEls.length) {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          newEls.forEach((el) => fadeObserver.observe(el));
+        });
+      });
+    }
+  }
+
+  observeFadeTargets();
+  _pxInitialLoadDone = true;
+  const pageObserver = new MutationObserver(() => { observeFadeTargets(); });
+  mainEl.querySelectorAll(".page").forEach((p) => {
+    pageObserver.observe(p, { childList: true, subtree: true });
+  });
+
+  /* — Scroll handler: topbar shadow + progress bar — */
+  const topbar = document.querySelector(".topbar");
+  let ticking = false;
+  mainEl.addEventListener("scroll", () => {
+    if (ticking) return;
+    ticking = true;
+    requestAnimationFrame(() => {
+      const scrollY = mainEl.scrollTop;
+      const scrollH = mainEl.scrollHeight - mainEl.clientHeight;
+      const pct = scrollH > 0 ? Math.min((scrollY / scrollH) * 100, 100) : 0;
+      progressBar.style.width = `${pct}%`;
+
+      if (topbar) {
+        if (scrollY > 8) {
+          topbar.classList.add("px-scrolled");
+        } else {
+          topbar.classList.remove("px-scrolled");
+        }
+      }
+      ticking = false;
+    });
+  });
+
+  /* — Stat card tilt on mousemove — */
+  mainEl.addEventListener("mousemove", (e) => {
+    const card = e.target.closest(".stat-card");
+    if (!card) return;
+    const rect = card.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    const midX = rect.width / 2;
+    const midY = rect.height / 2;
+    const rotateY = ((x - midX) / midX) * 5;
+    const rotateX = ((midY - y) / midY) * 5;
+    card.style.transform = `perspective(600px) rotateX(${rotateX}deg) rotateY(${rotateY}deg) translateY(-3px)`;
+  });
+  mainEl.addEventListener("mouseleave", (e) => {
+    const card = e.target.closest(".stat-card");
+    if (card) card.style.transform = "";
+  }, true);
+  // Reset tilt when mouse leaves a stat card
+  mainEl.querySelectorAll(".stat-card").forEach((card) => {
+    card.addEventListener("mouseleave", () => { card.style.transform = ""; });
+  });
+}
 
 function openMenuEditor(itemId, preset = {}) {
   // Render the menu editor inside a modal overlay appended to body.
