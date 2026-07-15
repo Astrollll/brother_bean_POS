@@ -3408,7 +3408,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 });
 
 /* ── Parallax scroll effects ── */
-let _pxInitialLoadDone = false;
+const _pxAnimatedPages = new Set();
 function initParallaxEffects() {
   const mainEl = document.querySelector(".main");
   if (!mainEl) return;
@@ -3427,9 +3427,9 @@ function initParallaxEffects() {
   }, { root: mainEl, threshold: 0.1 });
 
   function observeFadeTargets() {
+    const currentPage = state.page || "dashboard";
     const selectors = ".stat-card, .card.compact-card, .staff-kpi-card, .menu-card, .inventory-stock-card, .settings-card, .accounts-directory-card, .orders-kpi-card";
     const newEls = [];
-    const isReRender = _pxInitialLoadDone;
     mainEl.querySelectorAll(selectors).forEach((el) => {
       if (el.classList.contains("px-fade-in")) return;
       el.classList.add("px-fade-in");
@@ -3440,15 +3440,16 @@ function initParallaxEffects() {
         const idx = siblings.indexOf(el);
         if (idx >= 0 && idx <= 5) el.classList.add(`px-delay-${idx + 1}`);
       }
-      // On re-renders, skip animation to avoid flicker
-      if (isReRender) {
+      // Skip animation on re-renders of already-visited pages
+      if (_pxAnimatedPages.has(currentPage)) {
         el.classList.add("px-visible");
         return;
       }
       newEls.push(el);
     });
-    // Force a frame so the browser renders opacity:0 before observer marks visible
+    // Only mark page as animated after elements are actually found
     if (newEls.length) {
+      _pxAnimatedPages.add(currentPage);
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
           newEls.forEach((el) => fadeObserver.observe(el));
@@ -3458,7 +3459,6 @@ function initParallaxEffects() {
   }
 
   observeFadeTargets();
-  _pxInitialLoadDone = true;
   const pageObserver = new MutationObserver(() => { observeFadeTargets(); });
   mainEl.querySelectorAll(".page").forEach((p) => {
     pageObserver.observe(p, { childList: true, subtree: true });
