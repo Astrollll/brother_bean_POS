@@ -1330,19 +1330,22 @@ function generateReceipt(sale) {
     const addons = Array.isArray(item.addons) ? item.addons : [];
     const addonsTotal = addons.reduce((sum, addon) => sum + (Number(addon?.price) || 0), 0);
     const discountPct = Number(item.discountPercent) || 0;
-    const discountedUnitPrice = (basePrice + addonsTotal) * (1 - discountPct);
+    const originalUnit = basePrice + addonsTotal;
+    const discountedUnitPrice = originalUnit * (1 - discountPct);
     const lineTotal = discountedUnitPrice * qty;
     const variantText = [item.variant, item.temperature && item.temperature !== "N/A" ? item.temperature : null]
       .filter(Boolean)
       .join(" · ");
-    const discountLabel = discountPct > 0 ? ` <span style="font-size:10px;color:var(--gray);">(-${Math.round(discountPct * 100)}%)</span>` : "";
+    const priceDisplay = discountPct > 0
+      ? `<span class="qty">${qty} x <span class="item-price-original">${formatMoney(originalUnit)}</span> <span class="item-price-arrow">&rarr;</span> ${formatMoney(discountedUnitPrice)} <span class="item-price-label">(-${Math.round(discountPct * 100)}%)</span></span>`
+      : `<span class="qty">${qty} x ${formatMoney(discountedUnitPrice)}</span>`;
 
     return `
       <div class="item">
-        <div class="item-name"><span>${item.name}${discountLabel}</span></div>
+        <div class="item-name"><span>${item.name}</span></div>
         ${variantText ? `<div class="item-variant">${variantText}</div>` : ""}
         <div class="item-calc">
-          <span class="qty">${qty} x ${formatMoney(discountedUnitPrice)}</span>
+          ${priceDisplay}
           <span>${formatMoney(lineTotal)}</span>
         </div>
       </div>
@@ -1556,6 +1559,9 @@ window.printReceipt = function() {
 
       /* Ensure buttons/controls never print */
       button { display:none !important; }
+      .item-price-original { text-decoration: line-through; color: #6b6255; margin-right: 2px; }
+      .item-price-arrow { margin: 0 2px; color: #6b6255; }
+      .item-price-label { font-size: 10px; color: #6b6255; }
       @media print { body { margin: 0; } }
     </style></head><body>${receiptContent}</body></html>`);
   docRef.close();

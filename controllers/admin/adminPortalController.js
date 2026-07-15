@@ -964,17 +964,20 @@ function buildAdminReceiptHTML(order) {
     const qty = Number(item.quantity || 1) || 1;
     const addonTotal = Array.isArray(item.addons) ? item.addons.reduce((sum, addon) => sum + (Number(addon?.price) || 0), 0) : 0;
     const discountPct = Number(item.discountPercent) || 0;
-    const unit = ((Number(item.price) || 0) + addonTotal) * (1 - discountPct);
+    const originalUnit = (Number(item.price) || 0) + addonTotal;
+    const unit = originalUnit * (1 - discountPct);
     const lineTotal = unit * qty;
     const variant = [item.variant, item.temperature && item.temperature !== "N/A" ? item.temperature : null].filter(Boolean).join(" · ");
-    const discountLabel = discountPct > 0 ? ` <span style="font-size:10px;color:var(--gray);">(-${Math.round(discountPct * 100)}%)</span>` : "";
+    const priceDisplay = discountPct > 0
+      ? `<span class="qty">${qty} x <span class="item-price-original">${formatMoney(originalUnit)}</span> <span class="item-price-arrow">&rarr;</span> ${formatMoney(unit)} <span class="item-price-label">(-${Math.round(discountPct * 100)}%)</span></span>`
+      : `<span class="qty">${qty} x ${formatMoney(unit)}</span>`;
 
     return `
       <div class="item">
-        <div class="item-name"><span>${escapeHtml(item.name || "Item")}${discountLabel}</span></div>
+        <div class="item-name"><span>${escapeHtml(item.name || "Item")}</span></div>
         ${variant ? `<div class="item-variant">${escapeHtml(variant)}</div>` : ""}
         <div class="item-calc">
-          <span class="qty">${qty} x ${formatMoney(unit)}</span>
+          ${priceDisplay}
           <span>${formatMoney(lineTotal)}</span>
         </div>
       </div>
@@ -1113,6 +1116,9 @@ window.printOrderReceipt = function() {
       .footer-msg { font-weight: 700; margin-bottom: 2px; }
       .footer-sub { color: #6b6255; font-size: 11px; margin-bottom: 10px; }
       .footer-legal { color: #6b6255; font-size: 10px; line-height: 1.6; }
+      .item-price-original { text-decoration: line-through; color: #6b6255; margin-right: 2px; }
+      .item-price-arrow { margin: 0 2px; color: #6b6255; }
+      .item-price-label { font-size: 10px; color: #6b6255; }
     </style>`;
 
   printWindow.document.write(`<!doctype html><html><head><title>Order Receipt</title>${baseStyles}</head><body>${content.innerHTML}</body></html>`);

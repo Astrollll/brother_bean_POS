@@ -4907,6 +4907,22 @@ input:checked + .tslider::before {
   line-height: 1.6;
 }
 
+.receipt .item-price-original {
+  text-decoration: line-through;
+  color: #6b6255;
+  margin-right: 2px;
+}
+
+.receipt .item-price-arrow {
+  margin: 0 2px;
+  color: #6b6255;
+}
+
+.receipt .item-price-label {
+  font-size: 10px;
+  color: #6b6255;
+}
+
 .order-view-btn {
   color: #2b2620;
 }
