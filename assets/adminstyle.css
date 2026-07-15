@@ -4946,7 +4946,20 @@ input:checked + .tslider::before {
 }
 
 .order-view-btn {
+  width: 34px;
+  height: 34px;
+  min-width: 34px;
+  min-height: 34px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   color: #2b2620;
+}
+
+.order-view-btn i {
+  font-size: 15px;
+  line-height: 1;
 }
 
 #logoutConfirmModal,
