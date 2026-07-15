@@ -162,6 +162,22 @@ export async function removeStaffByAccountUid(accountUid) {
   return matches.length;
 }
 
+export async function updateStaffNameByUid(accountUid, newName) {
+  const uid = String(accountUid || "").trim();
+  const name = String(newName || "").trim();
+  if (!uid || !name) return;
+
+  const allStaff = await getAllStaff();
+  const match = allStaff.find((m) => String(m.accountUid || "").trim() === uid);
+  if (!match) return;
+
+  await setDoc(
+    doc(db, STAFF_COLLECTION, match.id),
+    { name, updatedAtMs: Date.now() },
+    { merge: true }
+  );
+}
+
 export async function updateStaffAccountLink(staffId, options = {}) {
   const targetId = String(staffId || "").trim();
   if (!targetId) return;

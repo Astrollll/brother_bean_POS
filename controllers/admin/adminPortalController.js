@@ -7,7 +7,7 @@ import { getSavedSalesHistory } from "../../models/storageModel.js";
 import { resetDay as archiveResetDay } from "../../models/resetModel.js";
 import { getInventoryItems, saveInventoryItem, deleteInventoryItem, clearInventoryItems, convertQuantityBetweenUnits, normalizeUnit } from "../../models/inventoryModel.js";
 import { inventorySeedItems } from "../../models/defaultSeedData.js";
-import { getAllStaff as getStaff, getSchedule, getOnDutyNowFromSchedule, addStaff, removeStaff, removeStaffByName, removeStaffByAccountUid, updateStaffAccountLink, saveSchedule } from "../../models/staffModel.js";
+import { getAllStaff as getStaff, getSchedule, getOnDutyNowFromSchedule, addStaff, removeStaff, removeStaffByName, removeStaffByAccountUid, updateStaffAccountLink, updateStaffNameByUid, saveSchedule } from "../../models/staffModel.js";
 import { renderSalesAnalyticsDashboard, renderAdminDashboard } from "../../views/dashboardView.js?v=20260710A";
 import { renderAdminMenu } from "../../views/menuView.js";
 import { renderStaffList, renderScheduleEditor, readScheduleFromDOM } from "../../views/staffView.js";
@@ -2436,6 +2436,13 @@ function openAccountEditModal(account) {
 
       if (newRole !== currentRole) {
         await setUserRole(account.uid, newRole, account.email || "");
+      }
+
+      if (newFullName !== fullName) {
+        await updateStaffNameByUid(account.uid, newFullName);
+        try {
+          state.staff = await getStaff();
+        } catch (_) {}
       }
 
       modal.style.display = "none";
