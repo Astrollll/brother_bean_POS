@@ -1671,6 +1671,8 @@ button,
 
 #ordersTableWrap table {
   min-width: 800px;
+  border-collapse: separate;
+  border-spacing: 0;
 }
 
 #ordersTableWrap table th:not(:first-child),
