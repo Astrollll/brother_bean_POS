@@ -4768,8 +4768,8 @@ input:checked + .tslider::before {
 
 .receipt-close-btn {
   position: absolute;
-  top: -6px;
-  right: -6px;
+  top: 12px;
+  right: 12px;
   width: 42px;
   height: 42px;
   border: 3px solid #fbf9f4;
