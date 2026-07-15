@@ -1680,6 +1680,21 @@ button,
 
 #ordersTableWrap table td {
   vertical-align: top;
+  border-right: 1px solid var(--border-color);
+}
+
+#ordersTableWrap table td:first-child {
+  border-left: 2px solid var(--border-color);
+}
+
+#ordersTableWrap table td:last-child {
+  border-right: none;
+  white-space: nowrap;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: flex-start;
+  padding: 8px 6px;
 }
 
 #ordersTableWrap table tr:nth-child(even) td {
@@ -1692,33 +1707,16 @@ button,
   max-width: 200px;
 }
 
-#ordersTableWrap table td:last-child {
-  white-space: nowrap;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  align-items: flex-start;
-  padding: 8px 6px;
-}
-
-#ordersTableWrap table td {
-  border-right: 1px solid var(--border-color);
-}
-
-#ordersTableWrap table td:first-child {
-  border-left: 2px solid var(--border-color);
-}
-
-#ordersTableWrap table td:last-child {
-  border-right: none;
-}
-
 #ordersTableWrap table tr:last-child td {
   border-bottom: 2px solid var(--border-color);
 }
 
 #ordersTableWrap table tr:last-child td:first-child {
-  border-bottom-left-radius: 6px;
+  border-bottom-left-radius: 8px;
+}
+
+#ordersTableWrap table tr:last-child td:last-child {
+  border-bottom-right-radius: 8px;
 }
 
 .orders-stock-cell {
