@@ -1264,7 +1264,16 @@ function renderOrdersTable(orders) {
   }).join("");
 
   wrap.innerHTML = `<table>
-    <tr><th>#</th><th>Items</th><th>Type</th><th>Time</th><th>Amount</th><th>Status</th><th>Stock Used</th><th>Action</th></tr>
+    <tr>
+      <th style="width:60px">#</th>
+      <th>Items</th>
+      <th style="width:80px">Type</th>
+      <th style="width:120px">Time</th>
+      <th style="width:90px">Amount</th>
+      <th style="width:70px">Status</th>
+      <th style="width:160px">Stock Used</th>
+      <th style="width:90px">Action</th>
+    </tr>
     ${rows}
   </table>`;
 

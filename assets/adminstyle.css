@@ -1670,12 +1670,26 @@ button,
 }
 
 #ordersTableWrap table {
-  min-width: 980px;
+  min-width: 860px;
 }
 
 #ordersTableWrap table th:not(:first-child),
 #ordersTableWrap table td:not(:first-child) {
   padding-left: 8px;
+}
+
+#ordersTableWrap table td {
+  vertical-align: top;
+}
+
+#ordersTableWrap table tr:nth-child(even) td {
+  background: rgba(0, 0, 0, 0.015);
+}
+
+#ordersTableWrap table td:nth-child(2) {
+  word-break: break-word;
+  white-space: normal;
+  max-width: 280px;
 }
 
 .orders-stock-cell {
