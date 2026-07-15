@@ -1694,6 +1694,10 @@ button,
 
 #ordersTableWrap table td:last-child {
   white-space: nowrap;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: flex-start;
 }
 
 .orders-stock-cell {
