@@ -1710,7 +1710,7 @@ button,
 }
 
 #ordersTableWrap table td:last-child {
-  border-right: 2px solid var(--border-color);
+  border-right: none;
 }
 
 #ordersTableWrap table tr:last-child td {
@@ -1719,10 +1719,6 @@ button,
 
 #ordersTableWrap table tr:last-child td:first-child {
   border-bottom-left-radius: 6px;
-}
-
-#ordersTableWrap table tr:last-child td:last-child {
-  border-bottom-right-radius: 6px;
 }
 
 .orders-stock-cell {
