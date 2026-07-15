@@ -1689,7 +1689,7 @@ button,
 #ordersTableWrap table td:nth-child(2) {
   word-break: break-word;
   white-space: normal;
-  max-width: 280px;
+  max-width: 200px;
 }
 
 #ordersTableWrap table td:last-child {
