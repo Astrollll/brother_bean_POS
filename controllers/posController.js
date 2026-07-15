@@ -1353,9 +1353,7 @@ function generateReceipt(sale) {
     `;
   }).join("");
 
-  const discountBlock = sale.isPwdSenior
-    ? `<div class="totals-row sub"><span>Discount</span><span>− ${formatMoney(sale.discountAmount)}</span></div>`
-    : "";
+  const discountBlock = `<div class="totals-row sub"><span>Discount</span><span>− ${formatMoney(sale.isPwdSenior ? sale.discountAmount : 0)}</span></div>`;
 
   const totalItemSavings = (sale.items || []).reduce((sum, item) => {
     const qty = Number(item.quantity) || 1;
@@ -1365,9 +1363,7 @@ function generateReceipt(sale) {
     const originalUnit = (Number(item.price) || 0) + addonsTotal;
     return sum + (originalUnit * discountPct * qty);
   }, 0);
-  const itemDiscountBlock = totalItemSavings > 0
-    ? `<div class="totals-row sub"><span>Item discounts</span><span>− ${formatMoney(totalItemSavings)}</span></div>`
-    : "";
+  const itemDiscountBlock = `<div class="totals-row sub"><span>Item discounts</span><span>− ${formatMoney(totalItemSavings)}</span></div>`;
 
   const paidStamp = sale.unpaid ? "UNPAID" : sale.queued ? "PENDING" : "PAID";
 

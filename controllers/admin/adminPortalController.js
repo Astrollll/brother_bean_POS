@@ -984,9 +984,7 @@ function buildAdminReceiptHTML(order) {
     `;
   }).join("");
 
-  const discountBlock = Number(order.discountAmount || 0) > 0
-    ? `<div class="totals-row sub"><span>Discount</span><span>− ${formatMoney(order.discountAmount)}</span></div>`
-    : "";
+  const discountBlock = `<div class="totals-row sub"><span>Discount</span><span>− ${formatMoney(order.discountAmount || 0)}</span></div>`;
 
   const totalItemSavings = items.reduce((sum, item) => {
     const qty = Number(item.quantity || 1) || 1;
@@ -996,9 +994,7 @@ function buildAdminReceiptHTML(order) {
     const savings = originalUnit * discountPct * qty;
     return sum + savings;
   }, 0);
-  const itemDiscountBlock = totalItemSavings > 0
-    ? `<div class="totals-row sub"><span>Item discounts</span><span>− ${formatMoney(totalItemSavings)}</span></div>`
-    : "";
+  const itemDiscountBlock = `<div class="totals-row sub"><span>Item discounts</span><span>− ${formatMoney(totalItemSavings)}</span></div>`;
 
   const timestamp = date
     ? date.toLocaleString("en-PH", { month: "numeric", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" })
