@@ -1085,7 +1085,7 @@
     </div>
 
     <div
-      class="modal-overlay-custom admin-receipt-overlay"
+      class="receipt-admin-overlay"
       id="orderReceiptModal"
       aria-hidden="true"
       style="display: none"
@@ -1095,28 +1095,17 @@
       "
     >
       <div
-        class="admin-receipt-shell"
+        class="receipt-admin-shell"
         role="dialog"
         aria-modal="true"
         aria-labelledby="orderReceiptTitle"
       >
-        <div class="admin-receipt-topbar">
-          <div>
-            <div class="admin-receipt-kicker">Transaction</div>
-            <div class="admin-receipt-title" id="orderReceiptTitle">
-              Receipt
-            </div>
-          </div>
-          <button
-            type="button"
-            class="admin-receipt-close close-btn"
-            aria-label="Close receipt"
-            onclick="window.closeOrderReceipt && window.closeOrderReceipt()"
-          >
-            &times;
-          </button>
+        <div class="receipt-admin-body" id="orderReceiptContent"></div>
+        <div class="receipt-admin-actions" id="orderReceiptActions">
+          <button type="button" class="receipt-admin-link" onclick="window.closeOrderReceipt && window.closeOrderReceipt()">Close</button>
+          <button type="button" class="receipt-admin-link" onclick="window.refundOrderReceipt && window.refundOrderReceipt()">Refund</button>
+          <button type="button" class="receipt-admin-link" onclick="window.printOrderReceipt && window.printOrderReceipt()">Print</button>
         </div>
-        <div class="admin-receipt-body" id="orderReceiptContent"></div>
       </div>
     </div>
 

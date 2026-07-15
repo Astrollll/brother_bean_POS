@@ -4635,100 +4635,38 @@ input:checked + .tslider::before {
   z-index: 9999;
 }
 
-#orderReceiptModal {
-  background: rgba(231, 226, 214, 0.18);
+/* ── Receipt overlay & shell (cashier-style) ────────────────── */
+
+.receipt-admin-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(231, 226, 214, 0.88);
+  display: flex;
+  align-items: center;
+  justify-content: center;
   z-index: 10000;
 }
 
-.admin-receipt-shell {
-  width: min(92vw, 560px);
-  background: #fbf9f4;
-  color: #2b2620;
-  border: 1px solid #a89d87;
-  border-radius: 4px;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
-  overflow: hidden;
-  position: relative;
-}
-
-.admin-receipt-topbar {
+.receipt-admin-shell {
   display: flex;
-  justify-content: space-between;
+  flex-direction: column;
   align-items: center;
-  padding: 14px 20px;
-  padding-right: 66px;
-  border-bottom: 1px solid #a89d87;
-  background: #f1ece1;
 }
 
-.admin-receipt-kicker {
-  font-size: 10px;
-  letter-spacing: 1.5px;
-  text-transform: uppercase;
-  color: #6b6255;
-  font-weight: 700;
-}
-
-.admin-receipt-title {
-  margin-top: 2px;
-  font-size: 18px;
-  font-weight: 700;
-}
-
-.admin-receipt-close {
-  position: absolute;
-  top: 10px;
-  right: 10px;
-  width: 34px;
-  height: 34px;
-  border: 1px solid #d9d0bf;
-  border-radius: 10px;
-  background: #fff;
-  color: #6b6255;
-  font-size: 20px;
-  line-height: 1;
-  cursor: pointer;
-  z-index: 1;
-}
-
-.admin-receipt-close:hover {
-  background: #f7f4ee;
-  color: #2b2620;
-  border-color: #b9ad98;
-}
-
-.close-btn {
-  box-shadow: 0 8px 16px rgba(43, 38, 32, 0.12);
-}
-
-.admin-receipt-body {
+.receipt-admin-body {
   padding: 0;
 }
 
-.admin-receipt-card .brand-mark {
-  font-size: 13px;
-}
-
-.admin-receipt-card .brand-name {
-  font-size: 14px;
-}
-
-.admin-receipt-card .brand-tag {
-  font-size: 10px;
-}
-
-.admin-receipt-variant {
-  color: #6b6255;
-  font-size: 10px;
-  margin-top: 2px;
-}
-
-.admin-receipt-card .actions {
+.receipt-admin-actions {
   display: flex;
-  gap: 14px;
+  gap: 16px;
+  margin-top: 14px;
 }
 
-.admin-receipt-link {
+.receipt-admin-link {
   background: none;
   border: none;
   padding: 0;
@@ -4738,6 +4676,235 @@ input:checked + .tslider::before {
   border-bottom: 1px solid #2b2620;
   cursor: pointer;
   font: inherit;
+  font-size: 13px;
+}
+
+.receipt-admin-link:hover {
+  opacity: 0.7;
+}
+
+/* ── Receipt card (matching cashier receipt) ─────────────────── */
+
+.receipt-wrap {
+  position: relative;
+  width: 320px;
+  filter: drop-shadow(0 10px 20px rgba(0, 0, 0, 0.18));
+}
+
+.receipt-close-btn {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 34px;
+  height: 34px;
+  border: none;
+  border-radius: 999px;
+  background: #2b2620;
+  color: #fbf9f4;
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: 0 8px 18px rgba(43, 38, 32, 0.28);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2;
+}
+
+.receipt-close-btn:hover {
+  background: #1f1a16;
+}
+
+.receipt-close-btn:focus-visible {
+  outline: 2px solid rgba(43, 38, 32, 0.35);
+  outline-offset: 3px;
+}
+
+.zigzag-top,
+.zigzag-bottom {
+  height: 12px;
+  width: 100%;
+  background: #fbf9f4;
+}
+
+.zigzag-top {
+  clip-path: polygon(
+    0% 100%, 4% 0%, 8% 100%, 12% 0%, 16% 100%, 20% 0%, 24% 100%, 28% 0%,
+    32% 100%, 36% 0%, 40% 100%, 44% 0%, 48% 100%, 52% 0%, 56% 100%, 60% 0%,
+    64% 100%, 68% 0%, 72% 100%, 76% 0%, 80% 100%, 84% 0%, 88% 100%, 92% 0%,
+    96% 100%, 100% 0%, 100% 100%
+  );
+}
+
+.zigzag-bottom {
+  clip-path: polygon(
+    0% 0%, 4% 100%, 8% 0%, 12% 100%, 16% 0%, 20% 100%, 24% 0%, 28% 100%,
+    32% 0%, 36% 100%, 40% 0%, 44% 100%, 48% 0%, 52% 100%, 56% 0%, 60% 100%,
+    64% 0%, 68% 100%, 72% 0%, 76% 100%, 80% 0%, 84% 100%, 88% 0%, 92% 100%,
+    96% 0%, 100% 100%, 100% 0%
+  );
+}
+
+.receipt {
+  background: #fbf9f4;
+  color: #2b2620;
+  padding: 20px 26px 20px;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.receipt .center {
+  text-align: center;
+}
+
+.receipt .brand-mark {
+  width: 34px;
+  height: 34px;
+  margin: 4px auto 8px;
+  border: 2px solid #2b2620;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  font-size: 15px;
+  overflow: hidden;
+}
+
+.receipt .brand-mark img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  filter: none;
+}
+
+.receipt .brand-name {
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
+.receipt .brand-tag {
+  color: #6b6255;
+  font-size: 11px;
+  font-style: italic;
+  margin-top: 2px;
+}
+
+.receipt .brand-addr {
+  color: #6b6255;
+  font-size: 11px;
+  margin-top: 6px;
+}
+
+.receipt .rule {
+  border: none;
+  border-top: 1px dashed #cfc7b8;
+  margin: 12px 0;
+}
+
+.receipt .meta-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+}
+
+.receipt .meta-row .label {
+  color: #6b6255;
+}
+
+.receipt .meta-row .value {
+  font-weight: 700;
+}
+
+.receipt .item {
+  margin-bottom: 10px;
+}
+
+.receipt .item-name {
+  display: flex;
+  justify-content: space-between;
+  font-weight: 700;
+}
+
+.receipt .item-variant {
+  color: #6b6255;
+  font-size: 11px;
+  margin-top: 1px;
+}
+
+.receipt .item-calc {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 2px;
+}
+
+.receipt .item-calc .qty {
+  color: #6b6255;
+}
+
+.receipt .totals-row {
+  display: flex;
+  justify-content: space-between;
+}
+
+.receipt .totals-row.grand {
+  font-weight: 700;
+  font-size: 15px;
+  margin-top: 4px;
+}
+
+.receipt .totals-row.sub {
+  color: #6b6255;
+}
+
+.receipt .stamp {
+  position: relative;
+  text-align: center;
+  margin: 18px 0 6px;
+}
+
+.receipt .stamp span {
+  display: inline-block;
+  border: 2.5px solid #a6493a;
+  color: #a6493a;
+  font-weight: 800;
+  letter-spacing: 3px;
+  padding: 3px 14px;
+  border-radius: 4px;
+  transform: rotate(-6deg);
+  font-size: 13px;
+  opacity: 0.85;
+}
+
+.receipt .barcode {
+  margin: 14px 0 4px;
+  height: 34px;
+  background: repeating-linear-gradient(
+    90deg,
+    #2b2620 0px, #2b2620 2px,
+    transparent 2px, transparent 4px,
+    #2b2620 4px, #2b2620 5px,
+    transparent 5px, transparent 9px
+  );
+}
+
+.receipt .footer-msg {
+  font-weight: 700;
+  margin-bottom: 2px;
+}
+
+.receipt .footer-sub {
+  color: #6b6255;
+  font-size: 11px;
+  margin-bottom: 10px;
+}
+
+.receipt .footer-legal {
+  color: #6b6255;
+  font-size: 10px;
+  line-height: 1.6;
 }
 
 .order-view-btn {

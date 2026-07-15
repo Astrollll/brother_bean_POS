@@ -960,30 +960,29 @@ function buildAdminReceiptHTML(order) {
   const paidStamp = String(order.status || "paid").toLowerCase() === "paid" ? "PAID" : String(order.status || "PENDING").toUpperCase();
   const items = Array.isArray(order.items) ? order.items : [];
 
-  const rows = items.map((item) => {
+  const itemRows = items.map((item) => {
     const qty = Number(item.quantity || 1) || 1;
     const addonTotal = Array.isArray(item.addons) ? item.addons.reduce((sum, addon) => sum + (Number(addon?.price) || 0), 0) : 0;
     const discountPct = Number(item.discountPercent) || 0;
     const unit = ((Number(item.price) || 0) + addonTotal) * (1 - discountPct);
     const lineTotal = unit * qty;
     const variant = [item.variant, item.temperature && item.temperature !== "N/A" ? item.temperature : null].filter(Boolean).join(" · ");
-    const discountLabel = discountPct > 0 ? ` <span style="font-size:10px;color:#999;">(-${Math.round(discountPct * 100)}%)</span>` : "";
+    const discountLabel = discountPct > 0 ? ` <span style="font-size:10px;color:var(--gray);">(-${Math.round(discountPct * 100)}%)</span>` : "";
 
     return `
-      <tr>
-        <td>
-          ${escapeHtml(item.name || "Item")}${discountLabel}
-          ${variant ? `<div class="admin-receipt-variant">${escapeHtml(variant)}</div>` : ""}
-        </td>
-        <td class="num">${qty}</td>
-        <td class="num">${formatMoney(unit)}</td>
-        <td class="num">${formatMoney(lineTotal)}</td>
-      </tr>
+      <div class="item">
+        <div class="item-name"><span>${escapeHtml(item.name || "Item")}${discountLabel}</span></div>
+        ${variant ? `<div class="item-variant">${escapeHtml(variant)}</div>` : ""}
+        <div class="item-calc">
+          <span class="qty">${qty} x ${formatMoney(unit)}</span>
+          <span>${formatMoney(lineTotal)}</span>
+        </div>
+      </div>
     `;
   }).join("");
 
-  const discountRow = Number(order.discountAmount || 0) > 0
-    ? `<div class="row"><span>Discount</span><span>− ${formatMoney(order.discountAmount)}</span></div>`
+  const discountBlock = Number(order.discountAmount || 0) > 0
+    ? `<div class="totals-row sub"><span>Discount</span><span>− ${formatMoney(order.discountAmount)}</span></div>`
     : "";
 
   const timestamp = date
@@ -991,71 +990,60 @@ function buildAdminReceiptHTML(order) {
     : "-";
 
   return `
-    <div class="admin-receipt-card">
-      <div class="card-header">
-        <div class="brand">
-          <div class="brand-mark" aria-hidden="true">
+    <div class="receipt-wrap">
+      <button
+        type="button"
+        class="receipt-close-btn"
+        aria-label="Close receipt"
+        title="Close receipt"
+        onclick="window.closeOrderReceipt && window.closeOrderReceipt()"
+      >&times;</button>
+      <div class="zigzag-top" aria-hidden="true"></div>
+      <div class="receipt">
+        <div class="center">
+          <div class="brand-mark">
             <img src="/assets/icons/brother-bean-logo.jpg" alt="Brother Bean Coffeehouse logo" />
           </div>
-          <div>
-            <div class="brand-name">Brother Bean Cafe</div>
-            <div class="brand-tag">Warmth in Every Cup</div>
+          <div class="brand-name">Brother Bean Coffee House</div>
+          <div class="brand-tag">anytime is coffee time.</div>
+          <div class="brand-addr">N. Guevarra St. Brgy. Zone 1 Poblacion Dasmariñas City Cavite</div>
+        </div>
+
+        <hr class="rule">
+
+        <div class="meta-row"><span class="label">Date</span><span class="value">${escapeHtml(timestamp)}</span></div>
+        <div class="meta-row"><span class="label">Order #</span><span class="value">${escapeHtml(orderShort)}</span></div>
+        <div class="meta-row"><span class="label">Payment</span><span class="value">${escapeHtml(payment)}</span></div>
+        <div class="meta-row"><span class="label">Cashier</span><span class="value">${escapeHtml(cashier)}</span></div>
+
+        <hr class="rule">
+
+        ${itemRows || `<div class="item"><div class="item-name"><span style="color:#6b6255;">No item details available.</span></div></div>`}
+
+        <hr class="rule">
+
+        <div class="totals-row sub"><span>Subtotal</span><span>${formatMoney(order.subtotal)}</span></div>
+        ${discountBlock}
+        <div class="totals-row grand"><span>TOTAL</span><span>${formatMoney(order.total)}</span></div>
+        <div class="totals-row sub"><span>Tendered</span><span>${formatMoney(order.amountTendered || order.total || 0)}</span></div>
+        <div class="totals-row sub"><span>Change</span><span>${formatMoney(order.change)}</span></div>
+
+        <div class="stamp"><span>${escapeHtml(paidStamp)}</span></div>
+
+        <div class="barcode" aria-hidden="true"></div>
+
+        <hr class="rule">
+
+        <div class="center">
+          <div class="footer-msg">Thank you for visiting!</div>
+          <div class="footer-sub">Please come again</div>
+          <div class="footer-legal">
+            VAT Registered TIN: 000-000-000-000<br>
+            Permit No: 0000000
           </div>
         </div>
-        <div class="status-pill">${escapeHtml(paidStamp)}</div>
       </div>
-
-      <div class="meta-strip">
-        <div class="meta-cell">
-          <div class="label">Order #</div>
-          <div class="value">${escapeHtml(orderShort)}</div>
-        </div>
-        <div class="meta-cell">
-          <div class="label">Date</div>
-          <div class="value">${escapeHtml(timestamp)}</div>
-        </div>
-        <div class="meta-cell">
-          <div class="label">Payment</div>
-          <div class="value">${escapeHtml(payment)}</div>
-        </div>
-        <div class="meta-cell">
-          <div class="label">Cashier</div>
-          <div class="value">${escapeHtml(cashier)}</div>
-        </div>
-      </div>
-
-      <table>
-        <thead>
-          <tr>
-            <th>Item</th>
-            <th class="num">Qty</th>
-            <th class="num">Unit</th>
-            <th class="num">Line Total</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${rows || `<tr><td colspan="4" style="padding:12px 20px;color:#6b6255;">No item details available.</td></tr>`}
-        </tbody>
-      </table>
-
-      <div class="totals">
-        <div class="totals-table">
-          <div class="row"><span>Subtotal</span><span>${formatMoney(order.subtotal)}</span></div>
-          ${discountRow}
-          <div class="row"><span>Tendered</span><span>${formatMoney(order.amountTendered || order.total || 0)}</span></div>
-          <div class="row"><span>Change</span><span>${formatMoney(order.change)}</span></div>
-          <div class="row grand"><span>TOTAL</span><span>${formatMoney(order.total)}</span></div>
-        </div>
-      </div>
-
-      <div class="footer">
-        <span>VAT TIN: 000-000-000-000 &nbsp;|&nbsp; Permit No: 0000000</span>
-        <span class="actions">
-          <button type="button" class="admin-receipt-link">View</button>
-          <button type="button" class="admin-receipt-link" onclick="window.refundOrderReceipt && window.refundOrderReceipt()">Refund</button>
-          <button type="button" class="admin-receipt-link" onclick="window.printOrderReceipt && window.printOrderReceipt()">Print</button>
-        </span>
-      </div>
+      <div class="zigzag-bottom" aria-hidden="true"></div>
     </div>
   `;
 }
@@ -1095,32 +1083,36 @@ window.printOrderReceipt = function() {
   const baseStyles = `
     <style>
       body { margin: 0; padding: 32px 16px; background: #e7e2d6; font-family: 'Courier New', ui-monospace, 'IBM Plex Mono', monospace; }
-      .admin-receipt-card { width: 560px; margin: 0 auto; background: #fbf9f4; color: #2b2620; border: 1px solid #a89d87; border-radius: 4px; overflow: hidden; }
-      .card-header { display:flex; justify-content:space-between; align-items:center; padding:14px 20px; border-bottom:1px solid #a89d87; background:#f1ece1; }
-      .brand { display:flex; align-items:center; gap:10px; }
-      .brand-mark { width:28px; height:28px; border:2px solid #2b2620; border-radius:5px; display:flex; align-items:center; justify-content:center; overflow:hidden; }
-      .brand-mark img { width:100%; height:100%; object-fit:cover; filter: none; }
-      .brand-name { font-weight:700; font-size:14px; letter-spacing:0.5px; }
-      .brand-tag { color:#6b6255; font-size:10px; font-style:italic; }
-      .status-pill { font-size:11px; font-weight:700; letter-spacing:1px; color:#a6493a; border:1.5px solid #a6493a; border-radius:3px; padding:3px 10px; }
-      .meta-strip { display:grid; grid-template-columns:repeat(4, 1fr); border-bottom:1px dashed #cfc7b8; }
-      .meta-cell { padding:10px 20px; border-right:1px dashed #cfc7b8; font-size:11px; }
-      .meta-cell:last-child { border-right:none; }
-      .meta-cell .label { color:#6b6255; text-transform:uppercase; font-size:9px; letter-spacing:0.5px; margin-bottom:3px; }
-      .meta-cell .value { font-weight:700; font-size:12px; }
-      table { width:100%; border-collapse:collapse; font-size:12px; }
-      thead th { text-align:left; color:#6b6255; text-transform:uppercase; font-size:10px; letter-spacing:0.5px; font-weight:700; padding:10px 20px 6px; border-bottom:1px solid #a89d87; }
-      thead th.num { text-align:right; }
-      tbody td { padding:8px 20px; border-bottom:1px dashed #cfc7b8; vertical-align:top; }
-      tbody td.num { text-align:right; font-weight:700; white-space:nowrap; }
-      .admin-receipt-variant { color:#6b6255; font-size:10px; margin-top:2px; }
-      .totals { padding:12px 20px 16px; display:flex; justify-content:flex-end; }
-      .totals-table { width:230px; font-size:12px; }
-      .row { display:flex; justify-content:space-between; padding:3px 0; color:#6b6255; }
-      .row.grand { color:#2b2620; font-weight:700; font-size:15px; border-top:1px solid #a89d87; margin-top:4px; padding-top:6px; }
-      .footer { display:flex; justify-content:space-between; align-items:center; padding:10px 20px 14px; border-top:1px dashed #cfc7b8; font-size:10px; color:#6b6255; }
-      .actions { display:flex; gap:14px; }
-      .admin-receipt-link { background:none; border:none; padding:0; color:#2b2620; text-decoration:none; font-weight:700; border-bottom:1px solid #2b2620; cursor:pointer; font:inherit; }
+      .receipt-wrap { position: relative; width: 320px; margin: 0 auto; filter: drop-shadow(0 10px 20px rgba(0,0,0,0.18)); }
+      .receipt-close-btn { display: none; }
+      .zigzag-top, .zigzag-bottom { height: 12px; width: 100%; background: #fbf9f4; }
+      .zigzag-top { clip-path: polygon(0% 100%, 4% 0%, 8% 100%, 12% 0%, 16% 100%, 20% 0%, 24% 100%, 28% 0%, 32% 100%, 36% 0%, 40% 100%, 44% 0%, 48% 100%, 52% 0%, 56% 100%, 60% 0%, 64% 100%, 68% 0%, 72% 100%, 76% 0%, 80% 100%, 84% 0%, 88% 100%, 92% 0%, 96% 100%, 100% 0%, 100% 100%); }
+      .zigzag-bottom { clip-path: polygon(0% 0%, 4% 100%, 8% 0%, 12% 100%, 16% 0%, 20% 100%, 24% 0%, 28% 100%, 32% 0%, 36% 100%, 40% 0%, 44% 100%, 48% 0%, 52% 100%, 56% 0%, 60% 100%, 64% 0%, 68% 100%, 72% 0%, 76% 100%, 80% 0%, 84% 100%, 88% 0%, 92% 100%, 96% 0%, 100% 100%, 100% 0%); }
+      .receipt { background: #fbf9f4; color: #2b2620; padding: 20px 26px 20px; font-size: 13px; line-height: 1.55; }
+      .center { text-align: center; }
+      .brand-mark { width: 34px; height: 34px; margin: 4px auto 8px; border: 2px solid #2b2620; border-radius: 6px; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+      .brand-mark img { width: 100%; height: 100%; object-fit: cover; filter: none; }
+      .brand-name { font-weight: 700; font-size: 16px; letter-spacing: 1px; text-transform: uppercase; }
+      .brand-tag { color: #6b6255; font-size: 11px; font-style: italic; margin-top: 2px; }
+      .brand-addr { color: #6b6255; font-size: 11px; margin-top: 6px; }
+      .rule { border: none; border-top: 1px dashed #cfc7b8; margin: 12px 0; }
+      .meta-row { display: flex; justify-content: space-between; font-size: 12px; }
+      .meta-row .label { color: #6b6255; }
+      .meta-row .value { font-weight: 700; }
+      .item { margin-bottom: 10px; }
+      .item-name { display: flex; justify-content: space-between; font-weight: 700; }
+      .item-variant { color: #6b6255; font-size: 11px; margin-top: 1px; }
+      .item-calc { display: flex; justify-content: space-between; margin-top: 2px; }
+      .item-calc .qty { color: #6b6255; }
+      .totals-row { display: flex; justify-content: space-between; }
+      .totals-row.grand { font-weight: 700; font-size: 15px; margin-top: 4px; }
+      .totals-row.sub { color: #6b6255; }
+      .stamp { position: relative; text-align: center; margin: 18px 0 6px; }
+      .stamp span { display: inline-block; border: 2.5px solid #a6493a; color: #a6493a; font-weight: 800; letter-spacing: 3px; padding: 3px 14px; border-radius: 4px; transform: rotate(-6deg); font-size: 13px; opacity: 0.85; }
+      .barcode { margin: 14px 0 4px; height: 34px; background: repeating-linear-gradient(90deg, #2b2620 0px, #2b2620 2px, transparent 2px, transparent 4px, #2b2620 4px, #2b2620 5px, transparent 5px, transparent 9px); }
+      .footer-msg { font-weight: 700; margin-bottom: 2px; }
+      .footer-sub { color: #6b6255; font-size: 11px; margin-bottom: 10px; }
+      .footer-legal { color: #6b6255; font-size: 10px; line-height: 1.6; }
     </style>`;
 
   printWindow.document.write(`<!doctype html><html><head><title>Order Receipt</title>${baseStyles}</head><body>${content.innerHTML}</body></html>`);
