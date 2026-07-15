@@ -1265,14 +1265,14 @@ function renderOrdersTable(orders) {
 
   wrap.innerHTML = `<table>
     <tr>
-      <th style="width:60px">#</th>
+      <th style="width:50px">#</th>
       <th>Items</th>
-      <th style="width:80px">Type</th>
-      <th style="width:120px">Time</th>
-      <th style="width:90px">Amount</th>
-      <th style="width:70px">Status</th>
-      <th style="width:160px">Stock Used</th>
-      <th style="width:90px">Action</th>
+      <th style="width:70px">Type</th>
+      <th style="width:110px">Time</th>
+      <th style="width:80px">Amount</th>
+      <th style="width:60px">Status</th>
+      <th style="width:130px">Stock Used</th>
+      <th style="width:70px">Action</th>
     </tr>
     ${rows}
   </table>`;

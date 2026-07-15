@@ -1670,7 +1670,7 @@ button,
 }
 
 #ordersTableWrap table {
-  min-width: 860px;
+  min-width: 820px;
 }
 
 #ordersTableWrap table th:not(:first-child),
