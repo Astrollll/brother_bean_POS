@@ -1185,9 +1185,6 @@ export function renderSalesAnalyticsDashboard(data = {}) {
   }
 
   setAnalyticsPeriod(viewState.analyticsPeriod || "today");
-
-  const topbarTitle = document.getElementById("topbar-page");
-  if (topbarTitle) topbarTitle.textContent = "Sales Analytics";
 }
 
 export { renderStats, renderRecentOrders, renderTopItems, renderStaffOnDuty };
