@@ -7,6 +7,36 @@ import { deductInventoryQuantities } from "./inventoryModel.js";
 
 const ORDERS_COLLECTION = "orders";
 const RESETS_COLLECTION = "resets";
+
+// Cache for resolved user profiles (uid -> fullName)
+const _profileCache = new Map();
+
+async function resolveCashierName(uid) {
+  if (!uid) return null;
+  if (_profileCache.has(uid)) return _profileCache.get(uid);
+  try {
+    const snap = await getDoc(doc(db, "users", uid));
+    if (snap.exists()) {
+      const name = snap.data()?.fullName || snap.data()?.displayName || null;
+      _profileCache.set(uid, name);
+      return name;
+    }
+  } catch {}
+  _profileCache.set(uid, null);
+  return null;
+}
+
+async function applyCashierNames(orders) {
+  const uids = [...new Set(orders.map(o => o.cashierUid).filter(Boolean))];
+  await Promise.all(uids.map(resolveCashierName));
+  return orders.map(order => {
+    if (order.cashierUid && _profileCache.has(order.cashierUid)) {
+      const currentName = _profileCache.get(order.cashierUid);
+      if (currentName) return { ...order, cashierName: currentName };
+    }
+    return order;
+  });
+}
 function isOnlineNow() {
   return typeof navigator === "undefined" ? true : navigator.onLine !== false;
 }
@@ -92,7 +122,8 @@ export async function getTodayOrders() {
     where("createdAt", "<",  end)
   );
   const snap = await getDocs(q);
-  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  const orders = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  return applyCashierNames(orders);
 }
 
 // Fetch all orders with optional date range filter (YYYY-MM-DD)
@@ -163,11 +194,11 @@ export async function getAllSalesOrders(fromDate = null, toDate = null) {
       return true;
     });
 
-    return filtered.sort((a, b) => {
+    return applyCashierNames(filtered.sort((a, b) => {
       const aMs = a.createdAt?.toDate ? a.createdAt.toDate().getTime() : (a.createdAtMs || 0);
       const bMs = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : (b.createdAtMs || 0);
       return bMs - aMs;
-    });
+    }));
   } catch (error) {
     console.warn("[Orders] collectionGroup sales query failed; falling back to active orders.", error);
     return getAllOrders(fromDate, toDate);
