@@ -2325,6 +2325,7 @@ function renderAccountsTable(accounts) {
         <td>${escapeHtml(formatAccountUpdated(account.updatedMs))}</td>
         <td>
           <div class="accounts-row-actions">
+            <button class="orders-btn ghost inventory-mini-btn row-action-btn" data-account-action="edit" data-account-uid="${escapeHtml(account.uid)}" title="Edit account" aria-label="Edit account"><i class="ri-pencil-line" aria-hidden="true"></i></button>
             <button class="orders-btn ghost inventory-mini-btn row-action-btn" data-account-action="toggle-role" data-account-uid="${escapeHtml(account.uid)}" data-account-next-role="${escapeHtml(nextRole)}" title="${nextRoleLabel}" aria-label="${nextRoleLabel}"><i class="ri-exchange-line" aria-hidden="true"></i></button>
             <button class="orders-btn ghost inventory-mini-btn ${account.status === "suspended" ? "" : "danger"} row-action-btn" data-account-action="toggle-status" data-account-uid="${escapeHtml(account.uid)}" data-account-next-status="${account.status === "suspended" ? "active" : "suspended"}" ${toggleStatusDisabled} ${toggleStatusTitle} title="${toggleStatusLabel}" aria-label="${toggleStatusLabel}"><i class="ri-toggle-line" aria-hidden="true"></i></button>
             <button class="orders-btn ghost inventory-mini-btn danger row-action-btn" data-account-action="delete-account" data-account-uid="${escapeHtml(account.uid)}" ${deleteDisabled} ${deleteTitle} title="Delete account" aria-label="Delete account"><i class="ri-delete-bin-line" aria-hidden="true"></i></button>
@@ -2360,6 +2361,92 @@ async function refreshAccountsRecords() {
     }
     renderAccountsSyncMeta("sync failed");
   }
+}
+
+function openAccountEditModal(account) {
+  let modal = document.getElementById("accountEditModal");
+  if (!modal) {
+    modal = document.createElement("div");
+    modal.id = "accountEditModal";
+    modal.className = "modal-overlay-custom";
+    modal.setAttribute("aria-hidden", "true");
+    document.body.appendChild(modal);
+  }
+
+  const currentRole = account.role || "unassigned";
+  const fullName = account.fullName || "";
+  const email = account.email || "";
+
+  modal.innerHTML = `
+    <div class="modal-custom" role="dialog" aria-modal="true" aria-labelledby="accountEditTitle" style="max-width:440px;width:100%;">
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:18px 22px;border-bottom:1px solid var(--border-color);">
+        <div>
+          <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--text-secondary);margin-bottom:2px;">Edit Account</div>
+          <div id="accountEditTitle" style="font-size:17px;font-weight:700;color:var(--text-primary);">Edit ${escapeHtml(fullName || email)}</div>
+        </div>
+        <button class="orders-btn ghost" type="button" onclick="document.getElementById('accountEditModal').style.display='none'; document.getElementById('accountEditModal').setAttribute('aria-hidden','true');" aria-label="Close" style="font-size:20px;padding:4px 8px;">&times;</button>
+      </div>
+      <div style="padding:22px;">
+        <div style="margin-bottom:16px;">
+          <label style="display:block;font-size:12px;font-weight:700;color:var(--text-secondary);margin-bottom:5px;text-transform:uppercase;letter-spacing:0.5px;">Full Name</label>
+          <input type="text" id="accountEditFullName" value="${escapeHtml(fullName)}" style="width:100%;padding:10px 12px;border:1px solid var(--border-color);border-radius:8px;font-size:14px;background:var(--bg-primary);color:var(--text-primary);box-sizing:border-box;" />
+        </div>
+        <div style="margin-bottom:16px;">
+          <label style="display:block;font-size:12px;font-weight:700;color:var(--text-secondary);margin-bottom:5px;text-transform:uppercase;letter-spacing:0.5px;">Email</label>
+          <input type="email" value="${escapeHtml(email)}" readonly style="width:100%;padding:10px 12px;border:1px solid var(--border-color);border-radius:8px;font-size:14px;background:var(--bg-secondary);color:var(--text-muted);cursor:not-allowed;box-sizing:border-box;" />
+          <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">Email cannot be changed from here.</div>
+        </div>
+        <div style="margin-bottom:16px;">
+          <label style="display:block;font-size:12px;font-weight:700;color:var(--text-secondary);margin-bottom:5px;text-transform:uppercase;letter-spacing:0.5px;">Role</label>
+          <select id="accountEditRole" style="width:100%;padding:10px 12px;border:1px solid var(--border-color);border-radius:8px;font-size:14px;background:var(--bg-primary);color:var(--text-primary);box-sizing:border-box;">
+            <option value="admin" ${currentRole === "admin" ? "selected" : ""}>Admin</option>
+            <option value="staff" ${currentRole === "staff" ? "selected" : ""}>Staff</option>
+          </select>
+        </div>
+      </div>
+      <div style="display:flex;justify-content:flex-end;gap:10px;padding:16px 22px;border-top:1px solid var(--border-color);">
+        <button class="orders-btn ghost" type="button" onclick="document.getElementById('accountEditModal').style.display='none'; document.getElementById('accountEditModal').setAttribute('aria-hidden','true');" style="padding:8px 16px;">Cancel</button>
+        <button class="orders-btn primary" type="button" id="accountEditSaveBtn" style="padding:8px 20px;background:var(--primary);color:#fff;border:none;border-radius:8px;font-weight:600;cursor:pointer;">Save Changes</button>
+      </div>
+    </div>
+  `;
+
+  modal.style.display = "flex";
+  modal.setAttribute("aria-hidden", "false");
+
+  document.getElementById("accountEditSaveBtn").addEventListener("click", async () => {
+    const newFullName = document.getElementById("accountEditFullName").value.trim();
+    const newRole = document.getElementById("accountEditRole").value;
+
+    if (!newFullName) {
+      await ModalUtils.warning("Validation", "Full name is required.");
+      return;
+    }
+
+    try {
+      const saveBtn = document.getElementById("accountEditSaveBtn");
+      saveBtn.disabled = true;
+      saveBtn.textContent = "Saving...";
+
+      await setUserProfile(account.uid, {
+        fullName: newFullName,
+        role: newRole,
+        updatedAtMs: Date.now(),
+      });
+
+      if (newRole !== currentRole) {
+        await setUserRole(account.uid, newRole, account.email || "");
+      }
+
+      modal.style.display = "none";
+      modal.setAttribute("aria-hidden", "true");
+
+      await refreshAccountsRecords();
+      await ModalUtils.success("Account Updated", "Account details have been saved.");
+    } catch (error) {
+      await ModalUtils.error("Save Failed", error?.message || "Unable to update account.");
+    }
+  });
 }
 
 function setAccountsActionBusy(button, busy = true) {
@@ -2579,6 +2666,13 @@ function bindAccountsControls() {
 
       await refreshAccountsRecords();
       await ModalUtils.success("Account Deleted", "Staff account has been deleted successfully.");
+    }
+
+    if (action === "edit") {
+      const account = state.accounts.find((acc) => acc.uid === uid);
+      if (!account) return;
+      openAccountEditModal(account);
+      return;
     }
     } finally {
       setAccountsActionBusy(actionBtn, false);
