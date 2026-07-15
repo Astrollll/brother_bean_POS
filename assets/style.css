@@ -2626,6 +2626,22 @@ button,
   background: transparent;
   display: flex;
   justify-content: center;
+  max-height: 85vh;
+  overflow-y: auto;
+}
+
+#receiptContent::-webkit-scrollbar {
+  width: 6px;
+}
+#receiptContent::-webkit-scrollbar-track {
+  background: transparent;
+}
+#receiptContent::-webkit-scrollbar-thumb {
+  background: rgba(43, 38, 32, 0.25);
+  border-radius: 3px;
+}
+#receiptContent::-webkit-scrollbar-thumb:hover {
+  background: rgba(43, 38, 32, 0.45);
 }
 
 .receipt-wrap {

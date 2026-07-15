@@ -4708,16 +4708,34 @@ input:checked + .tslider::before {
   display: flex;
   flex-direction: column;
   align-items: center;
+  max-height: 92vh;
 }
 
 .receipt-admin-body {
   padding: 0;
+  max-height: 82vh;
+  overflow-y: auto;
+}
+
+.receipt-admin-body::-webkit-scrollbar {
+  width: 6px;
+}
+.receipt-admin-body::-webkit-scrollbar-track {
+  background: transparent;
+}
+.receipt-admin-body::-webkit-scrollbar-thumb {
+  background: rgba(43, 38, 32, 0.25);
+  border-radius: 3px;
+}
+.receipt-admin-body::-webkit-scrollbar-thumb:hover {
+  background: rgba(43, 38, 32, 0.45);
 }
 
 .receipt-admin-actions {
   display: flex;
   gap: 16px;
   margin-top: 14px;
+  flex-shrink: 0;
 }
 
 .receipt-admin-link {
