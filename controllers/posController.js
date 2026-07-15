@@ -1026,6 +1026,7 @@ function buildUnpaidOrderFromCart() {
     paymentMethod: currentPayMethod,
     isPwdSenior,
     subtotal: summary.subtotal,
+    discountAmount: isPwdSenior ? summary.subtotal * 0.2 : 0,
     total: summary.total,
     amountTendered: summary.total,
     change: 0,
@@ -1342,8 +1343,8 @@ function generateReceipt(sale) {
 
     return `
       <div class="item">
-        <div class="item-name"><span>${item.name}</span></div>
-        ${variantText ? `<div class="item-variant">${variantText}</div>` : ""}
+        <div class="item-name"><span>${escapeHtml(item.name)}</span></div>
+        ${variantText ? `<div class="item-variant">${escapeHtml(variantText)}</div>` : ""}
         <div class="item-calc">
           ${priceDisplay}
           <span>${formatMoney(lineTotal)}</span>
@@ -1499,82 +1500,43 @@ window.printReceipt = function() {
         line-height: 1.35;
       }
 
-      .receipt {
-        max-width: 76mm;
-        margin: 0 auto;
-        padding: 0;
-        border: none;
-        box-shadow: none;
-        background: transparent;
-      }
+      .receipt-wrap { width: 320px; margin: 0 auto; }
+      .receipt-close-btn { display: none; }
+      .zigzag-top, .zigzag-bottom { height: 12px; width: 100%; background: #fbf9f4; }
+      .zigzag-top { clip-path: polygon(0% 100%, 4% 0%, 8% 100%, 12% 0%, 16% 100%, 20% 0%, 24% 100%, 28% 0%, 32% 100%, 36% 0%, 40% 100%, 44% 0%, 48% 100%, 52% 0%, 56% 100%, 60% 0%, 64% 100%, 68% 0%, 72% 100%, 76% 0%, 80% 100%, 84% 0%, 88% 100%, 92% 0%, 96% 100%, 100% 0%, 100% 100%); }
+      .zigzag-bottom { clip-path: polygon(0% 0%, 4% 100%, 8% 0%, 12% 100%, 16% 0%, 20% 100%, 24% 0%, 28% 100%, 32% 0%, 36% 100%, 40% 0%, 44% 100%, 48% 0%, 52% 100%, 56% 0%, 60% 100%, 64% 0%, 68% 100%, 72% 0%, 76% 100%, 80% 0%, 84% 100%, 88% 0%, 92% 100%, 96% 0%, 100% 100%, 100% 0%); }
 
-      .receipt-brand { display:flex; align-items:center; gap:8px; justify-content:center; margin-bottom: 10px; }
-      .receipt-mark { width: 34px; height: 34px; border: 2px solid #2b2620; border-radius: 6px; display:flex; align-items:center; justify-content:center; overflow:hidden; }
-      .receipt-mark img { width: 100%; height: 100%; object-fit: cover; filter: none; } 
-      .receipt-title { font-size: 14px; font-weight: 800; text-align:center; }
-      .receipt-subtitle { font-size: 10px; text-align:center; color:#444; margin-top: 2px; }
-
-      .receipt-meta {
-        border: none;
-        background: transparent;
-        padding: 0;
-        display: grid;
-        gap: 4px;
-        margin-top: 8px;
-      }
-      .receipt-meta-row { display:flex; justify-content:space-between; gap:10px; font-weight: 700; font-size: 10.5px; }
-      .receipt-meta-row span:first-child { color:#444; font-weight: 700; }
-      .receipt-badge {
-        margin-top: 6px;
-        padding: 4px 0;
-        border-top: 1px dashed #bbb;
-        border-bottom: 1px dashed #bbb;
-        color:#111;
-        font-weight: 800;
-      }
-
-      .receipt-divider { height: 0; border-top: 1px dashed #bbb; margin: 10px 0; }
-
-      .receipt-items { display:grid; gap: 8px; }
-      .receipt-item {
-        display:grid;
-        grid-template-columns: 1fr auto;
-        gap: 10px;
-        padding: 0;
-        border: none;
-        background: transparent;
-      }
-      .receipt-item-name { font-weight: 800; font-size: 11px; }
-      .receipt-item-details { margin-top: 4px; display:grid; gap: 2px; color:#333; font-weight: 600; font-size: 10px; }
-      .receipt-item-right { text-align:right; display:grid; gap: 2px; align-content:start; min-width: 18mm; }
-      .receipt-item-qty { color:#333; font-weight: 700; font-size: 10px; }
-      .receipt-item-total { font-weight: 900; font-size: 11px; }
-
-      .receipt-totals {
-        border: none;
-        background: transparent;
-        padding: 0;
-        display: grid;
-        gap: 5px;
-      }
-      .receipt-row { display:flex; justify-content:space-between; gap: 10px; font-size: 10.5px; font-weight: 800; }
-      .receipt-row span:first-child { color:#444; font-weight: 700; }
-      .receipt-row.total {
-        margin-top: 6px;
-        padding-top: 6px;
-        border-top: 2px solid #111;
-        font-size: 12px;
-      }
-
-      .receipt-footer { margin-top: 10px; text-align:center; color:#333; }
-      .receipt-thanks { font-weight: 900; font-size: 11px; }
-      .receipt-small { font-weight: 600; font-size: 10px; margin-top: 2px; }
-
-      /* Ensure buttons/controls never print */
-      button { display:none !important; }
+      .receipt { background: #fbf9f4; color: #2b2620; padding: 20px 26px 20px; font-size: 13px; line-height: 1.55; }
+      .center { text-align: center; }
+      .brand-mark { width: 34px; height: 34px; margin: 4px auto 8px; border: 2px solid #2b2620; border-radius: 6px; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+      .brand-mark img { width: 100%; height: 100%; object-fit: cover; filter: none; }
+      .brand-name { font-weight: 700; font-size: 16px; letter-spacing: 1px; text-transform: uppercase; }
+      .brand-tag { color: #6b6255; font-size: 11px; font-style: italic; margin-top: 2px; }
+      .brand-addr { color: #6b6255; font-size: 11px; margin-top: 6px; }
+      .rule { border: none; border-top: 1px dashed #cfc7b8; margin: 12px 0; }
+      .meta-row { display: flex; justify-content: space-between; font-size: 12px; }
+      .meta-row .label { color: #6b6255; }
+      .meta-row .value { font-weight: 700; }
+      .item { margin-bottom: 10px; }
+      .item-name { display: flex; justify-content: space-between; font-weight: 700; }
+      .item-variant { color: #6b6255; font-size: 11px; margin-top: 1px; }
+      .item-calc { display: flex; justify-content: space-between; margin-top: 2px; }
+      .item-calc .qty { color: #6b6255; }
       .item-price-original { text-decoration: line-through; color: #6b6255; margin-right: 2px; }
       .item-price-arrow { margin: 0 2px; color: #6b6255; }
       .item-price-label { font-size: 10px; color: #6b6255; }
+      .totals-row { display: flex; justify-content: space-between; }
+      .totals-row.grand { font-weight: 700; font-size: 15px; margin-top: 4px; }
+      .totals-row.sub { color: #6b6255; }
+      .stamp { position: relative; text-align: center; margin: 18px 0 6px; }
+      .stamp span { display: inline-block; border: 2.5px solid #a6493a; color: #a6493a; font-weight: 800; letter-spacing: 3px; padding: 3px 14px; border-radius: 4px; transform: rotate(-6deg); font-size: 13px; opacity: 0.85; }
+      .barcode { margin: 14px 0 4px; height: 34px; background: repeating-linear-gradient(90deg, #2b2620 0px, #2b2620 2px, transparent 2px, transparent 4px, #2b2620 4px, #2b2620 5px, transparent 5px, transparent 9px); }
+      .footer-msg { font-weight: 700; margin-bottom: 2px; }
+      .footer-sub { color: #6b6255; font-size: 11px; margin-bottom: 10px; }
+      .footer-legal { color: #6b6255; font-size: 10px; line-height: 1.6; }
+
+      /* Ensure buttons/controls never print */
+      button { display:none !important; }
       @media print { body { margin: 0; } }
     </style></head><body>${receiptContent}</body></html>`);
   docRef.close();

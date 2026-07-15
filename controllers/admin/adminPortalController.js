@@ -4249,7 +4249,6 @@ window._adminEditCategory = function(id) {
     };
 
     try {
-      console.log("Saving category...");
       const currentUser = getCurrentUser();
       if (currentUser) {
         try {
@@ -4267,7 +4266,6 @@ window._adminEditCategory = function(id) {
       }
 
       await saveCategory(payload);
-      console.log("Category saved successfully!");
 
       // Refresh is best-effort so a UI issue can't hide a successful save.
       try {
@@ -4524,9 +4522,7 @@ This will not delete existing menu items bound to this category.`);
   if (!confirm) return;
 
   try {
-    console.log("Deleting category...");
     await deleteCategory(id);
-    console.log("Deleted successfully!");
     state.categories = await getCategories();
     renderAdminCategories();
     await ModalUtils.success("Deleted", "Category deleted successfully!");
