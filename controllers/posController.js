@@ -1356,6 +1356,18 @@ function generateReceipt(sale) {
     ? `<div class="totals-row sub"><span>Discount</span><span>− ${formatMoney(sale.discountAmount)}</span></div>`
     : "";
 
+  const totalItemSavings = (sale.items || []).reduce((sum, item) => {
+    const qty = Number(item.quantity) || 1;
+    const addons = Array.isArray(item.addons) ? item.addons : [];
+    const addonsTotal = addons.reduce((s, a) => s + (Number(a?.price) || 0), 0);
+    const discountPct = Number(item.discountPercent) || 0;
+    const originalUnit = (Number(item.price) || 0) + addonsTotal;
+    return sum + (originalUnit * discountPct * qty);
+  }, 0);
+  const itemDiscountBlock = totalItemSavings > 0
+    ? `<div class="totals-row sub"><span>Item discounts</span><span>− ${formatMoney(totalItemSavings)}</span></div>`
+    : "";
+
   const paidStamp = sale.unpaid ? "UNPAID" : sale.queued ? "PENDING" : "PAID";
 
   const receiptHTML = `
@@ -1392,6 +1404,7 @@ function generateReceipt(sale) {
         <hr class="rule">
 
         <div class="totals-row sub"><span>Subtotal</span><span>${formatMoney(sale.subtotal)}</span></div>
+        ${itemDiscountBlock}
         ${discountBlock}
         <div class="totals-row grand"><span>TOTAL</span><span>${formatMoney(sale.total)}</span></div>
         <div class="totals-row sub"><span>Tendered</span><span>${formatMoney(sale.amountTendered)}</span></div>

@@ -988,6 +988,18 @@ function buildAdminReceiptHTML(order) {
     ? `<div class="totals-row sub"><span>Discount</span><span>− ${formatMoney(order.discountAmount)}</span></div>`
     : "";
 
+  const totalItemSavings = items.reduce((sum, item) => {
+    const qty = Number(item.quantity || 1) || 1;
+    const addonTotal = Array.isArray(item.addons) ? item.addons.reduce((s, a) => s + (Number(a?.price) || 0), 0) : 0;
+    const discountPct = Number(item.discountPercent) || 0;
+    const originalUnit = (Number(item.price) || 0) + addonTotal;
+    const savings = originalUnit * discountPct * qty;
+    return sum + savings;
+  }, 0);
+  const itemDiscountBlock = totalItemSavings > 0
+    ? `<div class="totals-row sub"><span>Item discounts</span><span>− ${formatMoney(totalItemSavings)}</span></div>`
+    : "";
+
   const timestamp = date
     ? date.toLocaleString("en-PH", { month: "numeric", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" })
     : "-";
@@ -1026,6 +1038,7 @@ function buildAdminReceiptHTML(order) {
         <hr class="rule">
 
         <div class="totals-row sub"><span>Subtotal</span><span>${formatMoney(order.subtotal)}</span></div>
+        ${itemDiscountBlock}
         ${discountBlock}
         <div class="totals-row grand"><span>TOTAL</span><span>${formatMoney(order.total)}</span></div>
         <div class="totals-row sub"><span>Tendered</span><span>${formatMoney(order.amountTendered || order.total || 0)}</span></div>
