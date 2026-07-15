@@ -705,7 +705,7 @@ function getEligibleAddons(product) {
     i.category === "addons" || i.category === "Add-ons" || i.category === "Add-ons Food"
   );
   const productCategory = product.category;
-  const drinkCats = ["coffee", "oat series", "coconut series", "matcha series", "non-dairy specials", "non-coffee"];
+  const drinkCats = ["coffee", "oat series", "coconut series", "matcha series", "non-dairy specials", "non-coffee"];  
 
   if (drinkCats.includes(productCategory)) {
     return { label: "Add-ons", addons: drinkAddons };
