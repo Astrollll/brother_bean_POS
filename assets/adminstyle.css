@@ -1704,9 +1704,14 @@ button,
   border-right: 1px solid var(--border-color);
 }
 
+#ordersTableWrap table th:first-child,
+#ordersTableWrap table td:first-child {
+  border-left: 2px solid var(--border-color);
+}
+
 #ordersTableWrap table th:last-child,
 #ordersTableWrap table td:last-child {
-  border-right: none;
+  border-right: 2px solid var(--border-color);
 }
 
 #ordersTableWrap table tr:last-child td {
