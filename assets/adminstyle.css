@@ -1700,6 +1700,19 @@ button,
   align-items: flex-start;
 }
 
+#ordersTableWrap table td {
+  border-right: 1px solid var(--border-color);
+}
+
+#ordersTableWrap table th:last-child,
+#ordersTableWrap table td:last-child {
+  border-right: none;
+}
+
+#ordersTableWrap table tr:last-child td {
+  border-bottom: 2px solid var(--border-color);
+}
+
 .orders-stock-cell {
   display: flex;
   flex-direction: column;
