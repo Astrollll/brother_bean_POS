@@ -1698,24 +1698,31 @@ button,
   flex-direction: column;
   gap: 4px;
   align-items: flex-start;
+  padding: 8px 6px;
 }
 
 #ordersTableWrap table td {
   border-right: 1px solid var(--border-color);
 }
 
-#ordersTableWrap table th:first-child,
 #ordersTableWrap table td:first-child {
   border-left: 2px solid var(--border-color);
 }
 
-#ordersTableWrap table th:last-child,
 #ordersTableWrap table td:last-child {
   border-right: 2px solid var(--border-color);
 }
 
 #ordersTableWrap table tr:last-child td {
   border-bottom: 2px solid var(--border-color);
+}
+
+#ordersTableWrap table tr:last-child td:first-child {
+  border-bottom-left-radius: 6px;
+}
+
+#ordersTableWrap table tr:last-child td:last-child {
+  border-bottom-right-radius: 6px;
 }
 
 .orders-stock-cell {
