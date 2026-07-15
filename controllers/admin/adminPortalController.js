@@ -956,21 +956,23 @@ function buildAdminReceiptHTML(order) {
   const date = getOrderDate(order);
   const orderShort = String(order.orderId || order.id || "—").slice(-6) || "—";
   const payment = String(order.paymentMethod || "cash").toUpperCase();
-  const cashier = String(order.cashierName || order.staffName || order.staff || "Staff");
+  const cashier = String(order.cashierName || order.cashierUid || order.staffName || order.staff || "Staff");
   const paidStamp = String(order.status || "paid").toLowerCase() === "paid" ? "PAID" : String(order.status || "PENDING").toUpperCase();
   const items = Array.isArray(order.items) ? order.items : [];
 
   const rows = items.map((item) => {
     const qty = Number(item.quantity || 1) || 1;
     const addonTotal = Array.isArray(item.addons) ? item.addons.reduce((sum, addon) => sum + (Number(addon?.price) || 0), 0) : 0;
-    const unit = (Number(item.price) || 0) + addonTotal;
+    const discountPct = Number(item.discountPercent) || 0;
+    const unit = ((Number(item.price) || 0) + addonTotal) * (1 - discountPct);
     const lineTotal = unit * qty;
     const variant = [item.variant, item.temperature && item.temperature !== "N/A" ? item.temperature : null].filter(Boolean).join(" · ");
+    const discountLabel = discountPct > 0 ? ` <span style="font-size:10px;color:#999;">(-${Math.round(discountPct * 100)}%)</span>` : "";
 
     return `
       <tr>
         <td>
-          ${escapeHtml(item.name || "Item")}
+          ${escapeHtml(item.name || "Item")}${discountLabel}
           ${variant ? `<div class="admin-receipt-variant">${escapeHtml(variant)}</div>` : ""}
         </td>
         <td class="num">${qty}</td>

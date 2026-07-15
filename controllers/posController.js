@@ -5,7 +5,7 @@ import { getMenuItems, watchMenuItems }  from "../models/menuModel.js";
 import { getCategories } from "../models/categoryModel.js";
 import { getCategoryIconForName } from "../models/categoryModel.js";
 import { isDefaultTemplateMenuItem } from "../models/defaultSeedData.js";
-import { saveOrder, syncQueuedOrders, getPendingOrderCount, getTodayOrders } from "../models/orderModel.js";
+import { saveOrder, syncQueuedOrders, getPendingOrderCount, getTodayOrders, retryFailedInventoryDeduction } from "../models/orderModel.js";
 import { watchAuth, getCurrentUser, logout as authLogout } from "./auth/firebaseAuth.js";
 import { getUserProfile, getUserRole } from "../models/userModel.js";
 import { navigateTo } from "./utils/routes.js";
@@ -16,9 +16,7 @@ import {
   getStorageCount,
   getKitchenOrders,
   saveKitchenOrder,
-  removeKitchenOrder,
-  getOrderOutbox,
-  removeQueuedOrder
+  removeKitchenOrder
 } from "../models/storageModel.js";
 
 // ── STATE ──
@@ -34,12 +32,14 @@ let selectedTemp     = null;
 let selectedAddons   = [];
 let selectedQty      = 1;
 let activeProductId  = null;
+let cashierName      = "Staff";
 let salesHistory     = [];
 let dailyStats       = { orders: 0, totalSales: 0, discountsApplied: 0 };
 let isOnline         = navigator.onLine;
 const THEME_STORAGE_KEY = "bb-pos-theme";
 const CART_DENSITY_STORAGE_KEY = "bb-pos-cart-density";
 const UNPAID_ORDER_STORAGE_KEY = "bb-pos-unpaid-order";
+const ACTIVE_CART_STORAGE_KEY = "bb-pos-active-cart";
 const AUTH_OPERATION_TIMEOUT_MS = 6000;
 
 function cloneValue(value) {
@@ -76,6 +76,30 @@ function saveUnpaidOrder(order) {
 
 function clearUnpaidOrder() {
   localStorage.removeItem(UNPAID_ORDER_STORAGE_KEY);
+}
+
+function persistActiveCart() {
+  try {
+    if (cart.length === 0) {
+      localStorage.removeItem(ACTIVE_CART_STORAGE_KEY);
+    } else {
+      localStorage.setItem(ACTIVE_CART_STORAGE_KEY, JSON.stringify({ items: cloneValue(cart), isPwdSenior }));
+    }
+  } catch {
+    // non-fatal
+  }
+}
+
+function loadActiveCart() {
+  try {
+    const raw = localStorage.getItem(ACTIVE_CART_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || !Array.isArray(parsed.items) || parsed.items.length === 0) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
 }
 
 function setButtonBusyState(button, isBusy, busyLabel = "Working...") {
@@ -158,6 +182,8 @@ document.addEventListener("DOMContentLoaded", async () => {
       return;
     }
 
+    cashierName = profile?.fullName || profile?.displayName || profile?.email || "Staff";
+
     const role = roleResult.status === "fulfilled" ? roleResult.value : null;
     if (role && !["admin", "staff"].includes(role)) {
       navigateTo("login", { replace: true });
@@ -218,6 +244,19 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
 
     menuItems = sanitizePosMenuItems(await getMenuItems());
+
+    const savedCart = loadActiveCart();
+    if (savedCart) {
+      cart = savedCart.items;
+      if (savedCart.isPwdSenior) {
+        isPwdSenior = true;
+        const pwdCheck = document.getElementById("pwdSeniorCheck");
+        const discountToggle = document.getElementById("discountToggle");
+        if (pwdCheck) pwdCheck.checked = true;
+        if (discountToggle) discountToggle.classList.add("active");
+        document.querySelector(".discount-section")?.classList.add("is-active");
+      }
+    }
 
     persistPosState();
     renderCategoryControls();
@@ -280,6 +319,21 @@ document.addEventListener("DOMContentLoaded", async () => {
       isOnline = false;
       updateConnectivityStatus();
       showToast("You are offline. Orders will queue automatically.", "warning");
+    });
+
+    window.addEventListener("bb:inventory:deduction-failed", async (e) => {
+      const orderId = e?.detail?.orderId;
+      showToast("Inventory deduction failed. Retrying...", "warning");
+      try {
+        const retried = await retryFailedInventoryDeduction(orderId);
+        if (retried) {
+          showToast("Inventory deduction recovered on retry.", "success");
+        } else {
+          showToast("Inventory deduction still failing. Please contact admin.", "warning");
+        }
+      } catch {
+        showToast("Inventory retry failed. Please contact admin.", "warning");
+      }
     });
 
     if (navigator.onLine) {
@@ -877,7 +931,7 @@ export function updateCart() {
         ${item.variant ? `<div class="cart-item-variant">${item.variant}</div>` : ""}
         ${item.temperature && item.temperature !== "N/A" ? `<div class="cart-item-variant">${item.temperature}</div>` : ""}
         ${(item.addons||[]).length ? `<div class="cart-item-addons">${item.addons.map(a=>`<span class="cart-addon-tag">+${a.name}</span>`).join("")}</div>` : ""}
-        ${item.discountPercent > 0 ? `<div class="cart-item-discount">-20% OFF</div>` : ''}
+        ${item.discountPercent > 0 ? `<div class="cart-item-discount">-${Math.round(item.discountPercent * 100)}% OFF</div>` : ''}
         <div class="cart-item-price">₱${lineTotal.toFixed(2)}</div>
       </div>
       <div class="discount-controls">
@@ -916,6 +970,7 @@ export function updateCart() {
   }
 
   updateUnpaidOrderSidebar();
+  persistActiveCart();
 }
 
 window._updateQty = function(idx, change) {
@@ -975,6 +1030,7 @@ function buildUnpaidOrderFromCart() {
     amountTendered: summary.total,
     change: 0,
     items: cloneValue(cart) || [],
+    cashierName,
     unpaid: true,
   };
 }
@@ -1056,9 +1112,11 @@ window.searchProducts = function() {
 };
 
 // ── PAYMENT ──
+let capturedPaymentTotal = 0;
+
 window.openPaymentModal = function() {
-  const total = parseFloat(document.getElementById("total").textContent.replace("₱","").replace(",",""));
-  document.getElementById("paymentAmount").textContent = `₱${total.toFixed(2)}`;
+  capturedPaymentTotal = parseFloat(document.getElementById("total").textContent.replace("₱","").replace(",",""));
+  document.getElementById("paymentAmount").textContent = `₱${capturedPaymentTotal.toFixed(2)}`;
   document.getElementById("paymentModal").classList.add("active");
   enteredAmount = "";
   updateChangeDisplay();
@@ -1166,14 +1224,12 @@ function _flashNumpadBtn(value) {
 
 function updateDoneButton() {
   const doneBtn = document.getElementById("doneBtn");
-  const total   = parseFloat(document.getElementById("total").textContent.replace("₱","").replace(",",""));
-  doneBtn.disabled = currentPayMethod === "cash" ? (parseFloat(enteredAmount) || 0) < total : false;
+  doneBtn.disabled = currentPayMethod === "cash" ? (parseFloat(enteredAmount) || 0) < capturedPaymentTotal : false;
 }
 
 function updateChangeDisplay() {
-  const total   = parseFloat(document.getElementById("total").textContent.replace("₱","").replace(",",""));
   const entered = parseFloat(enteredAmount) || 0;
-  const change  = entered - total;
+  const change  = entered - capturedPaymentTotal;
   document.getElementById("tenderedDisplay").textContent = enteredAmount ? `₱${entered.toFixed(2)}` : "₱0.00";
   const display = document.getElementById("changeDisplay");
   if (enteredAmount && change >= 0) {
@@ -1187,18 +1243,15 @@ function updateChangeDisplay() {
 
 window.completePayment = async function() {
   const doneBtn = document.getElementById("doneBtn");
-  const total    = parseFloat(document.getElementById("total").textContent.replace("₱","").replace(",",""));
-  const subtotal = cart.reduce((s, item) => {
-    const addonTotal = (item.addons || []).reduce((a, x) => a + x.price, 0);
-    return s + (item.price + addonTotal) * item.quantity;
-  }, 0);
+  const total    = capturedPaymentTotal;
+  const { subtotal } = getCartSummary(cart);
   const amountTendered = currentPayMethod === "cash" ? (parseFloat(enteredAmount) || total) : total;
 
   setButtonBusyState(doneBtn, true, "Saving...");
   try {
     // Save to Firebase via model
     const user = getCurrentUser();
-    const sale = await saveOrder(cart, total, subtotal, currentPayMethod, isPwdSenior, amountTendered, user?.uid || null);
+    const sale = await saveOrder(cart, total, subtotal, currentPayMethod, isPwdSenior, amountTendered, user?.uid || null, cashierName);
 
     // Add to kitchen pending queue so the order appears in the sidebar
     saveKitchenOrder(sale);
@@ -1276,18 +1329,20 @@ function generateReceipt(sale) {
     const qty = Number(item.quantity) || 1;
     const addons = Array.isArray(item.addons) ? item.addons : [];
     const addonsTotal = addons.reduce((sum, addon) => sum + (Number(addon?.price) || 0), 0);
-    const unitPrice = basePrice + addonsTotal;
-    const lineTotal = unitPrice * qty;
+    const discountPct = Number(item.discountPercent) || 0;
+    const discountedUnitPrice = (basePrice + addonsTotal) * (1 - discountPct);
+    const lineTotal = discountedUnitPrice * qty;
     const variantText = [item.variant, item.temperature && item.temperature !== "N/A" ? item.temperature : null]
       .filter(Boolean)
       .join(" · ");
+    const discountLabel = discountPct > 0 ? ` <span style="font-size:10px;color:var(--gray);">(-${Math.round(discountPct * 100)}%)</span>` : "";
 
     return `
       <div class="item">
-        <div class="item-name"><span>${item.name}</span></div>
+        <div class="item-name"><span>${item.name}${discountLabel}</span></div>
         ${variantText ? `<div class="item-variant">${variantText}</div>` : ""}
         <div class="item-calc">
-          <span class="qty">${qty} x ${formatMoney(unitPrice)}</span>
+          <span class="qty">${qty} x ${formatMoney(discountedUnitPrice)}</span>
           <span>${formatMoney(lineTotal)}</span>
         </div>
       </div>
@@ -1325,7 +1380,7 @@ function generateReceipt(sale) {
         <div class="meta-row"><span class="label">Date</span><span class="value">${sale.timestamp || "—"}</span></div>
         <div class="meta-row"><span class="label">Order #</span><span class="value">${orderShort}</span></div>
         <div class="meta-row"><span class="label">Payment</span><span class="value">${(sale.paymentMethod || "—").toUpperCase()}</span></div>
-        <div class="meta-row"><span class="label">Cashier</span><span class="value">Staff</span></div>
+        <div class="meta-row"><span class="label">Cashier</span><span class="value">${escapeHtml(sale.cashierName || "Staff")}</span></div>
 
         <hr class="rule">
 
@@ -1391,6 +1446,7 @@ window.openPendingOrder = function(orderId) {
     amountTendered: payload.amountTendered || payload.total || 0,
     change: payload.change || 0,
     items: Array.isArray(payload.items) ? payload.items : [],
+    cashierName: payload.cashierName || "Staff",
     queued: true,
   };
 
@@ -1401,8 +1457,6 @@ window.openPendingOrder = function(orderId) {
     receiptModal.style.zIndex = '11000';
     receiptModal.classList.add("active");
     receiptModal.setAttribute('aria-hidden', 'false');
-  } else {
-    document.getElementById("receiptModal").classList.add("active");
   }
 };
 

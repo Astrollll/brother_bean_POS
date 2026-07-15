@@ -1,6 +1,6 @@
 import { db } from "../controllers/firebase.js";
 import {
-  collection, getDocs, setDoc, doc, query, where, Timestamp, deleteDoc, writeBatch, updateDoc
+  collection, getDocs, getDoc, setDoc, doc, query, where, Timestamp, deleteDoc, writeBatch, updateDoc
 } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js";
 import { getOrderOutbox, queueOrder, removeQueuedOrder } from "./storageModel.js";
 import { deductInventoryQuantities } from "./inventoryModel.js";
@@ -58,7 +58,17 @@ async function persistInventoryAfterSale(orderRef, orderData) {
       });
     }
   } catch (error) {
-    console.warn("[Orders] Inventory update finished after sale with an error.", error);
+    console.warn("[Orders] Inventory deduction failed after sale.", error);
+    try {
+      await updateDoc(orderRef, { inventoryDeductionFailed: true });
+    } catch {
+      // best-effort
+    }
+    if (typeof window !== "undefined" && window.dispatchEvent) {
+      window.dispatchEvent(new CustomEvent("bb:inventory:deduction-failed", {
+        detail: { orderId: orderData.orderId },
+      }));
+    }
   }
 }
 
@@ -188,9 +198,9 @@ export async function clearAllOrders() {
 }
 
 // Save a completed order to Firestore
-export async function saveOrder(cart, total, subtotal, paymentMethod, isPwdSenior, amountTendered, cashierUid = null) {
+export async function saveOrder(cart, total, subtotal, paymentMethod, isPwdSenior, amountTendered, cashierUid = null, cashierName = "Staff") {
   const change = amountTendered - total;
-  const orderId = Date.now().toString();
+  const orderId = crypto.randomUUID();
 
   const orderData = {
     orderId:        orderId,
@@ -198,6 +208,7 @@ export async function saveOrder(cart, total, subtotal, paymentMethod, isPwdSenio
     createdAtMs:    Date.now(),
     createdAt:      new Date(),
     cashierUid,
+    cashierName,
     paymentMethod,
     isPwdSenior,
     subtotal,
@@ -326,4 +337,44 @@ export function getQueuedOrders() {
 
 export function getPendingOrderCount() {
   return getOrderOutbox().length;
+}
+
+export async function retryFailedInventoryDeduction(orderId) {
+  if (!orderId) return false;
+  const orderRef = doc(db, ORDERS_COLLECTION, String(orderId));
+  const snap = await getDoc(orderRef);
+  if (!snap.exists()) return false;
+  const data = snap.data() || {};
+  if (!data.inventoryDeductionFailed) return false;
+
+  const items = Array.isArray(data.items) ? data.items : [];
+  const inventoryAlerts = [];
+  const inventoryDeductions = [];
+  let allSucceeded = true;
+
+  for (const item of items) {
+    if (item.recipe && item.recipe.length > 0) {
+      try {
+        const result = await deductInventoryQuantities(item.recipe, item.quantity);
+        if (Array.isArray(result?.alerts) && result.alerts.length > 0) {
+          inventoryAlerts.push(...result.alerts);
+        }
+        if (Array.isArray(result?.audit) && result.audit.length > 0) {
+          inventoryDeductions.push(...result.audit);
+        }
+      } catch {
+        allSucceeded = false;
+      }
+    }
+  }
+
+  if (allSucceeded) {
+    await updateDoc(orderRef, {
+      inventoryDeductionFailed: false,
+      inventoryAlerts,
+      inventoryDeductions,
+    });
+    return true;
+  }
+  return false;
 }
