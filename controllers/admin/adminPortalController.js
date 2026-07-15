@@ -1271,8 +1271,8 @@ function renderOrdersTable(orders) {
       <th style="width:110px">Time</th>
       <th style="width:80px">Amount</th>
       <th style="width:60px">Status</th>
-      <th style="width:130px">Stock Used</th>
-      <th style="width:70px">Action</th>
+      <th style="width:120px">Stock Used</th>
+      <th style="width:90px">Action</th>
     </tr>
     ${rows}
   </table>`;

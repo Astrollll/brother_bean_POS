@@ -1670,7 +1670,7 @@ button,
 }
 
 #ordersTableWrap table {
-  min-width: 820px;
+  min-width: 800px;
 }
 
 #ordersTableWrap table th:not(:first-child),
@@ -1690,6 +1690,10 @@ button,
   word-break: break-word;
   white-space: normal;
   max-width: 280px;
+}
+
+#ordersTableWrap table td:last-child {
+  white-space: nowrap;
 }
 
 .orders-stock-cell {
