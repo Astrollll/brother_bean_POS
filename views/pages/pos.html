@@ -920,6 +920,28 @@
       </div>
     </div>
 
+    <!-- Discount Quantity Picker Modal -->
+    <div class="modal-overlay" id="discountPickerModal" aria-hidden="true">
+      <div class="modal bb-modal bb-mini-modal" role="dialog" aria-modal="true" aria-labelledby="discountPickerTitle">
+        <div class="bb-modal-header">
+          <div class="bb-modal-title-wrap">
+            <div class="bb-modal-kicker">Item Discount</div>
+            <div class="bb-modal-title" id="discountPickerTitle">How many to discount?</div>
+          </div>
+          <button class="bb-icon-btn" type="button" onclick="closeDiscountPicker()" aria-label="Close">&times;</button>
+        </div>
+        <div class="bb-modal-body">
+          <div class="bb-discount-picker-item" id="discountPickerItemName"></div>
+          <div class="bb-discount-picker-grid" id="discountPickerGrid"></div>
+          <div class="bb-discount-picker-hint" id="discountPickerHint"></div>
+        </div>
+        <div class="bb-modal-footer">
+          <button class="bb-secondary-btn" type="button" onclick="closeDiscountPicker()">Cancel</button>
+          <button class="bb-primary-btn" type="button" onclick="applyDiscountPicker()" id="discountPickerApplyBtn" disabled>Apply</button>
+        </div>
+      </div>
+    </div>
+
     <!-- Toast Notification -->
     <div class="toast" id="toast">
       <span id="toastIcon"

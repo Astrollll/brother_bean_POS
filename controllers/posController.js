@@ -39,7 +39,6 @@ let isOnline         = navigator.onLine;
 const THEME_STORAGE_KEY = "bb-pos-theme";
 const CART_DENSITY_STORAGE_KEY = "bb-pos-cart-density";
 const UNPAID_ORDER_STORAGE_KEY = "bb-pos-unpaid-order";
-const ACTIVE_CART_STORAGE_KEY = "bb-pos-active-cart";
 const AUTH_OPERATION_TIMEOUT_MS = 6000;
 
 function cloneValue(value) {
@@ -76,30 +75,6 @@ function saveUnpaidOrder(order) {
 
 function clearUnpaidOrder() {
   localStorage.removeItem(UNPAID_ORDER_STORAGE_KEY);
-}
-
-function persistActiveCart() {
-  try {
-    if (cart.length === 0) {
-      localStorage.removeItem(ACTIVE_CART_STORAGE_KEY);
-    } else {
-      localStorage.setItem(ACTIVE_CART_STORAGE_KEY, JSON.stringify({ items: cloneValue(cart), isPwdSenior }));
-    }
-  } catch {
-    // non-fatal
-  }
-}
-
-function loadActiveCart() {
-  try {
-    const raw = localStorage.getItem(ACTIVE_CART_STORAGE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    if (!parsed || !Array.isArray(parsed.items) || parsed.items.length === 0) return null;
-    return parsed;
-  } catch {
-    return null;
-  }
 }
 
 function setButtonBusyState(button, isBusy, busyLabel = "Working...") {
@@ -245,18 +220,8 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     menuItems = sanitizePosMenuItems(await getMenuItems());
 
-    const savedCart = loadActiveCart();
-    if (savedCart) {
-      cart = savedCart.items;
-      if (savedCart.isPwdSenior) {
-        isPwdSenior = true;
-        const pwdCheck = document.getElementById("pwdSeniorCheck");
-        const discountToggle = document.getElementById("discountToggle");
-        if (pwdCheck) pwdCheck.checked = true;
-        if (discountToggle) discountToggle.classList.add("active");
-        document.querySelector(".discount-section")?.classList.add("is-active");
-      }
-    }
+    // Clear any stale cart data from previous sessions
+    try { localStorage.removeItem("bb-pos-active-cart"); } catch {}
 
     persistPosState();
     renderCategoryControls();
@@ -297,6 +262,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         closeLogoutModal();
         closeSalesDashboard();
         closePendingOrdersModal();
+        closeDiscountPicker();
       }
     });
 
@@ -970,7 +936,6 @@ export function updateCart() {
   }
 
   updateUnpaidOrderSidebar();
-  persistActiveCart();
 }
 
 window._updateQty = function(idx, change) {
@@ -985,9 +950,176 @@ window._removeItem = function(idx) {
 };
 
 window.toggleItemDiscount = function(idx) {
-  cart[idx].discountPercent = cart[idx].discountPercent > 0 ? 0 : 0.20;
-  showToast(`Item discount ${cart[idx].discountPercent ? 'enabled' : 'disabled'} (20%)`, 'success');
+  const item = cart[idx];
+  if (!item) return;
+
+  if (item.quantity > 1) {
+    openDiscountPicker(idx);
+    return;
+  }
+
+  const isTurningOn = item.discountPercent <= 0;
+  item.discountPercent = isTurningOn ? 0.20 : 0;
+
+  if (!isTurningOn) {
+    const matchIdx = cart.findIndex((other, i) =>
+      i !== idx &&
+      other.id === item.id &&
+      other.variant === item.variant &&
+      other.temperature === item.temperature &&
+      other.discountPercent <= 0 &&
+      JSON.stringify(other.addons) === JSON.stringify(item.addons)
+    );
+    if (matchIdx > -1) {
+      cart[matchIdx].quantity += item.quantity;
+      cart.splice(idx, 1);
+    }
+  }
+
+  showToast(isTurningOn ? 'Item discount enabled (20%)' : 'Item discount disabled', 'success');
   updateCart();
+};
+
+// ── DISCOUNT PICKER ──
+let _discountPickerIdx = -1;
+let _discountPickerSelected = 0;
+
+window.openDiscountPicker = function(idx) {
+  const item = cart[idx];
+  if (!item || item.quantity <= 1) return;
+
+  _discountPickerIdx = idx;
+
+  const totalQty = getTotalMatchingQty(item);
+  const alreadyDiscountedUnits = getAlreadyDiscountedCount(item);
+  _discountPickerSelected = Math.min(alreadyDiscountedUnits, totalQty);
+
+  document.getElementById("discountPickerItemName").textContent = item.name;
+  renderDiscountPickerGrid(totalQty, _discountPickerSelected);
+  updateDiscountPickerHint(totalQty);
+  updateDiscountPickerApplyBtn();
+
+  const modal = document.getElementById("discountPickerModal");
+  modal.classList.add("active");
+  modal.setAttribute("aria-hidden", "false");
+};
+
+function getTotalMatchingQty(item) {
+  return cart.reduce((sum, ci) => {
+    if (ci.id !== item.id || ci.variant !== item.variant || ci.temperature !== item.temperature) return sum;
+    if (JSON.stringify(ci.addons) !== JSON.stringify(item.addons)) return sum;
+    return sum + ci.quantity;
+  }, 0);
+}
+
+function getAlreadyDiscountedCount(item) {
+  return cart.reduce((count, ci) => {
+    if (ci.id !== item.id || ci.variant !== item.variant || ci.temperature !== item.temperature) return count;
+    if (JSON.stringify(ci.addons) !== JSON.stringify(item.addons)) return count;
+    if (ci.discountPercent > 0) return count + ci.quantity;
+    return count;
+  }, 0);
+}
+
+function renderDiscountPickerGrid(maxQty, alreadyDiscounted) {
+  const grid = document.getElementById("discountPickerGrid");
+  let html = "";
+  for (let n = 0; n <= maxQty; n++) {
+    const isSelected = n === _discountPickerSelected;
+    const label = n === 0 ? "None" : `${n}`;
+    const sub = n === 0 ? "No discount" : n === maxQty ? "All units" : "";
+    html += `<button class="bb-discount-picker-btn${isSelected ? " is-selected" : ""}" type="button" onclick="selectDiscountPickerQty(${n})">
+      <span>${label}</span>
+      ${sub ? `<span class="bb-discount-picker-btn-sub">${sub}</span>` : ""}
+    </button>`;
+  }
+  grid.innerHTML = html;
+}
+
+function updateDiscountPickerHint(maxQty) {
+  const hint = document.getElementById("discountPickerHint");
+  const unitPrice = cart[_discountPickerIdx]?.price || 0;
+  const savings = (_discountPickerSelected * unitPrice * 0.20).toFixed(2);
+  hint.textContent = _discountPickerSelected > 0
+    ? `${_discountPickerSelected} of ${maxQty} unit(s) will be 20% off — saves ₱${savings}`
+    : `Select how many of ${maxQty} unit(s) to discount`;
+}
+
+function updateDiscountPickerApplyBtn() {
+  const btn = document.getElementById("discountPickerApplyBtn");
+  btn.disabled = false;
+}
+
+window.selectDiscountPickerQty = function(qty) {
+  _discountPickerSelected = qty;
+  const item = cart[_discountPickerIdx];
+  if (!item) return;
+  const totalQty = getTotalMatchingQty(item);
+  renderDiscountPickerGrid(totalQty, qty);
+  updateDiscountPickerHint(totalQty);
+};
+
+window.applyDiscountPicker = function() {
+  const idx = _discountPickerIdx;
+  const item = cart[idx];
+  if (!item) { closeDiscountPicker(); return; }
+
+  const targetDiscountedQty = _discountPickerSelected;
+  const currentDiscountedQty = getAlreadyDiscountedCount(item);
+
+  if (targetDiscountedQty === currentDiscountedQty) {
+    closeDiscountPicker();
+    return;
+  }
+
+  const matchEntries = cart.filter((ci, i) =>
+    i !== idx &&
+    ci.id === item.id &&
+    ci.variant === item.variant &&
+    ci.temperature === item.temperature &&
+    JSON.stringify(ci.addons) === JSON.stringify(item.addons)
+  );
+
+  const mergedQty = matchEntries.reduce((s, ci) => s + ci.quantity, 0) + item.quantity;
+  const matchIndices = matchEntries.map((_, i) => cart.indexOf(matchEntries[i])).sort((a, b) => b - a);
+
+  let removalsBefore = 0;
+  for (const mi of matchIndices) {
+    if (mi < idx) removalsBefore++;
+    cart.splice(mi, 1);
+  }
+
+  const adjustedIdx = idx - removalsBefore;
+  if (adjustedIdx < 0 || adjustedIdx >= cart.length) { closeDiscountPicker(); updateCart(); return; }
+
+  const base = cart[adjustedIdx];
+  const baseClone = { ...base, addons: cloneValue(base.addons || []), recipe: cloneValue(base.recipe || []) };
+
+  cart.splice(adjustedIdx, 1);
+
+  const insertAt = Math.min(adjustedIdx, cart.length);
+  if (targetDiscountedQty > 0 && targetDiscountedQty < mergedQty) {
+    const discounted = { ...baseClone, quantity: targetDiscountedQty, discountPercent: 0.20 };
+    const remaining = { ...baseClone, quantity: mergedQty - targetDiscountedQty, discountPercent: 0 };
+    cart.splice(insertAt, 0, discounted, remaining);
+  } else if (targetDiscountedQty >= mergedQty) {
+    cart.splice(insertAt, 0, { ...baseClone, quantity: mergedQty, discountPercent: 0.20 });
+  } else {
+    cart.splice(insertAt, 0, { ...baseClone, quantity: mergedQty, discountPercent: 0 });
+  }
+
+  closeDiscountPicker();
+  showToast(targetDiscountedQty > 0 ? `${targetDiscountedQty} unit(s) discounted (20%)` : 'Discount removed', 'success');
+  updateCart();
+};
+
+window.closeDiscountPicker = function() {
+  const modal = document.getElementById("discountPickerModal");
+  if (!modal) return;
+  modal.classList.remove("active");
+  modal.setAttribute("aria-hidden", "true");
+  _discountPickerIdx = -1;
+  _discountPickerSelected = 0;
 };
 
 window.clearCart = function() {
