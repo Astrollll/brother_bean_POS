@@ -4,8 +4,16 @@
     "ignore": [
       "firebase.json",
       "firestore.rules",
+      "firestore.indexes.json",
       "**/.*",
-      "**/node_modules/**"
+      "**/node_modules/**",
+      "package.json",
+      "package-lock.json",
+      "TODO.md",
+      "CHANGELOG.md",
+      "README.md",
+      "scripts/**",
+      "config/app.config.example.js"
     ],
     "redirects": [
       {
