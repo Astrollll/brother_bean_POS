@@ -1041,8 +1041,12 @@ function buildAdminReceiptHTML(order) {
         ${itemDiscountBlock}
         ${discountBlock}
         <div class="totals-row grand"><span>TOTAL</span><span>${formatMoney(order.total)}</span></div>
+        ${order.paymentMethod === "split" ? `
+        <div class="totals-row sub"><span>Paid</span><span>Cash ${formatMoney(order.cashAmount || 0)} + GCash ${formatMoney(order.gcashAmount || 0)}</span></div>
+        ` : `
         <div class="totals-row sub"><span>Tendered</span><span>${formatMoney(order.amountTendered || order.total || 0)}</span></div>
         <div class="totals-row sub"><span>Change</span><span>${formatMoney(order.change)}</span></div>
+        `}
 
         <div class="stamp"><span>${escapeHtml(paidStamp)}</span></div>
 

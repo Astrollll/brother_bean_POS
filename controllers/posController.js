@@ -1585,8 +1585,12 @@ function generateReceipt(sale) {
         ${itemDiscountBlock}
         ${discountBlock}
         <div class="totals-row grand"><span>TOTAL</span><span>${formatMoney(sale.total)}</span></div>
+        ${sale.paymentMethod === "split" ? `
+        <div class="totals-row sub"><span>Paid</span><span>Cash ${formatMoney(sale.cashAmount || 0)} + GCash ${formatMoney(sale.gcashAmount || 0)}</span></div>
+        ` : `
         <div class="totals-row sub"><span>Tendered</span><span>${formatMoney(sale.amountTendered)}</span></div>
         <div class="totals-row sub"><span>Change</span><span>${formatMoney(sale.change)}</span></div>
+        `}
 
         <div class="stamp"><span>${paidStamp}</span></div>
 
