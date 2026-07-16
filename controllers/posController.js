@@ -34,7 +34,7 @@ let selectedQty      = 1;
 let activeProductId  = null;
 let cashierName      = "Staff";
 let salesHistory     = [];
-let dailyStats       = { orders: 0, totalSales: 0, discountsApplied: 0 };
+let dailyStats       = { orders: 0, totalSales: 0, discountsApplied: 0, cashReceived: 0 };
 let isOnline         = navigator.onLine;
 const THEME_STORAGE_KEY = "bb-pos-theme";
 const CART_DENSITY_STORAGE_KEY = "bb-pos-cart-density";
@@ -174,7 +174,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     dailyStats = storageData.dailyStats;
 
     if (checkDailyReset()) {
-      dailyStats = { orders: 0, totalSales: 0, discountsApplied: 0 };
+      dailyStats = { orders: 0, totalSales: 0, discountsApplied: 0, cashReceived: 0 };
       salesHistory = [];
       showToast("Daily stats reset for new day", "info");
       persistPosState();
@@ -212,6 +212,11 @@ document.addEventListener("DOMContentLoaded", async () => {
         orders: salesHistory.length,
         totalSales: salesHistory.reduce((sum, s) => sum + (Number(s.total) || 0), 0),
         discountsApplied: salesHistory.filter(s => s.isPwdSenior || s.discount).length,
+        cashReceived: salesHistory.reduce((sum, s) => {
+          if (s.paymentMethod === "split") return sum + (Number(s.cashAmount) || 0);
+          if (s.paymentMethod === "cash") return sum + (Number(s.total) || 0);
+          return sum;
+        }, 0),
       };
       persistPosState();
     } catch (err) {
@@ -1459,6 +1464,11 @@ window.completePayment = async function() {
     dailyStats.orders++;
     dailyStats.totalSales += total;
     if (isPwdSenior) dailyStats.discountsApplied++;
+    if (currentPayMethod === "cash") {
+      dailyStats.cashReceived += parseFloat(enteredAmount) || total;
+    } else if (currentPayMethod === "split") {
+      dailyStats.cashReceived += parseFloat(enteredAmount) || 0;
+    }
     salesHistory.push(sale);
     saveToStorage(salesHistory, dailyStats);
 
@@ -1732,7 +1742,7 @@ window.openDrawer = function() {
   const cashEl = document.getElementById("drawerCashValue");
   const txnEl = document.getElementById("drawerTxnValue");
 
-  if (cashEl) cashEl.textContent = `₱${dailyStats.totalSales.toFixed(2)}`;
+  if (cashEl) cashEl.textContent = `₱${(dailyStats.cashReceived || 0).toFixed(2)}`;
   if (txnEl) txnEl.textContent = String(dailyStats.orders);
 
   modal.classList.add("active");
