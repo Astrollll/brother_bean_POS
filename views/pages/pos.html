@@ -532,6 +532,19 @@
                 ></span>
                 <span class="bb-method-text">GCash</span>
               </button>
+              <button
+                class="bb-method"
+                type="button"
+                data-method="split"
+                onclick="selectPaymentMethod('split')"
+                role="tab"
+                aria-selected="false"
+              >
+                <span class="bb-method-ico"
+                  ><i class="ri-split-cells-horizontal" aria-hidden="true"></i
+                ></span>
+                <span class="bb-method-text">Split</span>
+              </button>
             </div>
           </div>
 
@@ -550,6 +563,18 @@
             <button class="bb-pad bb-pad-action" onclick="clearAmount()">
               Clear
             </button>
+          </div>
+
+          <div class="bb-split-display" id="splitDisplay" style="display:none;">
+            <div class="bb-split-row">
+              <span class="bb-split-label"><i class="ri-money-dollar-circle-line" aria-hidden="true"></i> Cash</span>
+              <span class="bb-split-value" id="splitCashAmount">₱0.00</span>
+            </div>
+            <div class="bb-split-row">
+              <span class="bb-split-label"><i class="ri-smartphone-line" aria-hidden="true"></i> GCash</span>
+              <span class="bb-split-value" id="splitGcashAmount">₱0.00</span>
+            </div>
+            <div class="bb-split-hint" id="splitHint">Enter cash amount on the numpad</div>
           </div>
         </div>
 

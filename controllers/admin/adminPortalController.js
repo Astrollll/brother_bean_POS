@@ -1025,6 +1025,10 @@ function buildAdminReceiptHTML(order) {
         <div class="meta-row"><span class="label">Date</span><span class="value">${escapeHtml(timestamp)}</span></div>
         <div class="meta-row"><span class="label">Order #</span><span class="value">${escapeHtml(orderShort)}</span></div>
         <div class="meta-row"><span class="label">Payment</span><span class="value">${escapeHtml(payment)}</span></div>
+        ${order.paymentMethod === "split" ? `
+        <div class="meta-row"><span class="label">Cash</span><span class="value">${formatMoney(order.cashAmount || 0)}</span></div>
+        <div class="meta-row"><span class="label">GCash</span><span class="value">${formatMoney(order.gcashAmount || 0)}</span></div>
+        ` : ""}
         <div class="meta-row"><span class="label">Cashier</span><span class="value">${escapeHtml(cashier)}</span></div>
 
         <hr class="rule">

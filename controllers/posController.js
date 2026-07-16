@@ -1252,6 +1252,8 @@ window.openPaymentModal = function() {
   document.getElementById("paymentAmount").textContent = `₱${capturedPaymentTotal.toFixed(2)}`;
   document.getElementById("paymentModal").classList.add("active");
   enteredAmount = "";
+  const splitDisp = document.getElementById("splitDisplay");
+  if (splitDisp) splitDisp.style.display = "none";
   updateChangeDisplay();
   updateDoneButton();
 };
@@ -1270,8 +1272,11 @@ window.selectPaymentMethod = function(method) {
   });
   const numpad      = document.getElementById("cashNumpad");
   const changeDisp  = document.getElementById("changeDisplay");
-  numpad.style.display     = method === "cash" ? "grid"  : "none";
+  const splitDisp   = document.getElementById("splitDisplay");
+  numpad.style.display     = method === "gcash" ? "none" : "grid";
   changeDisp.style.display = method === "cash" ? "block" : "none";
+  splitDisp.style.display  = method === "split" ? "block" : "none";
+  updateChangeDisplay();
   updateDoneButton();
 };
 
@@ -1357,11 +1362,38 @@ function _flashNumpadBtn(value) {
 
 function updateDoneButton() {
   const doneBtn = document.getElementById("doneBtn");
-  doneBtn.disabled = currentPayMethod === "cash" ? (parseFloat(enteredAmount) || 0) < capturedPaymentTotal : false;
+  if (currentPayMethod === "cash") {
+    doneBtn.disabled = (parseFloat(enteredAmount) || 0) < capturedPaymentTotal;
+  } else if (currentPayMethod === "split") {
+    const cashEntered = parseFloat(enteredAmount) || 0;
+    doneBtn.disabled = cashEntered <= 0 || cashEntered >= capturedPaymentTotal;
+  } else {
+    doneBtn.disabled = false;
+  }
 }
 
 function updateChangeDisplay() {
   const entered = parseFloat(enteredAmount) || 0;
+
+  if (currentPayMethod === "split") {
+    const cashAmount = entered;
+    const gcashAmount = Math.max(0, capturedPaymentTotal - cashAmount);
+    document.getElementById("tenderedDisplay").textContent = enteredAmount ? `₱${cashAmount.toFixed(2)}` : "₱0.00";
+    const display = document.getElementById("changeDisplay");
+    display.innerHTML = "";
+    document.getElementById("splitCashAmount").textContent = `₱${cashAmount.toFixed(2)}`;
+    document.getElementById("splitGcashAmount").textContent = `₱${gcashAmount.toFixed(2)}`;
+    const hint = document.getElementById("splitHint");
+    if (cashAmount <= 0) {
+      hint.textContent = "Enter cash amount on the numpad";
+    } else if (cashAmount >= capturedPaymentTotal) {
+      hint.textContent = "Cash covers the full amount. Use Cash payment instead.";
+    } else {
+      hint.textContent = `GCash portion: ₱${gcashAmount.toFixed(2)}`;
+    }
+    return;
+  }
+
   const change  = entered - capturedPaymentTotal;
   document.getElementById("tenderedDisplay").textContent = enteredAmount ? `₱${entered.toFixed(2)}` : "₱0.00";
   const display = document.getElementById("changeDisplay");
@@ -1378,13 +1410,26 @@ window.completePayment = async function() {
   const doneBtn = document.getElementById("doneBtn");
   const total    = capturedPaymentTotal;
   const { subtotal } = getCartSummary(cart);
-  const amountTendered = currentPayMethod === "cash" ? (parseFloat(enteredAmount) || total) : total;
+
+  let amountTendered;
+  let cashAmount = null;
+  let gcashAmount = null;
+
+  if (currentPayMethod === "cash") {
+    amountTendered = parseFloat(enteredAmount) || total;
+  } else if (currentPayMethod === "split") {
+    cashAmount = parseFloat(enteredAmount) || 0;
+    gcashAmount = Math.max(0, total - cashAmount);
+    amountTendered = total;
+  } else {
+    amountTendered = total;
+  }
 
   setButtonBusyState(doneBtn, true, "Saving...");
   try {
     // Save to Firebase via model
     const user = getCurrentUser();
-    const sale = await saveOrder(cart, total, subtotal, currentPayMethod, isPwdSenior, amountTendered, user?.uid || null, cashierName);
+    const sale = await saveOrder(cart, total, subtotal, currentPayMethod, isPwdSenior, amountTendered, user?.uid || null, cashierName, cashAmount, gcashAmount);
 
     // Add to kitchen pending queue so the order appears in the sidebar
     saveKitchenOrder(sale);
@@ -1524,6 +1569,10 @@ function generateReceipt(sale) {
         <div class="meta-row"><span class="label">Date</span><span class="value">${sale.timestamp || "—"}</span></div>
         <div class="meta-row"><span class="label">Order #</span><span class="value">${orderShort}</span></div>
         <div class="meta-row"><span class="label">Payment</span><span class="value">${(sale.paymentMethod || "—").toUpperCase()}</span></div>
+        ${sale.paymentMethod === "split" ? `
+        <div class="meta-row"><span class="label">Cash</span><span class="value">${formatMoney(sale.cashAmount || 0)}</span></div>
+        <div class="meta-row"><span class="label">GCash</span><span class="value">${formatMoney(sale.gcashAmount || 0)}</span></div>
+        ` : ""}
         <div class="meta-row"><span class="label">Cashier</span><span class="value">${escapeHtml(sale.cashierName || "Staff")}</span></div>
 
         <hr class="rule">

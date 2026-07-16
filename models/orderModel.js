@@ -229,7 +229,7 @@ export async function clearAllOrders() {
 }
 
 // Save a completed order to Firestore
-export async function saveOrder(cart, total, subtotal, paymentMethod, isPwdSenior, amountTendered, cashierUid = null, cashierName = "Staff") {
+export async function saveOrder(cart, total, subtotal, paymentMethod, isPwdSenior, amountTendered, cashierUid = null, cashierName = "Staff", cashAmount = null, gcashAmount = null) {
   const change = amountTendered - total;
   const orderId = crypto.randomUUID();
 
@@ -247,6 +247,7 @@ export async function saveOrder(cart, total, subtotal, paymentMethod, isPwdSenio
     total,
     amountTendered,
     change,
+    ...(paymentMethod === "split" ? { cashAmount: cashAmount || 0, gcashAmount: gcashAmount || 0 } : {}),
     items: cart.map(item => ({
       menuItemId:  item.id,
       name:        item.name,

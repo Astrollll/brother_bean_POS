@@ -2376,6 +2376,43 @@ button,
   border-color: rgba(239, 68, 68, 0.30);
 }
 
+.bb-split-display {
+  background: rgba(245, 158, 11, 0.08);
+  border: 1px solid rgba(245, 158, 11, 0.25);
+  border-radius: var(--radius-lg, 16px);
+  padding: var(--spacing-lg, 16px);
+  margin-top: var(--spacing-md, 12px);
+}
+
+.bb-split-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--spacing-sm, 6px) 0;
+}
+
+.bb-split-label {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm, 6px);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-secondary, #6b6255);
+}
+
+.bb-split-value {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-primary, #2d2013);
+}
+
+.bb-split-hint {
+  font-size: 13px;
+  color: var(--text-tertiary, #8b7d6b);
+  margin-top: var(--spacing-sm, 6px);
+  text-align: center;
+}
+
 @keyframes modalSlideUp {
   from {
     opacity: 0;
@@ -4464,6 +4501,23 @@ body[data-theme="dark"] .bb-addon.is-selected,
 body[data-theme="dark"] .bb-method.active {
   background: linear-gradient(135deg, rgba(220, 184, 146, 0.25), rgba(74, 47, 25, 0.35)) !important;
   border-color: rgba(220, 184, 146, 0.78) !important;
+}
+
+body[data-theme="dark"] .bb-split-display {
+  background: rgba(245, 158, 11, 0.12);
+  border-color: rgba(245, 158, 11, 0.30);
+}
+
+body[data-theme="dark"] .bb-split-label {
+  color: #DDB892;
+}
+
+body[data-theme="dark"] .bb-split-value {
+  color: #F5D6A4;
+}
+
+body[data-theme="dark"] .bb-split-hint {
+  color: #8b7d6b;
 }
 
 body[data-theme="dark"] .bb-primary-btn,
