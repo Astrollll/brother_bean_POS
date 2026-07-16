@@ -2037,7 +2037,7 @@ async function loadAccountsPage() {
           </div>
           <div>
             <div class="ls-label">Password</div>
-            <input class="ls-input" id="newAccPassword" type="password" placeholder="min 6 chars" style="margin-bottom:0;" required>
+            <input class="ls-input" id="newAccPassword" type="password" placeholder="min 6 chars" autocomplete="new-password" style="margin-bottom:0;" required>
           </div>
           <div>
             <div class="ls-label">Role</div>
