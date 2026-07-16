@@ -256,6 +256,7 @@ function setupTopbarActions() {
 function showPage(pageId) {
   const mainEl = document.querySelector(".main");
   if (mainEl) mainEl.scrollTop = 0;
+  if (document.activeElement) document.activeElement.blur();
   document.querySelectorAll(".page").forEach(p => p.classList.remove("active"));
   document.getElementById(pageId)?.classList.add("active");
 }
