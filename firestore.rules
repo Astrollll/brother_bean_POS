@@ -89,6 +89,11 @@ service cloud.firestore {
         allow write: if isAdmin();
       }
     }
+
+    match /settings/{docId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
   }
 }
 
