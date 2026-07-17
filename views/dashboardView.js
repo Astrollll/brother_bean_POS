@@ -667,14 +667,21 @@ export function renderAdminDashboard({ orders = [], menuItems = [], staff = [], 
   // bind quick action buttons
   bindDashboardQuickActions();
 
-  // bind "See all" transactions button
+  // bind "See all" transactions button - toggle between 5 and all
   const seeAllBtn = document.getElementById("seeAllTransactionsBtn");
   if (seeAllBtn) {
-    seeAllBtn.addEventListener("click", () => {
-      try {
-        if (window.showPage) window.showPage("orders", document.getElementById("nav-orders"), "Transactions");
-      } catch (err) {
-        console.warn("[Dashboard] see all transactions failed", err);
+    const newBtn = seeAllBtn.cloneNode(true);
+    seeAllBtn.replaceWith(newBtn);
+    newBtn.addEventListener("click", () => {
+      const expanded = newBtn.getAttribute("data-expanded") === "true";
+      if (expanded) {
+        renderRecentOrders(sortedOrders.slice(0, 5));
+        newBtn.textContent = "See all";
+        newBtn.setAttribute("data-expanded", "false");
+      } else {
+        renderRecentOrders(sortedOrders);
+        newBtn.textContent = "Show less";
+        newBtn.setAttribute("data-expanded", "true");
       }
     });
   }
