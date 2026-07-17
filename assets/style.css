@@ -882,21 +882,61 @@ body[data-theme="dark"] .sidebar-pending-empty {
   align-items: end;
   gap: 5px;
   padding: 8px 0 6px;
+  position: relative;
+  background-image: repeating-linear-gradient(
+    to top,
+    transparent,
+    transparent calc(25% - 1px),
+    rgba(107, 68, 35, 0.05) calc(25% - 1px),
+    rgba(107, 68, 35, 0.05) 25%
+  );
+}
+
+.sales-chart-bar-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: end;
+  height: 100%;
+  position: relative;
 }
 
 .sales-chart-bar {
   width: 100%;
   min-height: 4px;
-  border-radius: 999px;
-  background: linear-gradient(180deg, #FBBF24, #F59E0B, #6B4423);
-  box-shadow: 0 3px 10px rgba(107, 68, 35, 0.2);
+  border-radius: 6px 6px 2px 2px;
+  background: linear-gradient(180deg, #FBBF24 0%, #F59E0B 40%, #6B4423 100%);
+  box-shadow: 0 3px 10px rgba(107, 68, 35, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.25);
   transform-origin: bottom;
   transition: height 340ms ease, opacity 220ms ease;
-  animation: sales-bar-rise 500ms ease;
+  animation: sales-bar-rise 600ms ease backwards;
+  position: relative;
 }
 
 .sales-chart-bar.is-idle {
-  opacity: 0.35;
+  opacity: 0.15;
+  background: linear-gradient(180deg, rgba(200, 190, 175, 0.4), rgba(160, 150, 135, 0.2));
+  box-shadow: none;
+}
+
+.sales-chart-bar-label {
+  font-size: 9px;
+  font-weight: 800;
+  color: var(--text-muted);
+  white-space: nowrap;
+  line-height: 1;
+  margin-bottom: 4px;
+  opacity: 0;
+  transition: opacity 200ms ease;
+  pointer-events: none;
+}
+
+.sales-chart-bar-wrap:hover .sales-chart-bar-label {
+  opacity: 1;
+}
+
+.sales-chart-bars-lg .sales-chart-bar-wrap .sales-chart-bar-label {
+  font-size: 10px;
 }
 
 .sales-chart-axis {
@@ -910,8 +950,8 @@ body[data-theme="dark"] .sidebar-pending-empty {
 
 @keyframes sales-bar-rise {
   from {
-    transform: scaleY(0.15);
-    opacity: 0.2;
+    transform: scaleY(0.1);
+    opacity: 0;
   }
 
   to {
@@ -967,6 +1007,17 @@ body[data-theme="dark"] .sidebar-pending-empty {
   margin-top: 12px;
   height: 250px;
   gap: 8px;
+  background-image: repeating-linear-gradient(
+    to top,
+    transparent,
+    transparent calc(20% - 1px),
+    rgba(107, 68, 35, 0.05) calc(20% - 1px),
+    rgba(107, 68, 35, 0.05) 20%
+  );
+}
+
+.sales-chart-bars-lg .sales-chart-bar {
+  border-radius: 8px 8px 3px 3px;
 }
 
 .sales-chart-axis-lg {
@@ -4731,7 +4782,31 @@ body[data-theme="dark"] .modal-overlay {
 }
 
 body[data-theme="dark"] .sales-chart-bar {
-  background: linear-gradient(180deg, #DDB892, #B48A5C, #7c4e28) !important;
+  background: linear-gradient(180deg, #DDB892 0%, #B48A5C 40%, #7c4e28 100%) !important;
+}
+
+body[data-theme="dark"] .sales-chart-bar.is-idle {
+  background: linear-gradient(180deg, rgba(160, 140, 120, 0.3), rgba(100, 85, 70, 0.15)) !important;
+}
+
+body[data-theme="dark"] .sales-chart-bars {
+  background-image: repeating-linear-gradient(
+    to top,
+    transparent,
+    transparent calc(25% - 1px),
+    rgba(220, 184, 146, 0.06) calc(25% - 1px),
+    rgba(220, 184, 146, 0.06) 25%
+  ) !important;
+}
+
+body[data-theme="dark"] .sales-chart-bars-lg {
+  background-image: repeating-linear-gradient(
+    to top,
+    transparent,
+    transparent calc(20% - 1px),
+    rgba(220, 184, 146, 0.06) calc(20% - 1px),
+    rgba(220, 184, 146, 0.06) 20%
+  ) !important;
 }
 
 /* Dark mode polish: softer contrast, clearer hierarchy, better readability */
@@ -4871,11 +4946,6 @@ body[data-theme="dark"] .remove-btn {
 body[data-theme="dark"] .remove-btn:hover {
   background: rgba(239, 68, 68, 0.2) !important;
   color: #FCA5A5;
-}
-
-body[data-theme="dark"] .sales-chart-bar {
-  background: linear-gradient(180deg, #DDB892, #7c4e28);
-  box-shadow: 0 4px 12px rgba(107, 68, 35, 0.35);
 }
 
 body[data-theme="dark"] .storage-indicator,

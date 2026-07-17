@@ -2006,12 +2006,18 @@ function renderSalesBars(barsId, axisId) {
   const slots = getSalesByTwoHourSlots();
   const maxTotal = Math.max(...slots.map(s => s.total), 1);
   const bucketLabels = ["12A", "2A", "4A", "6A", "8A", "10A", "12P", "2P", "4P", "6P", "8P", "10P"];
+  const isLarge = barsId === "salesDashboardBars";
 
   barsEl.innerHTML = slots
-    .map((s) => {
+    .map((s, i) => {
       const h = Math.max(8, Math.round((s.total / maxTotal) * 100));
       const idleClass = s.orders === 0 ? " is-idle" : "";
-      return `<div class="sales-chart-bar${idleClass}" style="height:${h}%" title="${s.label}: ₱${s.total.toFixed(2)} (${s.orders} orders)"></div>`;
+      const delay = i * 50;
+      const label = isLarge && s.orders > 0 ? `<span class="sales-chart-bar-label">₱${s.total.toFixed(0)}</span>` : "";
+      return `<div class="sales-chart-bar-wrap">
+        ${label}
+        <div class="sales-chart-bar${idleClass}" style="height:${h}%;animation-delay:${delay}ms" title="${s.label}: ₱${s.total.toFixed(2)} (${s.orders} orders)"></div>
+      </div>`;
     })
     .join("");
 
