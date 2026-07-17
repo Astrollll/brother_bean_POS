@@ -1,4 +1,4 @@
-import { logout as authLogout, watchAuth, createAuthUserByAdmin, getCurrentUser } from "../auth/firebaseAuth.js";
+import { logout as authLogout, watchAuth, createAuthUserByAdmin, updatePasswordByAdmin, getCurrentUser } from "../auth/firebaseAuth.js";
 import { getUserRole, getUserProfile, listUsers, setUserRole, setUserProfile, ensureAdminAccessProfile } from "../../models/userModel.js";
 import { getMenuItems, saveMenuItem, deleteMenuItem, clearMenuItems } from "../../models/menuModel.js";
 import { getCategories, saveCategory, deleteCategory, getCategoryIconForName } from "../../models/categoryModel.js";
@@ -2580,6 +2580,11 @@ function openAccountEditModal(account) {
           <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">Email cannot be changed from here.</div>
         </div>
         <div style="margin-bottom:16px;">
+          <label style="display:block;font-size:12px;font-weight:700;color:var(--text-secondary);margin-bottom:5px;text-transform:uppercase;letter-spacing:0.5px;">New Password</label>
+          <input type="password" id="accountEditPassword" placeholder="Leave blank to keep current" style="width:100%;padding:10px 12px;border:1px solid var(--border-color);border-radius:8px;font-size:14px;background:var(--bg-primary);color:var(--text-primary);box-sizing:border-box;" />
+          <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">Minimum 6 characters. Leave blank to keep current password.</div>
+        </div>
+        <div style="margin-bottom:16px;">
           <label style="display:block;font-size:12px;font-weight:700;color:var(--text-secondary);margin-bottom:5px;text-transform:uppercase;letter-spacing:0.5px;">Role</label>
           <select id="accountEditRole" style="width:100%;padding:10px 12px;border:1px solid var(--border-color);border-radius:8px;font-size:14px;background:var(--bg-primary);color:var(--text-primary);box-sizing:border-box;">
             <option value="admin" ${currentRole === "admin" ? "selected" : ""}>Admin</option>
@@ -2600,9 +2605,15 @@ function openAccountEditModal(account) {
   document.getElementById("accountEditSaveBtn").addEventListener("click", async () => {
     const newFullName = document.getElementById("accountEditFullName").value.trim();
     const newRole = document.getElementById("accountEditRole").value;
+    const newPassword = document.getElementById("accountEditPassword").value;
 
     if (!newFullName) {
       await ModalUtils.warning("Validation", "Full name is required.");
+      return;
+    }
+
+    if (newPassword && newPassword.length < 6) {
+      await ModalUtils.warning("Validation", "Password must be at least 6 characters.");
       return;
     }
 
@@ -2610,6 +2621,10 @@ function openAccountEditModal(account) {
       const saveBtn = document.getElementById("accountEditSaveBtn");
       saveBtn.disabled = true;
       saveBtn.textContent = "Saving...";
+
+      if (newPassword) {
+        await updatePasswordByAdmin(account.uid, newPassword);
+      }
 
       await setUserProfile(account.uid, {
         fullName: newFullName,
@@ -2632,7 +2647,7 @@ function openAccountEditModal(account) {
       modal.setAttribute("aria-hidden", "true");
 
       await refreshAccountsRecords();
-      await ModalUtils.success("Account Updated", "Account details have been saved.");
+      await ModalUtils.success("Account Updated", newPassword ? "Account details and password have been saved." : "Account details have been saved.");
     } catch (error) {
       await ModalUtils.error("Save Failed", error?.message || "Unable to update account.");
     }

@@ -52,3 +52,36 @@ export async function createAuthUserByAdmin(email, password) {
   };
 }
 
+export async function updatePasswordByAdmin(targetUid, newPassword) {
+  const apiKey = String(firebaseConfig?.apiKey || "").trim();
+  if (!apiKey) {
+    throw new Error("Firebase API key is missing.");
+  }
+
+  if (!auth.currentUser) {
+    throw new Error("No authenticated admin user.");
+  }
+
+  const idToken = await auth.currentUser.getIdToken();
+
+  const response = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:update?key=${apiKey}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      idToken,
+      targetUserId: targetUid,
+      password: newPassword,
+      returnSecureToken: false,
+    }),
+  });
+
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const code = String(payload?.error?.message || "auth/password-update-failed").trim();
+    const error = new Error(code);
+    throw error;
+  }
+
+  return true;
+}
+
