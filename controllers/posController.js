@@ -1327,6 +1327,7 @@ window.toggleDiscount = function() {
 
 window.toggleEmployeeOrder = function() {
   isEmployeeOrder = !isEmployeeOrder;
+  document.getElementById("employeeOrderCheck").checked = isEmployeeOrder;
   document.getElementById("employeeOrderToggle")?.classList.toggle("active", isEmployeeOrder);
   document.querySelector(".employee-order-section")?.classList.toggle("is-active", isEmployeeOrder);
   updateCart();
@@ -1602,6 +1603,7 @@ window.completePayment = async function() {
     document.getElementById("discountToggle").classList.remove("active");
     document.getElementById("employeeOrderToggle")?.classList.remove("active");
     document.querySelector(".employee-order-section")?.classList.remove("is-active");
+    document.getElementById("employeeOrderCheck").checked = false;
     updateCart();
     updateStats();
     closePaymentModal();
