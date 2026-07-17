@@ -1168,9 +1168,7 @@ function updateUnpaidOrderSidebar() {
 
   if (unpaidCountEl) unpaidCountEl.textContent = String(unpaidCount);
   if (unpaidBtn) {
-    unpaidBtn.disabled = unpaidCount === 0;
-    unpaidBtn.textContent = unpaidCount === 0 ? "No unpaid orders" : "View unpaid orders";
-    unpaidBtn.onclick = unpaidCount === 0 ? null : openUnpaidOrdersModal;
+    unpaidBtn.textContent = "View unpaid orders";
   }
 }
 
