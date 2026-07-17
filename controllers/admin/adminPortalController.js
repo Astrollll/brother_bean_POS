@@ -665,6 +665,9 @@ async function loadDashboard() {
       getSchedule().catch(() => ({})),
     ]);
 
+    state.ordersToday = ordersToday;
+    try { renderNotifications(); } catch (_) {}
+
     // Render legacy dashboard (uses today's orders, menu items, and staff schedule)
     try {
       renderAdminDashboard({ orders: ordersToday, menuItems, staff, schedule });
@@ -762,7 +765,6 @@ async function loadDashboard() {
       console.warn("[Analytics] renderSalesAnalyticsDashboard failed:", e);
     }
 
-    try { renderNotifications(); } catch (_) {}
   } finally {
     showApp();
   }
