@@ -3348,7 +3348,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       let role = null;
 
       try {
-        profile = await getUserProfile(activeUser.uid);
+        profile = await withTimeout(getUserProfile(activeUser.uid), AUTH_OPERATION_TIMEOUT_MS, "getUserProfile");
       } catch (profileError) {
         console.warn("[Auth] Unable to read user profile; continuing with role fallback.", profileError);
       }
@@ -3363,20 +3363,20 @@ document.addEventListener("DOMContentLoaded", async () => {
       }
 
       try {
-        role = await getUserRole(activeUser.uid);
+        role = await withTimeout(getUserRole(activeUser.uid), AUTH_OPERATION_TIMEOUT_MS, "getUserRole");
       } catch (roleError) {
         console.warn("[Auth] Unable to read user role; defaulting to admin access path.", roleError);
       }
 
       if (!role) {
         try {
-          await ensureAdminAccessProfile(activeUser.uid, {
+          await withTimeout(ensureAdminAccessProfile(activeUser.uid, {
             fullName: profile?.fullName || activeUser.displayName || activeUser.email || "Admin",
             displayName: profile?.displayName || activeUser.displayName || activeUser.email || "Admin",
             email: activeUser.email || profile?.email || "",
             status: profile?.status || "active",
             isDefaultAdmin: profile?.isDefaultAdmin === true,
-          });
+          }), AUTH_OPERATION_TIMEOUT_MS, "ensureAdminAccessProfile");
           role = "admin";
         } catch (seedError) {
           console.warn("[Auth] Unable to backfill admin profile; continuing with admin UI fallback.", seedError);
