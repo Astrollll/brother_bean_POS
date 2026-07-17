@@ -756,6 +756,33 @@ button,
   padding: 10px 0;
 }
 
+.unpaid-item-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 0 0 auto;
+}
+
+.unpaid-delete-btn {
+  background: rgba(200, 60, 50, 0.12) !important;
+  color: #c43c32 !important;
+  border-color: rgba(200, 60, 50, 0.25) !important;
+}
+
+.unpaid-delete-btn:hover {
+  background: rgba(200, 60, 50, 0.22) !important;
+}
+
+body[data-theme="dark"] .unpaid-delete-btn {
+  background: rgba(220, 80, 60, 0.2) !important;
+  color: #e07060 !important;
+  border-color: rgba(220, 80, 60, 0.3) !important;
+}
+
+body[data-theme="dark"] .unpaid-delete-btn:hover {
+  background: rgba(220, 80, 60, 0.35) !important;
+}
+
 .sidebar-pending-open-btn {
   width: 100%;
   border: 1px solid rgba(107, 68, 35, 0.18);
@@ -793,7 +820,8 @@ button,
   -webkit-user-select: none;
 }
 
-#pendingOrdersOpenCount {
+#pendingOrdersOpenCount,
+#unpaidOrderOpenCount {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -10192,7 +10220,8 @@ body[data-theme="dark"] .sidebar-pending-refresh {
 }
 
 /* Fix: pending orders count badge */
-body[data-theme="dark"] #pendingOrdersOpenCount {
+body[data-theme="dark"] #pendingOrdersOpenCount,
+body[data-theme="dark"] #unpaidOrderOpenCount {
   background: rgba(220, 184, 146, 0.18) !important;
   color: #DDB892 !important;
 }

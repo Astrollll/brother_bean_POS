@@ -57,24 +57,43 @@ function getCartSummary(sourceCart = cart) {
   return { subtotal, total };
 }
 
-function loadUnpaidOrder() {
+function loadUnpaidOrders() {
   try {
     const raw = localStorage.getItem(UNPAID_ORDER_STORAGE_KEY);
-    if (!raw) return null;
+    if (!raw) return [];
     const parsed = JSON.parse(raw);
-    if (!parsed || !Array.isArray(parsed.items)) return null;
-    return parsed;
+    if (Array.isArray(parsed)) return parsed;
+    if (parsed && Array.isArray(parsed.items)) return [parsed];
+    return [];
   } catch {
-    return null;
+    return [];
   }
 }
 
-function saveUnpaidOrder(order) {
-  localStorage.setItem(UNPAID_ORDER_STORAGE_KEY, JSON.stringify(order));
+function saveUnpaidOrders(orders) {
+  localStorage.setItem(UNPAID_ORDER_STORAGE_KEY, JSON.stringify(orders));
 }
 
-function clearUnpaidOrder() {
+function addUnpaidOrder(order) {
+  const orders = loadUnpaidOrders();
+  orders.push(order);
+  saveUnpaidOrders(orders);
+}
+
+function removeUnpaidOrderById(orderId) {
+  const orders = loadUnpaidOrders();
+  const filtered = orders.filter(o => String(o.id) !== String(orderId));
+  if (filtered.length !== orders.length) {
+    saveUnpaidOrders(filtered);
+  }
+}
+
+function clearUnpaidOrders() {
   localStorage.removeItem(UNPAID_ORDER_STORAGE_KEY);
+}
+
+function getUnpaidOrders() {
+  return loadUnpaidOrders();
 }
 
 function setButtonBusyState(button, isBusy, busyLabel = "Working...") {
@@ -1144,13 +1163,14 @@ window.clearCart = function() {
 function updateUnpaidOrderSidebar() {
   const unpaidCountEl = document.getElementById("unpaidOrderOpenCount");
   const unpaidBtn = document.getElementById("unpaidOrderOpenBtn");
-  const unpaidOrder = loadUnpaidOrder();
-  const unpaidCount = unpaidOrder ? 1 : 0;
+  const unpaidOrders = getUnpaidOrders();
+  const unpaidCount = Array.isArray(unpaidOrders) ? unpaidOrders.length : 0;
 
   if (unpaidCountEl) unpaidCountEl.textContent = String(unpaidCount);
   if (unpaidBtn) {
     unpaidBtn.disabled = unpaidCount === 0;
-    unpaidBtn.textContent = unpaidCount === 0 ? "No unpaid orders" : "View unpaid order";
+    unpaidBtn.textContent = unpaidCount === 0 ? "No unpaid orders" : "View unpaid orders";
+    unpaidBtn.onclick = unpaidCount === 0 ? null : openUnpaidOrdersModal;
   }
 }
 
@@ -1175,13 +1195,8 @@ function buildUnpaidOrderFromCart() {
 
 window.moveCurrentOrderToUnpaid = function() {
   if (!cart.length) return;
-  const existing = loadUnpaidOrder();
-  if (existing) {
-    const shouldReplace = window.confirm("An unpaid order already exists. Replace it with the current order?");
-    if (!shouldReplace) return;
-  }
 
-  saveUnpaidOrder(buildUnpaidOrderFromCart());
+  addUnpaidOrder(buildUnpaidOrderFromCart());
   cart = [];
   isPwdSenior = false;
   enteredAmount = "";
@@ -1191,29 +1206,83 @@ window.moveCurrentOrderToUnpaid = function() {
   if (discountToggle) discountToggle.classList.remove("active");
   document.querySelector(".discount-section")?.classList.remove("is-active");
   updateCart();
+  updateUnpaidOrderSidebar();
   showToast("Current order moved to unpaid.", "success");
 };
 
-window.openUnpaidOrderReceipt = function() {
-  const unpaid = loadUnpaidOrder();
-  if (!unpaid) {
-    showToast("No unpaid order to open.", "warning");
+window.openUnpaidOrdersModal = function() {
+  const modal = document.getElementById("unpaidOrdersModal");
+  if (!modal) return;
+  renderUnpaidOrdersList();
+  modal.classList.add("active");
+  modal.setAttribute("aria-hidden", "false");
+};
+
+window.closeUnpaidOrdersModal = function() {
+  const modal = document.getElementById("unpaidOrdersModal");
+  if (!modal) return;
+  modal.classList.remove("active");
+  modal.setAttribute("aria-hidden", "true");
+};
+
+function renderUnpaidOrdersList() {
+  const orders = getUnpaidOrders();
+  const listEl = document.getElementById("unpaidOrdersModalList");
+  if (!listEl) return;
+
+  if (!orders.length) {
+    listEl.innerHTML = '<div class="sidebar-pending-empty">No unpaid orders</div>';
     return;
   }
 
-  generateReceipt({ ...unpaid, unpaid: true });
+  listEl.innerHTML = orders.map((order) => {
+    const itemNames = Array.isArray(order.items)
+      ? order.items.slice(0, 2).map(i => i.name).join(", ") + (order.items.length > 2 ? ", ..." : "")
+      : "No items";
+    const timestamp = order.timestamp || "--";
+    const total = Number(order.total) || 0;
+    return `
+      <div class="sidebar-pending-item">
+        <div onclick="openUnpaidOrderReceipt('${order.id}')">
+          <div class="sidebar-pending-order">${order.orderId || order.id}</div>
+          <div class="sidebar-pending-meta">${timestamp} · ${itemNames}</div>
+          <div class="sidebar-pending-meta">Total: ₱${total.toFixed(2)}</div>
+        </div>
+        <div class="unpaid-item-actions">
+          <button class="sidebar-pending-button" type="button" onclick="event.stopPropagation(); restoreUnpaidOrderToCart('${order.id}')">Restore</button>
+          <button class="sidebar-pending-button unpaid-delete-btn" type="button" onclick="event.stopPropagation(); deleteUnpaidOrder('${order.id}')">Delete</button>
+        </div>
+      </div>
+    `;
+  }).join("");
+}
+
+window.openUnpaidOrderReceipt = function(orderId) {
+  const orders = getUnpaidOrders();
+  const order = orders.find((o) => String(o.id) === String(orderId));
+  if (!order) {
+    showToast("Unpaid order not found.", "warning");
+    return;
+  }
+
+  generateReceipt({ ...order, unpaid: true, _id: order.id });
   const receiptModal = document.getElementById("receiptModal");
   if (receiptModal) {
+    const restoreBtn = document.getElementById("receiptRestoreBtn");
+    if (restoreBtn) {
+      restoreBtn.onclick = function() { restoreUnpaidOrderToCart(orderId); };
+    }
     receiptModal.style.zIndex = '11000';
     receiptModal.classList.add("active");
     receiptModal.setAttribute('aria-hidden', 'false');
   }
 };
 
-window.restoreUnpaidOrderToCart = function() {
-  const unpaid = loadUnpaidOrder();
+window.restoreUnpaidOrderToCart = function(orderId) {
+  const orders = getUnpaidOrders();
+  const unpaid = orderId ? orders.find((o) => String(o.id) === String(orderId)) : null;
   if (!unpaid) {
-    showToast("No unpaid order to restore.", "warning");
+    showToast("Unpaid order not found.", "warning");
     return;
   }
 
@@ -1230,11 +1299,23 @@ window.restoreUnpaidOrderToCart = function() {
   if (pwdCheck) pwdCheck.checked = isPwdSenior;
   if (discountToggle) discountToggle.classList.toggle("active", isPwdSenior);
   document.querySelector(".discount-section")?.classList.toggle("is-active", isPwdSenior);
-  clearUnpaidOrder();
+  removeUnpaidOrderById(unpaid.id);
   closeReceipt();
+  closeUnpaidOrdersModal();
   updateCart();
+  updateUnpaidOrderSidebar();
   setMainView("order");
   showToast("Unpaid order moved back to current order.", "success");
+};
+
+window.deleteUnpaidOrder = function(orderId) {
+  if (!orderId) return;
+  const confirmed = window.confirm("Delete this unpaid order? This cannot be undone.");
+  if (!confirmed) return;
+  removeUnpaidOrderById(orderId);
+  renderUnpaidOrdersList();
+  updateUnpaidOrderSidebar();
+  showToast("Unpaid order deleted.", "success");
 };
 
 window.toggleDiscount = function() {
@@ -1616,7 +1697,7 @@ function generateReceipt(sale) {
             Permit No: 0000000
           </div>
           ${sale.unpaid ? `
-            <button type="button" class="receipt-return-btn" onclick="restoreUnpaidOrderToCart()">Move to current order</button>
+            <button type="button" id="receiptRestoreBtn" class="receipt-return-btn">Move to current order</button>
           ` : ""}
         </div>
       </div>

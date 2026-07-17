@@ -134,16 +134,16 @@
 
         <div class="sidebar-pending-box sidebar-unpaid-box">
           <div class="sidebar-pending-header">
-            <span>Unpaid order</span>
+            <span>Unpaid orders</span>
             <span id="unpaidOrderOpenCount">0</span>
           </div>
           <button
             class="sidebar-pending-open-btn"
             id="unpaidOrderOpenBtn"
             type="button"
-            onclick="openUnpaidOrderReceipt()"
+            onclick="openUnpaidOrdersModal()"
           >
-            View unpaid order
+            View unpaid orders
           </button>
         </div>
 
@@ -795,6 +795,49 @@
             class="bb-secondary-btn"
             type="button"
             onclick="closePendingOrdersModal()"
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Unpaid Orders Modal -->
+    <div class="modal-overlay" id="unpaidOrdersModal" aria-hidden="true">
+      <div
+        class="modal bb-modal bb-pending-orders-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="unpaidOrdersTitle"
+      >
+        <div class="bb-modal-header">
+          <div class="bb-modal-title-wrap">
+            <div class="bb-modal-kicker">Payment</div>
+            <div class="bb-modal-title" id="unpaidOrdersTitle">
+              Unpaid Orders
+            </div>
+          </div>
+          <button
+            class="bb-icon-btn"
+            type="button"
+            onclick="closeUnpaidOrdersModal()"
+            aria-label="Close"
+          >
+            &times;
+          </button>
+        </div>
+
+        <div class="bb-modal-body">
+          <div id="unpaidOrdersModalList" class="sidebar-pending-list">
+            <div class="sidebar-pending-empty">No unpaid orders</div>
+          </div>
+        </div>
+
+        <div class="bb-modal-footer">
+          <button
+            class="bb-secondary-btn"
+            type="button"
+            onclick="closeUnpaidOrdersModal()"
           >
             Close
           </button>
