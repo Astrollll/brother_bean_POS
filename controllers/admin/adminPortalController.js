@@ -978,15 +978,21 @@ function applyOrderFilters() {
     if (to && (!date || date > to)) return false;
 
     const normalizedPayment = String(order.paymentMethod || "cash").toLowerCase();
-    if (payment !== "all" && normalizedPayment !== payment) return false;
+    const orderType = String(order.orderType || "regular").toLowerCase();
+    if (payment === "employee") {
+      if (orderType !== "employee") return false;
+    } else if (payment !== "all" && normalizedPayment !== payment) {
+      return false;
+    }
 
     if (!search) return true;
 
     const orderRef = String(order.orderId || order.id || "").toLowerCase();
     const items = (order.items || []).map((i) => i.name || "").join(" ").toLowerCase();
     const timeText = date ? date.toLocaleString("en-PH").toLowerCase() : "";
+    const noteText = String(order.note || "").toLowerCase();
 
-    return orderRef.includes(search) || items.includes(search) || timeText.includes(search);
+    return orderRef.includes(search) || items.includes(search) || timeText.includes(search) || noteText.includes(search);
   });
 
   state.filteredOrders = sortOrders(filtered, orderFilters.sortBy);
@@ -1366,7 +1372,11 @@ function renderOrdersTable(orders) {
       : "-";
     const total = Number(order.total || 0).toFixed(2);
     const type = (order.paymentMethod || "cash").toUpperCase();
-    const status = order.isPwdSenior
+    const isEmployee = String(order.orderType || "regular").toLowerCase() === "employee";
+    const note = String(order.note || "").trim();
+    const status = isEmployee
+      ? `<span class="badge b-blue">Employee</span>`
+      : order.isPwdSenior
       ? `<span class="badge b-orange">PWD</span>`
       : `<span class="badge b-green">Done</span>`;
     const orderKey = String(order.id || order.orderId || "");
@@ -1382,8 +1392,8 @@ function renderOrdersTable(orders) {
         </div>`
       : `<span class="orders-stock-empty">—</span>`;
     const detailRow = stockSummary.length
-      ? `<tr class="orders-stock-detail-row-wrap ${stockExpanded ? "is-open" : ""}" data-order-stock-detail="${escapeHtml(orderKey)}">
-          <td colspan="8">
+      ? `      <tr class="orders-stock-detail-row-wrap ${stockExpanded ? "is-open" : ""}" data-order-stock-detail="${escapeHtml(orderKey)}">
+          <td colspan="9">
             <div class="orders-stock-detail-panel">
               <div class="orders-stock-detail-card">
                 <div class="orders-stock-detail-meta">${stockRecorded ? "Recorded audit" : "Estimated from recipe"}</div>
@@ -1418,6 +1428,7 @@ function renderOrdersTable(orders) {
       <td>${time}</td>
       <td>₱${total}</td>
       <td>${status}</td>
+      <td>${note ? `<span class="orders-note-text" title="${escapeHtml(note)}">${escapeHtml(note.length > 30 ? note.slice(0, 30) + "..." : note)}</span>` : "—"}</td>
       <td>${stockCell}</td>
       <td>
         <button class="orders-btn ghost inventory-mini-btn order-view-btn" type="button" data-order-action="view" data-order-id="${escapeHtml(orderKey)}" title="View receipt" aria-label="View receipt"><i class="ri-receipt-line" aria-hidden="true"></i></button>
@@ -1435,6 +1446,7 @@ function renderOrdersTable(orders) {
       <th style="width:110px">Time</th>
       <th style="width:80px">Amount</th>
       <th style="width:60px">Status</th>
+      <th style="width:140px">Note</th>
       <th style="width:120px">Stock Used</th>
       <th style="width:70px">Action</th>
     </tr>
@@ -1484,19 +1496,21 @@ function exportOrdersCsv() {
     return;
   }
 
-  const header = ["Order ID", "Items", "Payment", "Date", "Amount", "Status"];
+  const header = ["Order ID", "Items", "Payment", "Date", "Amount", "Status", "Note"];
   const rows = state.filteredOrders.map((order) => {
     const items = (order.items || [])
       .map((i) => `${i.name}${i.quantity > 1 ? ` x${i.quantity}` : ""}`)
       .join(", ");
     const date = getOrderDate(order);
+    const isEmployee = String(order.orderType || "regular").toLowerCase() === "employee";
     return [
       String(order.orderId || order.id || ""),
       items,
       String(order.paymentMethod || "cash").toUpperCase(),
       date ? date.toLocaleString("en-PH") : "-",
       Number(order.total || 0).toFixed(2),
-      order.isPwdSenior ? "PWD" : "DONE",
+      isEmployee ? "EMPLOYEE" : order.isPwdSenior ? "PWD" : "DONE",
+      String(order.note || ""),
     ];
   });
 
@@ -2021,7 +2035,6 @@ function renderQuickAddSearchResults(term) {
     </div>`;
   }).join("");
 
-  positionQuickAddDropdown();
   resultsEl.style.display = "block";
 
   resultsEl.querySelectorAll(".quick-add-result-item").forEach((el) => {

@@ -26,6 +26,7 @@ let cart             = [];
 let currentCategory  = "all";
 let currentPayMethod = "cash";
 let isPwdSenior      = false;
+let isEmployeeOrder  = false;
 let enteredAmount    = "";
 let selectedVariant  = null;
 let selectedTemp     = null;
@@ -53,7 +54,7 @@ function getCartSummary(sourceCart = cart) {
     const discountedUnitPrice = (basePrice + addonTotal) * (1 - (Number(item.discountPercent) || 0));
     return sum + discountedUnitPrice * (Number(item.quantity) || 1);
   }, 0);
-  const total = isPwdSenior ? subtotal * 0.8 : subtotal;
+  const total = isEmployeeOrder ? 0 : (isPwdSenior ? subtotal * 0.8 : subtotal);
   return { subtotal, total };
 }
 
@@ -1324,6 +1325,13 @@ window.toggleDiscount = function() {
   updateCart();
 };
 
+window.toggleEmployeeOrder = function() {
+  isEmployeeOrder = !isEmployeeOrder;
+  document.getElementById("employeeOrderToggle")?.classList.toggle("active", isEmployeeOrder);
+  document.querySelector(".employee-order-section")?.classList.toggle("is-active", isEmployeeOrder);
+  updateCart();
+};
+
 window.searchProducts = function() {
   renderProducts(currentCategory);
 };
@@ -1338,6 +1346,24 @@ window.openPaymentModal = function() {
   enteredAmount = "";
   const splitDisp = document.getElementById("splitDisplay");
   if (splitDisp) splitDisp.style.display = "none";
+  const numpad = document.getElementById("cashNumpad");
+  const methodsEl = document.querySelector(".bb-methods");
+  const noteWrap = document.getElementById("orderNoteWrap");
+  const amountSubgrid = document.querySelector(".bb-amount-subgrid");
+  if (isEmployeeOrder) {
+    if (numpad) numpad.style.display = "none";
+    if (methodsEl) methodsEl.style.display = "none";
+    if (noteWrap) noteWrap.style.display = "block";
+    if (amountSubgrid) amountSubgrid.style.display = "none";
+    document.getElementById("paymentAmount").textContent = "₱0.00";
+    document.getElementById("paymentTitle").textContent = "Employee Order";
+  } else {
+    if (numpad) numpad.style.display = "";
+    if (methodsEl) methodsEl.style.display = "";
+    if (noteWrap) noteWrap.style.display = "block";
+    if (amountSubgrid) amountSubgrid.style.display = "";
+    document.getElementById("paymentTitle").textContent = "Take payment";
+  }
   updateChangeDisplay();
   updateDoneButton();
 };
@@ -1345,6 +1371,12 @@ window.openPaymentModal = function() {
 window.closePaymentModal = function() {
   document.getElementById("paymentModal").classList.remove("active");
   enteredAmount = "";
+  const numpad = document.getElementById("cashNumpad");
+  const methodsEl = document.querySelector(".bb-methods");
+  const amountSubgrid = document.querySelector(".bb-amount-subgrid");
+  if (numpad) numpad.style.display = "";
+  if (methodsEl) methodsEl.style.display = "";
+  if (amountSubgrid) amountSubgrid.style.display = "";
 };
 
 window.selectPaymentMethod = function(method) {
@@ -1494,12 +1526,16 @@ window.completePayment = async function() {
   const doneBtn = document.getElementById("doneBtn");
   const total    = capturedPaymentTotal;
   const { subtotal } = getCartSummary(cart);
+  const noteEl = document.getElementById("orderNoteInput");
+  const orderNote = noteEl ? noteEl.value.trim() : "";
 
   let amountTendered;
   let cashAmount = null;
   let gcashAmount = null;
 
-  if (currentPayMethod === "cash") {
+  if (isEmployeeOrder) {
+    amountTendered = 0;
+  } else if (currentPayMethod === "cash") {
     amountTendered = parseFloat(enteredAmount) || total;
   } else if (currentPayMethod === "split") {
     cashAmount = parseFloat(enteredAmount) || 0;
@@ -1509,11 +1545,13 @@ window.completePayment = async function() {
     amountTendered = total;
   }
 
+  const paymentMethod = isEmployeeOrder ? "employee" : currentPayMethod;
+
   setButtonBusyState(doneBtn, true, "Saving...");
   try {
     // Save to Firebase via model
     const user = getCurrentUser();
-    const sale = await saveOrder(cart, total, subtotal, currentPayMethod, isPwdSenior, amountTendered, user?.uid || null, cashierName, cashAmount, gcashAmount);
+    const sale = await saveOrder(cart, total, subtotal, paymentMethod, isPwdSenior, amountTendered, user?.uid || null, cashierName, cashAmount, gcashAmount, { orderType: isEmployeeOrder ? "employee" : "regular", note: orderNote });
 
     // Add to kitchen pending queue so the order appears in the sidebar
     saveKitchenOrder(sale);
@@ -1557,9 +1595,13 @@ window.completePayment = async function() {
     // Reset state
     cart        = [];
     isPwdSenior = false;
+    isEmployeeOrder = false;
     enteredAmount = "";
+    if (noteEl) noteEl.value = "";
     document.getElementById("pwdSeniorCheck").checked = false;
     document.getElementById("discountToggle").classList.remove("active");
+    document.getElementById("employeeOrderToggle")?.classList.remove("active");
+    document.querySelector(".employee-order-section")?.classList.remove("is-active");
     updateCart();
     updateStats();
     closePaymentModal();

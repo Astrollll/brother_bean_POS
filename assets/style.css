@@ -10441,3 +10441,115 @@ body[data-theme="dark"] .bb-discount-picker-item {
   border-bottom-color: rgba(220, 184, 146, 0.15);
   color: #f5efe9;
 }
+
+/* ── Employee Order Section ── */
+.employee-order-section {
+  background: linear-gradient(135deg, #E0F2FE 0%, #DBEAFE 100%);
+  padding: 12px;
+  border-radius: var(--radius-lg);
+  margin-bottom: 12px;
+  border: 1px solid #93C5FD;
+  flex-shrink: 0;
+}
+
+.employee-order-section .discount-header {
+  margin-bottom: 8px;
+  font-size: 13px;
+  color: #1D4ED8;
+}
+
+.employee-order-section .discount-toggle {
+  padding: 10px 12px;
+  border-width: 1px;
+  border-color: #93C5FD;
+}
+
+.employee-order-section .discount-toggle span[style*="margin-left: auto"] {
+  display: none !important;
+}
+
+.employee-order-section.is-active {
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.12) 0%, rgba(219, 234, 254, 0.65) 100%);
+  border-color: rgba(59, 130, 246, 0.45);
+}
+
+.employee-order-section.is-active .discount-header {
+  margin-bottom: 6px;
+}
+
+.employee-order-section .discount-toggle:hover {
+  border-color: #3B82F6;
+  background: #EFF6FF;
+}
+
+.employee-order-section .discount-toggle input[type="checkbox"] {
+  accent-color: #3B82F6;
+}
+
+/* ── Order Note Input ── */
+.bb-note-wrap {
+  margin-top: 12px;
+}
+
+.bb-note-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+
+.bb-note-input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  font-family: inherit;
+  resize: none;
+  background: var(--bg-primary, #fff);
+  color: var(--text-primary);
+  box-sizing: border-box;
+}
+
+.bb-note-input:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(107, 68, 35, 0.1);
+}
+
+body[data-theme="dark"] .employee-order-section {
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.15) 0%, rgba(30, 58, 138, 0.3) 100%);
+  border-color: rgba(96, 165, 250, 0.4);
+}
+
+body[data-theme="dark"] .employee-order-section .discount-header {
+  color: #93C5FD;
+}
+
+body[data-theme="dark"] .employee-order-section .discount-toggle {
+  border-color: rgba(96, 165, 250, 0.3);
+  background: rgba(30, 58, 138, 0.2);
+}
+
+body[data-theme="dark"] .employee-order-section .discount-toggle:hover {
+  background: rgba(59, 130, 246, 0.15);
+  border-color: #60A5FA;
+}
+
+body[data-theme="dark"] .employee-order-section.is-active {
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.2) 0%, rgba(30, 58, 138, 0.35) 100%);
+  border-color: rgba(96, 165, 250, 0.5);
+}
+
+body[data-theme="dark"] .bb-note-input {
+  background: rgba(30, 58, 138, 0.2);
+  border-color: rgba(220, 184, 146, 0.15);
+  color: #f5efe9;
+}
+
+body[data-theme="dark"] .bb-note-label {
+  color: rgba(220, 184, 146, 0.6);
+}

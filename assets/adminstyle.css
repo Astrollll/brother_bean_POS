@@ -2055,7 +2055,7 @@ button,
   font-size: 16px;
 }
 
-.quick-add-modal {
+.modal-custom.quick-add-modal {
   max-width: 520px;
   width: min(92vw, 520px);
   overflow: visible;
@@ -2158,7 +2158,10 @@ button,
 }
 
 .quick-add-search-results {
-  position: fixed;
+  position: absolute;
+  top: 100%;
+  left: 0;
+  width: 100%;
   background: #fff;
   border: 1px solid rgba(107, 68, 35, 0.14);
   border-radius: 12px;
@@ -6248,4 +6251,15 @@ body[data-theme="dark"] .notif-badge {
   background-size: 800px 100%;
   animation: skeletonShimmer 1.5s ease-in-out infinite;
   border-radius: var(--radius-md);
+}
+
+/* ── Transaction Note Text ── */
+.orders-note-text {
+  font-size: 12px;
+  color: var(--text-muted);
+  display: block;
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
