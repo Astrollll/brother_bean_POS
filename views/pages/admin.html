@@ -99,16 +99,27 @@
           <span class="topbar-date" id="topbar-date"
             >Saturday, March 14, 2026</span
           >
-          <div
-            class="topbar-notif"
-            id="topbarNotifBtn"
-            role="button"
-            tabindex="0"
-            aria-label="Open notifications"
-            title="Open notifications"
-          >
-            <i class="ri-notification-3-line" aria-hidden="true"></i>
-            <div class="notif-dot"></div>
+          <div style="position:relative">
+            <div
+              class="topbar-notif"
+              id="topbarNotifBtn"
+              role="button"
+              tabindex="0"
+              aria-label="Open notifications"
+              title="Open notifications"
+            >
+              <i class="ri-notification-3-line" aria-hidden="true"></i>
+              <span class="notif-badge" id="notifBadge"></span>
+            </div>
+            <div class="notif-dropdown" id="notifDropdown">
+              <div class="notif-dropdown-header">
+                <span class="notif-dropdown-title">Notifications</span>
+                <span class="notif-dropdown-count" id="notifTotalCount">0</span>
+              </div>
+              <div class="notif-dropdown-body" id="notifDropdownBody">
+                <div class="notif-empty">No notifications</div>
+              </div>
+            </div>
           </div>
 
           <div

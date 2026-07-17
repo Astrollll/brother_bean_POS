@@ -235,13 +235,156 @@ function makeKeyboardClickable(el, onActivate) {
   });
 }
 
-async function openTopbarNotifications() {
-  await window.showPage("orders", document.getElementById("nav-orders"), "Transactions");
-  const sub = document.getElementById("ordersPageSub");
-  if (sub) {
-    const count = Array.isArray(state.allOrders) ? state.allOrders.length : 0;
-    sub.textContent = `Notifications focus: review ${count} transaction${count === 1 ? "" : "s"}.`;
+function notifTimeAgo(date) {
+  if (!date) return "";
+  const diff = Date.now() - date.getTime();
+  if (diff < 60_000) return "Just now";
+  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`;
+  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`;
+  return `${Math.floor(diff / 86_400_000)}d ago`;
+}
+
+function buildNotifications() {
+  const notifications = [];
+
+  const todayOrders = Array.isArray(state.ordersToday) ? state.ordersToday : [];
+  const recentOrders = todayOrders
+    .slice()
+    .sort((a, b) => {
+      const aMs = getOrderDate(a)?.getTime() || 0;
+      const bMs = getOrderDate(b)?.getTime() || 0;
+      return bMs - aMs;
+    })
+    .slice(0, 5);
+
+  for (const order of recentOrders) {
+    const orderDate = getOrderDate(order);
+    const total = Number(order.total || 0);
+    const itemCount = Array.isArray(order.items) ? order.items.length : 0;
+    notifications.push({
+      type: "order",
+      text: `New order #${String(order.orderId || order.id || "—")} — ${formatMoney(total)}`,
+      meta: `${itemCount} item${itemCount === 1 ? "" : "s"} • ${order.paymentMethod ? String(order.paymentMethod).toUpperCase() : "CASH"}`,
+      date: orderDate,
+      navigate: "orders",
+    });
   }
+
+  const inventory = Array.isArray(state.inventoryItems) ? state.inventoryItems : [];
+  const lowStockItems = inventory.filter((i) => {
+    const s = inventoryStatus(i);
+    return s === "low" || s === "critical" || s === "out";
+  }).slice(0, 3);
+
+  for (const item of lowStockItems) {
+    const status = inventoryStatus(item);
+    const label = status === "out" ? "Out of stock" : status === "critical" ? "Critically low" : "Low stock";
+    notifications.push({
+      type: "stock",
+      text: `${item.name} — ${label}`,
+      meta: `${Number(item.quantity || 0)} ${item.unit || "unit"} remaining`,
+      date: null,
+      navigate: "inventory",
+    });
+  }
+
+  const pendingSync = typeof getPendingOrderCount === "function" ? getPendingOrderCount() : 0;
+  if (pendingSync > 0) {
+    notifications.push({
+      type: "sync",
+      text: `${pendingSync} order${pendingSync === 1 ? "" : "s"} pending sync`,
+      meta: "Will upload when online",
+      date: null,
+      navigate: null,
+    });
+  }
+
+  return notifications;
+}
+
+function renderNotifications() {
+  const body = document.getElementById("notifDropdownBody");
+  const badge = document.getElementById("notifBadge");
+  const countEl = document.getElementById("notifTotalCount");
+  if (!body) return;
+
+  const all = buildNotifications();
+  const totalCount = all.length;
+
+  if (countEl) countEl.textContent = totalCount;
+
+  if (badge) {
+    if (totalCount > 0) {
+      badge.textContent = totalCount > 99 ? "99+" : totalCount;
+      badge.classList.add("has-count");
+    } else {
+      badge.classList.remove("has-count");
+    }
+  }
+
+  if (!totalCount) {
+    body.innerHTML = `<div class="notif-empty">No notifications</div>`;
+    return;
+  }
+
+  const sections = [];
+  const orders = all.filter((n) => n.type === "order");
+  const stocks = all.filter((n) => n.type === "stock");
+  const syncs = all.filter((n) => n.type === "sync");
+
+  function renderSection(items, label, iconClass, iconChar) {
+    if (!items.length) return "";
+    return `
+      <div class="notif-section">
+        <div class="notif-section-label">${escapeHtml(label)}</div>
+        ${items.map((n) => `
+          <div class="notif-item" data-notif-nav="${escapeHtml(n.navigate || "")}">
+            <div class="notif-icon ${escapeHtml(iconClass)}">${iconChar}</div>
+            <div class="notif-content">
+              <div class="notif-text">${escapeHtml(n.text)}</div>
+              <div class="notif-meta">${escapeHtml(n.meta)}${n.date ? " • " + notifTimeAgo(n.date) : ""}</div>
+            </div>
+          </div>
+        `).join("")}
+      </div>
+    `;
+  }
+
+  sections.push(renderSection(orders, "Recent Orders", "order", "\u{1F4E6}"));
+  sections.push(renderSection(stocks, "Low Stock", "stock", "\u26A0"));
+  sections.push(renderSection(syncs, "Pending Sync", "sync", "\u21BB"));
+
+  body.innerHTML = sections.filter(Boolean).join("") + `
+    <div class="notif-viewall" data-notif-nav="orders">View all transactions</div>
+  `;
+
+  body.querySelectorAll("[data-notif-nav]").forEach((el) => {
+    el.addEventListener("click", async () => {
+      const target = el.getAttribute("data-notif-nav");
+      closeNotifDropdown();
+      if (target && window.showPage) {
+        const navEl = document.querySelector(`.nav-item[onclick*="${target}"]`) || document.getElementById(`nav-${target}`);
+        await window.showPage(target, navEl, target === "orders" ? "Transactions" : target === "inventory" ? "Inventory" : target);
+      }
+    });
+  });
+}
+
+function toggleNotifDropdown() {
+  const dropdown = document.getElementById("notifDropdown");
+  if (!dropdown) return;
+  const isOpen = dropdown.classList.contains("open");
+  if (isOpen) {
+    closeNotifDropdown();
+  } else {
+    renderNotifications();
+    dropdown.classList.add("open");
+  }
+}
+
+function closeNotifDropdown() {
+  const dropdown = document.getElementById("notifDropdown");
+  if (dropdown) dropdown.classList.remove("open");
 }
 
 async function openTopbarAccount() {
@@ -249,8 +392,20 @@ async function openTopbarAccount() {
 }
 
 function setupTopbarActions() {
-  makeKeyboardClickable(document.getElementById("topbarNotifBtn"), openTopbarNotifications);
+  makeKeyboardClickable(document.getElementById("topbarNotifBtn"), toggleNotifDropdown);
   makeKeyboardClickable(document.getElementById("topbarAvatarBtn"), openTopbarAccount);
+
+  document.addEventListener("click", (e) => {
+    const dropdown = document.getElementById("notifDropdown");
+    const btn = document.getElementById("topbarNotifBtn");
+    if (dropdown && !dropdown.contains(e.target) && btn && !btn.contains(e.target)) {
+      closeNotifDropdown();
+    }
+  });
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") closeNotifDropdown();
+  });
 }
 
 function showPage(pageId) {
@@ -547,6 +702,8 @@ async function loadDashboard() {
     } catch (e) {
       console.warn("[Analytics] renderSalesAnalyticsDashboard failed:", e);
     }
+
+    try { renderNotifications(); } catch (_) {}
   } finally {
     showApp();
   }
@@ -1498,6 +1655,8 @@ async function loadInventoryPage() {
   bindInventoryForm();
   bindInventoryEditForm();
   bindQuickAddStock();
+
+  try { renderNotifications(); } catch (_) {}
 }
 
 function inventoryStatus(item) {
