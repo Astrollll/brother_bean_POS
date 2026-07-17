@@ -1,4 +1,5 @@
 import { logout as authLogout, watchAuth, createAuthUserByAdmin, updatePasswordByAdmin, getCurrentUser } from "../auth/firebaseAuth.js";
+import { getAdminSettings, saveAdminSettings, getDefaultSettings } from "../../models/settingsModel.js";
 import { getUserRole, getUserProfile, listUsers, setUserRole, setUserProfile, ensureAdminAccessProfile } from "../../models/userModel.js";
 import { getMenuItems, saveMenuItem, deleteMenuItem, clearMenuItems } from "../../models/menuModel.js";
 import { getCategories, saveCategory, deleteCategory, getCategoryIconForName } from "../../models/categoryModel.js";
@@ -2905,58 +2906,8 @@ async function loadSettingsPage() {
   const host = document.getElementById("settings");
   if (!host) return;
 
-  const SETTINGS_STORAGE_KEY = "bb_admin_settings_v1";
-  const DEFAULT_SETTINGS = {
-    shop: {
-      name: "Brother Bean Coffee House",
-      openingHours: "7:00 AM - 9:00 PM",
-      location: "Imus, Cavite",
-      currency: "Philippine Peso (PHP)",
-      phone: "+63 (0)2 1234 5678",
-    },
-    preferences: {
-      lowStockAlerts: true,
-      transactionNotifications: true,
-      orderSyncToasts: true,
-      compactTableRows: false,
-    },
-    notifications: {
-      modalOnSave: true,
-      warningOnDestructive: true,
-    },
-  };
-
-  const deepClone = (value) => JSON.parse(JSON.stringify(value));
-  const mergeSettings = (base, incoming) => {
-    const next = deepClone(base);
-    if (!incoming || typeof incoming !== "object") return next;
-
-    Object.keys(next).forEach((section) => {
-      if (!incoming[section] || typeof incoming[section] !== "object") return;
-      Object.keys(next[section]).forEach((key) => {
-        if (incoming[section][key] === undefined) return;
-        next[section][key] = incoming[section][key];
-      });
-    });
-
-    return next;
-  };
-
-  const loadSavedSettings = () => {
-    try {
-      const raw = localStorage.getItem(SETTINGS_STORAGE_KEY);
-      if (!raw) return deepClone(DEFAULT_SETTINGS);
-      return mergeSettings(DEFAULT_SETTINGS, JSON.parse(raw));
-    } catch {
-      return deepClone(DEFAULT_SETTINGS);
-    }
-  };
-
-  const settings = loadSavedSettings();
-
-  const persistSettings = () => {
-    localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settings));
-  };
+  const DEFAULT_SETTINGS = getDefaultSettings();
+  const settings = await getAdminSettings();
 
   host.innerHTML = `
     <div class="page-header settings-page-header">
@@ -3196,7 +3147,7 @@ async function loadSettingsPage() {
       settings.shop.openingHours = hours;
       settings.shop.phone = phone;
 
-      persistSettings();
+      await saveAdminSettings(settings);
       applyShopView();
       toggleShopEditMode();
       showSavedHint("Shop information saved.");
@@ -3210,14 +3161,14 @@ async function loadSettingsPage() {
   });
 
   document.querySelectorAll(".setting-toggle").forEach((toggle) => {
-    toggle.addEventListener("change", () => {
+    toggle.addEventListener("change", async () => {
       const setting = String(toggle.dataset.setting || "");
       const [section, key] = setting.split(".");
       if (!section || !key) return;
       if (!settings[section]) return;
 
       settings[section][key] = !!toggle.checked;
-      persistSettings();
+      await saveAdminSettings(settings);
       showSavedHint("Preference updated.");
     });
   });
@@ -3229,12 +3180,12 @@ async function loadSettingsPage() {
     );
     if (confirmed !== 1) return;
 
-    const reset = deepClone(DEFAULT_SETTINGS);
+    const reset = getDefaultSettings();
     Object.keys(settings).forEach((section) => {
       settings[section] = reset[section];
     });
 
-    persistSettings();
+    await saveAdminSettings(settings);
     applyShopView();
     applyToggleState();
     showSavedHint("Defaults restored.");
@@ -3255,7 +3206,7 @@ async function loadSettingsPage() {
         .forEach((key) => localStorage.removeItem(key));
       sessionStorage.clear();
 
-      localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(DEFAULT_SETTINGS));
+      await saveAdminSettings(DEFAULT_SETTINGS);
       await ModalUtils.success("Cache Cleared", "App cache was cleared. Settings were reset to defaults.");
       await loadSettingsPage();
     } catch (error) {
