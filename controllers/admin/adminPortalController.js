@@ -2581,7 +2581,10 @@ function openAccountEditModal(account) {
         </div>
         <div style="margin-bottom:16px;">
           <label style="display:block;font-size:12px;font-weight:700;color:var(--text-secondary);margin-bottom:5px;text-transform:uppercase;letter-spacing:0.5px;">New Password</label>
-          <input type="password" id="accountEditPassword" placeholder="Leave blank to keep current" style="width:100%;padding:10px 12px;border:1px solid var(--border-color);border-radius:8px;font-size:14px;background:var(--bg-primary);color:var(--text-primary);box-sizing:border-box;" />
+          <div style="position:relative;">
+            <input type="password" id="accountEditPassword" placeholder="Leave blank to keep current" style="width:100%;padding:10px 36px 10px 12px;border:1px solid var(--border-color);border-radius:8px;font-size:14px;background:var(--bg-primary);color:var(--text-primary);box-sizing:border-box;" />
+            <button type="button" id="accountEditTogglePwd" onclick="var inp=document.getElementById('accountEditPassword');var btn=document.getElementById('accountEditTogglePwd');var showing=inp.type==='text';inp.type=showing?'password':'text';btn.innerHTML=showing?'&#128065;':'&#128064;';btn.setAttribute('aria-label',showing?'Show password':'Hide password');" aria-label="Show password" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:16px;padding:2px;line-height:1;color:var(--text-muted);">&#128065;</button>
+          </div>
           <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">Minimum 6 characters. Leave blank to keep current password.</div>
         </div>
         <div style="margin-bottom:16px;">
