@@ -20,5 +20,13 @@ try {
   firestoreInstance = getFirestore(app);
 }
 export const db = firestoreInstance;
-export const auth = getAuth(app);
-setPersistence(auth, browserSessionPersistence);
+
+let authPromise = (async () => {
+  const auth = getAuth(app);
+  await setPersistence(auth, browserSessionPersistence);
+  return auth;
+})();
+
+export const getAuthInstance = () => authPromise;
+
+export const auth = await authPromise;
