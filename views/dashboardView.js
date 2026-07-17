@@ -449,7 +449,7 @@ function buildDashboardTemplate() {
         <div class="card compact-card h-100">
           <div class="card-head">
             <span class="card-title">Recent Transactions</span>
-            <span class="card-action">Today</span>
+            <span class="card-action" id="seeAllTransactionsBtn" role="button" tabindex="0">See all</span>
           </div>
           <div id="dashboardRecentOrders"></div>
         </div>
@@ -666,6 +666,18 @@ export function renderAdminDashboard({ orders = [], menuItems = [], staff = [], 
 
   // bind quick action buttons
   bindDashboardQuickActions();
+
+  // bind "See all" transactions button
+  const seeAllBtn = document.getElementById("seeAllTransactionsBtn");
+  if (seeAllBtn) {
+    seeAllBtn.addEventListener("click", () => {
+      try {
+        if (window.showPage) window.showPage("orders", document.getElementById("nav-orders"), "Transactions");
+      } catch (err) {
+        console.warn("[Dashboard] see all transactions failed", err);
+      }
+    });
+  }
 }
 
 function buildDeltaMarkup(deltaText, deltaType) {
