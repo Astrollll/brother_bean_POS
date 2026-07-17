@@ -2194,11 +2194,13 @@ function renderPendingOrdersList() {
       ? order.payload.items.slice(0, 2).map(i => i.name).join(", ") + (order.payload.items.length > 2 ? ", ..." : "")
       : "No items";
     const createdAt = order.createdAt ? new Date(order.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "--";
+    const total = Number(order.payload?.total) || 0;
     return `
       <div class="sidebar-pending-item" onclick="openPendingOrder('${order.id}')">
         <div>
           <div class="sidebar-pending-order">#${String(order.id).replace(/^q_/, "")}</div>
           <div class="sidebar-pending-meta">${createdAt} · ${itemNames}</div>
+          <div class="sidebar-pending-meta">Total: ₱${total.toFixed(2)}</div>
         </div>
         <button class="sidebar-pending-button" type="button" onclick="event.stopPropagation(); markPendingOrderPrepared('${order.id}')">Done preparing</button>
       </div>

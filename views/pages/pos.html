@@ -828,6 +828,15 @@
         </div>
 
         <div class="bb-modal-body">
+          <div class="pending-orders-modal-toolbar">
+            <button
+              class="sidebar-pending-refresh"
+              type="button"
+              onclick="closeUnpaidOrdersModal(); openUnpaidOrdersModal()"
+            >
+              Refresh
+            </button>
+          </div>
           <div id="unpaidOrdersModalList" class="sidebar-pending-list">
             <div class="sidebar-pending-empty">No unpaid orders</div>
           </div>
