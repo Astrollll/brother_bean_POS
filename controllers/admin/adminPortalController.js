@@ -245,6 +245,19 @@ function notifTimeAgo(date) {
   return `${Math.floor(diff / 86_400_000)}d ago`;
 }
 
+const dismissedNotifs = new Set();
+
+function clearDismissedNotifs() {
+  dismissedNotifs.clear();
+}
+
+function getNotifId(n, i) {
+  if (n.type === "order") return `order-${n.text}`;
+  if (n.type === "stock") return `stock-${n.text}`;
+  if (n.type === "sync") return `sync-${i}`;
+  return `${n.type}-${i}`;
+}
+
 function buildNotifications() {
   const notifications = [];
 
@@ -264,8 +277,8 @@ function buildNotifications() {
     const itemCount = Array.isArray(order.items) ? order.items.length : 0;
     notifications.push({
       type: "order",
-      text: `New order #${String(order.orderId || order.id || "—")} — ${formatMoney(total)}`,
-      meta: `${itemCount} item${itemCount === 1 ? "" : "s"} • ${order.paymentMethod ? String(order.paymentMethod).toUpperCase() : "CASH"}`,
+      text: `New order #${String(order.orderId || order.id || "\u2014")} \u2014 ${formatMoney(total)}`,
+      meta: `${itemCount} item${itemCount === 1 ? "" : "s"} \u2022 ${order.paymentMethod ? String(order.paymentMethod).toUpperCase() : "CASH"}`,
       date: orderDate,
       navigate: "orders",
     });
@@ -282,7 +295,7 @@ function buildNotifications() {
     const label = status === "out" ? "Out of stock" : status === "critical" ? "Critically low" : "Low stock";
     notifications.push({
       type: "stock",
-      text: `${item.name} — ${label}`,
+      text: `${item.name} \u2014 ${label}`,
       meta: `${Number(item.quantity || 0)} ${item.unit || "unit"} remaining`,
       date: null,
       navigate: "inventory",
@@ -300,31 +313,55 @@ function buildNotifications() {
     });
   }
 
-  return notifications;
+  return notifications
+    .map((n, i) => ({ ...n, _id: getNotifId(n, i) }))
+    .filter((n) => !dismissedNotifs.has(n._id));
 }
 
 function renderNotifications() {
   const body = document.getElementById("notifDropdownBody");
   const badge = document.getElementById("notifBadge");
   const countEl = document.getElementById("notifTotalCount");
+  const clearBtn = document.getElementById("notifClearAllBtn");
   if (!body) return;
 
   const all = buildNotifications();
   const totalCount = all.length;
 
   if (countEl) countEl.textContent = totalCount;
+  if (clearBtn) clearBtn.style.display = totalCount > 0 ? "inline-block" : "none";
 
   if (badge) {
+    const prevCount = parseInt(badge.textContent) || 0;
     if (totalCount > 0) {
       badge.textContent = totalCount > 99 ? "99+" : totalCount;
       badge.classList.add("has-count");
+      if (totalCount !== prevCount) {
+        badge.classList.remove("pulse");
+        void badge.offsetWidth;
+        badge.classList.add("pulse");
+      }
     } else {
       badge.classList.remove("has-count");
     }
   }
 
+  const bellBtn = document.getElementById("topbarNotifBtn");
+  if (bellBtn) {
+    if (totalCount > 0) {
+      bellBtn.classList.add("has-notifs");
+    } else {
+      bellBtn.classList.remove("has-notifs");
+    }
+  }
+
   if (!totalCount) {
-    body.innerHTML = `<div class="notif-empty">No notifications</div>`;
+    body.innerHTML = `
+      <div class="notif-empty">
+        <div class="notif-empty-icon"><i class="ri-notification-off-line"></i></div>
+        <div>All caught up</div>
+        <div style="font-size:11px;color:var(--text-muted);">No new notifications right now.</div>
+      </div>`;
     return;
   }
 
@@ -333,17 +370,17 @@ function renderNotifications() {
   const stocks = all.filter((n) => n.type === "stock");
   const syncs = all.filter((n) => n.type === "sync");
 
-  function renderSection(items, label, iconClass, iconChar) {
+  function renderSection(items, label, iconClass, iconHtml) {
     if (!items.length) return "";
     return `
       <div class="notif-section">
         <div class="notif-section-label">${escapeHtml(label)}</div>
         ${items.map((n) => `
-          <div class="notif-item" data-notif-nav="${escapeHtml(n.navigate || "")}">
-            <div class="notif-icon ${escapeHtml(iconClass)}">${iconChar}</div>
+          <div class="notif-item" data-notif-nav="${escapeHtml(n.navigate || "")}" data-notif-id="${escapeHtml(n._id || "")}">
+            <div class="notif-icon ${escapeHtml(iconClass)}">${iconHtml}</div>
             <div class="notif-content">
               <div class="notif-text">${escapeHtml(n.text)}</div>
-              <div class="notif-meta">${escapeHtml(n.meta)}${n.date ? " • " + notifTimeAgo(n.date) : ""}</div>
+              <div class="notif-meta">${escapeHtml(n.meta)}${n.date ? " \u2022 " + notifTimeAgo(n.date) : ""}</div>
             </div>
           </div>
         `).join("")}
@@ -351,17 +388,19 @@ function renderNotifications() {
     `;
   }
 
-  sections.push(renderSection(orders, "Recent Orders", "order", "\u{1F4E6}"));
-  sections.push(renderSection(stocks, "Low Stock", "stock", "\u26A0"));
-  sections.push(renderSection(syncs, "Pending Sync", "sync", "\u21BB"));
+  sections.push(renderSection(orders, "Recent Orders", "order", '<i class="ri-shopping-bag-3-line"></i>'));
+  sections.push(renderSection(stocks, "Low Stock", "stock", '<i class="ri-alert-line"></i>'));
+  sections.push(renderSection(syncs, "Pending Sync", "sync", '<i class="ri-refresh-line"></i>'));
 
   body.innerHTML = sections.filter(Boolean).join("") + `
-    <div class="notif-viewall" data-notif-nav="orders">View all transactions</div>
+    <div class="notif-viewall" data-notif-nav="orders"><i class="ri-arrow-right-line" style="font-size:12px;vertical-align:middle;margin-right:4px;"></i>View all transactions</div>
   `;
 
-  body.querySelectorAll("[data-notif-nav]").forEach((el) => {
+  body.querySelectorAll(".notif-item[data-notif-nav]").forEach((el) => {
     el.addEventListener("click", async () => {
+      const nid = el.getAttribute("data-notif-id");
       const target = el.getAttribute("data-notif-nav");
+      if (nid) dismissedNotifs.add(nid);
       closeNotifDropdown();
       if (target && window.showPage) {
         const navEl = document.querySelector(`.nav-item[onclick*="${target}"]`) || document.getElementById(`nav-${target}`);
@@ -369,6 +408,25 @@ function renderNotifications() {
       }
     });
   });
+
+  const viewAll = body.querySelector(".notif-viewall[data-notif-nav]");
+  if (viewAll) {
+    viewAll.addEventListener("click", async () => {
+      const target = viewAll.getAttribute("data-notif-nav");
+      closeNotifDropdown();
+      if (target && window.showPage) {
+        const navEl = document.querySelector(`.nav-item[onclick*="${target}"]`) || document.getElementById(`nav-${target}`);
+        await window.showPage(target, navEl, target === "orders" ? "Transactions" : target);
+      }
+    });
+  }
+
+  if (clearBtn) {
+    clearBtn.onclick = () => {
+      all.forEach((n) => { if (n._id) dismissedNotifs.add(n._id); });
+      renderNotifications();
+    };
+  }
 }
 
 function toggleNotifDropdown() {

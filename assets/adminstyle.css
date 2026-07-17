@@ -1163,10 +1163,40 @@ button,
 .nav-icon i,
 .stat-icon-wrap i {
   line-height: 1;
+  transition: transform 0.25s ease;
 }
 
 .topbar-notif:hover {
   background: var(--bg-tertiary);
+  transform: scale(1.05);
+}
+
+.topbar-notif:active {
+  transform: scale(0.95);
+}
+
+@keyframes bellShake {
+  0% { transform: rotate(0); }
+  15% { transform: rotate(14deg); }
+  30% { transform: rotate(-12deg); }
+  45% { transform: rotate(10deg); }
+  60% { transform: rotate(-8deg); }
+  75% { transform: rotate(4deg); }
+  100% { transform: rotate(0); }
+}
+
+.topbar-notif.has-notifs i {
+  animation: bellShake 0.6s ease-in-out;
+}
+
+@keyframes badgePulse {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.2); }
+  100% { transform: scale(1); }
+}
+
+.notif-badge.pulse {
+  animation: badgePulse 0.3s ease;
 }
 
 .topbar-avatar {
@@ -6082,6 +6112,7 @@ body[data-theme="dark"] .admin-category-chip.active {
   border: 2px solid var(--bg-primary);
   box-sizing: border-box;
   pointer-events: none;
+  transition: transform 0.2s ease;
 }
 .notif-badge.has-count {
   display: block;
@@ -6093,8 +6124,8 @@ body[data-theme="dark"] .admin-category-chip.active {
   position: absolute;
   top: calc(100% + 8px);
   right: 0;
-  width: 360px;
-  max-height: 440px;
+  width: 380px;
+  max-height: 460px;
   background: var(--bg-primary);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-lg);
@@ -6102,9 +6133,14 @@ body[data-theme="dark"] .admin-category-chip.active {
   z-index: 9999;
   overflow: hidden;
   flex-direction: column;
+  opacity: 0;
+  transform: translateY(-8px) scale(0.97);
+  transition: opacity 0.2s ease, transform 0.2s ease;
 }
 .notif-dropdown.open {
   display: flex;
+  opacity: 1;
+  transform: translateY(0) scale(1);
 }
 .notif-dropdown-header {
   display: flex;
@@ -6126,6 +6162,21 @@ body[data-theme="dark"] .admin-category-chip.active {
   padding: 2px 8px;
   border-radius: 10px;
 }
+.notif-clear-all {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--primary);
+  cursor: pointer;
+  background: none;
+  border: none;
+  padding: 4px 8px;
+  border-radius: 6px;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+.notif-clear-all:hover {
+  background: var(--bg-secondary);
+  color: var(--danger);
+}
 .notif-dropdown-body {
   overflow-y: auto;
   flex: 1;
@@ -6139,10 +6190,19 @@ body[data-theme="dark"] .admin-category-chip.active {
   border-radius: 4px;
 }
 .notif-empty {
-  padding: 32px 16px;
+  padding: 36px 16px;
   text-align: center;
   color: var(--text-muted);
   font-size: 13px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+.notif-empty-icon {
+  font-size: 28px;
+  opacity: 0.4;
+  line-height: 1;
 }
 
 /* Notification section inside dropdown */
@@ -6166,10 +6226,12 @@ body[data-theme="dark"] .admin-category-chip.active {
   gap: 10px;
   padding: 10px 16px;
   cursor: pointer;
-  transition: background var(--transition-fast);
+  transition: background var(--transition-fast), border-left-color 0.15s ease;
+  border-left: 3px solid transparent;
 }
 .notif-item:hover {
   background: var(--bg-secondary);
+  border-left-color: var(--primary);
 }
 .notif-icon {
   width: 32px;
@@ -6181,6 +6243,9 @@ body[data-theme="dark"] .admin-category-chip.active {
   font-size: 14px;
   flex-shrink: 0;
   margin-top: 1px;
+}
+.notif-icon i {
+  font-size: 15px;
 }
 .notif-icon.order { background: rgba(107,68,35,0.1); color: var(--primary); }
 .notif-icon.stock { background: rgba(239,68,68,0.1); color: var(--danger); }
@@ -6229,6 +6294,7 @@ body[data-theme="dark"] .notif-dropdown-header {
 }
 body[data-theme="dark"] .notif-item:hover {
   background: var(--bg-tertiary) !important;
+  border-left-color: var(--primary) !important;
 }
 body[data-theme="dark"] .notif-viewall:hover {
   background: var(--bg-tertiary) !important;
@@ -6239,6 +6305,10 @@ body[data-theme="dark"] .notif-viewall {
 }
 body[data-theme="dark"] .notif-badge {
   border-color: var(--bg-secondary) !important;
+}
+body[data-theme="dark"] .notif-clear-all:hover {
+  background: var(--bg-tertiary) !important;
+  color: var(--danger) !important;
 }
 
 /* ── Skeleton loading shimmer ── */

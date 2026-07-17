@@ -113,11 +113,17 @@
             </div>
             <div class="notif-dropdown" id="notifDropdown">
               <div class="notif-dropdown-header">
-                <span class="notif-dropdown-title">Notifications</span>
-                <span class="notif-dropdown-count" id="notifTotalCount">0</span>
+                <div style="display:flex;align-items:center;gap:8px;">
+                  <span class="notif-dropdown-title">Notifications</span>
+                  <span class="notif-dropdown-count" id="notifTotalCount">0</span>
+                </div>
+                <button class="notif-clear-all" id="notifClearAllBtn" type="button" style="display:none;">Clear all</button>
               </div>
               <div class="notif-dropdown-body" id="notifDropdownBody">
-                <div class="notif-empty">No notifications</div>
+                <div class="notif-empty">
+                  <div class="notif-empty-icon"><i class="ri-notification-off-line"></i></div>
+                  <div>No notifications</div>
+                </div>
               </div>
             </div>
           </div>
