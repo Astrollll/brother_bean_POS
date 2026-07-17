@@ -888,7 +888,7 @@ body[data-theme="dark"] .sidebar-pending-empty {
   width: 100%;
   min-height: 4px;
   border-radius: 999px;
-  background: linear-gradient(180deg, #F59E0B, #6B4423);
+  background: linear-gradient(180deg, #FBBF24, #F59E0B, #6B4423);
   box-shadow: 0 3px 10px rgba(107, 68, 35, 0.2);
   transform-origin: bottom;
   transition: height 340ms ease, opacity 220ms ease;
@@ -942,10 +942,11 @@ body[data-theme="dark"] .sidebar-pending-empty {
 }
 
 .sales-dashboard-main {
-  border: 1px solid rgba(229, 224, 215, 0.95);
+  border: 1px solid rgba(229, 224, 215, 0.8);
   border-radius: 16px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.95), rgba(249, 247, 244, 0.85));
-  padding: 16px;
+  background: #ffffff;
+  padding: 20px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
 }
 
 .sales-dashboard-chart-head h3 {
@@ -985,11 +986,17 @@ body[data-theme="dark"] .sidebar-pending-empty {
 }
 
 .sales-kpi-card {
-  border: 1px solid rgba(229, 224, 215, 0.95);
+  border: 1px solid rgba(229, 224, 215, 0.8);
   border-radius: 14px;
-  background: linear-gradient(145deg, rgba(255, 255, 255, 0.98), rgba(249, 247, 244, 0.9));
-  padding: 12px;
-  box-shadow: var(--shadow-sm);
+  background: #ffffff;
+  padding: 16px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  transition: all 180ms ease;
+}
+
+.sales-kpi-card:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(107, 68, 35, 0.08);
 }
 
 .sales-kpi-label {
@@ -1001,20 +1008,22 @@ body[data-theme="dark"] .sidebar-pending-empty {
 }
 
 .sales-kpi-value {
-  margin-top: 6px;
+  margin-top: 8px;
   color: var(--text-primary);
-  font-size: 20px;
+  font-size: 24px;
   font-weight: 1000;
   line-height: 1.15;
+  letter-spacing: -0.5px;
 }
 
 .sales-slot-list {
-  border: 1px solid rgba(229, 224, 215, 0.95);
+  border: 1px solid rgba(229, 224, 215, 0.8);
   border-radius: 14px;
-  background: rgba(255, 255, 255, 0.88);
-  padding: 12px;
+  background: #ffffff;
+  padding: 14px;
   display: grid;
-  gap: 8px;
+  gap: 4px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
 }
 
 .sales-slot-row {
@@ -1022,12 +1031,18 @@ body[data-theme="dark"] .sidebar-pending-empty {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 6px 0;
-  border-bottom: 1px dashed rgba(209, 213, 219, 0.75);
+  padding: 8px 10px;
+  border-radius: 10px;
+  border-bottom: 1px solid rgba(209, 213, 219, 0.5);
+  transition: background-color 130ms ease;
 }
 
 .sales-slot-row:last-child {
   border-bottom: 0;
+}
+
+.sales-slot-row:hover {
+  background: rgba(249, 247, 244, 0.7);
 }
 
 .sales-slot-label {
@@ -4716,7 +4731,7 @@ body[data-theme="dark"] .modal-overlay {
 }
 
 body[data-theme="dark"] .sales-chart-bar {
-  background: linear-gradient(180deg, #DDB892, #7c4e28) !important;
+  background: linear-gradient(180deg, #DDB892, #B48A5C, #7c4e28) !important;
 }
 
 /* Dark mode polish: softer contrast, clearer hierarchy, better readability */
@@ -4778,7 +4793,8 @@ body[data-theme="dark"] .sales-slot-list,
 body[data-theme="dark"] .sales-kpi-card,
 body[data-theme="dark"] .bb-drawer-card,
 body[data-theme="dark"] .sidebar-sales-chart,
-body[data-theme="dark"] .sidebar-stats {
+body[data-theme="dark"] .sidebar-stats,
+body[data-theme="dark"] .sales-dashboard-main {
   background: rgba(22, 16, 12, 0.78) !important;
   border-color: rgba(220, 184, 146, 0.18) !important;
   color: var(--text-primary);
@@ -4832,6 +4848,10 @@ body[data-theme="dark"] .sidebar-sales-chart-range,
 body[data-theme="dark"] .metric-label,
 body[data-theme="dark"] .sidebar-stats>div {
   color: #d7c8ba !important;
+}
+
+body[data-theme="dark"] .sales-slot-row:hover {
+  background: rgba(30, 22, 16, 0.6) !important;
 }
 
 body[data-theme="dark"] .discount-section {
@@ -5125,9 +5145,6 @@ body[data-theme="dark"] .products-section,
 body[data-theme="dark"] .cart-section,
 body[data-theme="dark"] .modal,
 body[data-theme="dark"] .bb-modal,
-body[data-theme="dark"] .sidebar-sales-chart,
-body[data-theme="dark"] .sales-kpi-card,
-body[data-theme="dark"] .sales-slot-list,
 body[data-theme="dark"] .bb-drawer-card,
 body[data-theme="dark"] .discount-toggle,
 body[data-theme="dark"] .category-chip,
