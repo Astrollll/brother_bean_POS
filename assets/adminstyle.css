@@ -220,6 +220,56 @@
     border-color: var(--sa-shell-border);
   }
 
+  .sales-custom-date-range {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 8px;
+    border-radius: 12px;
+    border: 0.5px solid var(--sa-shell-border);
+    background: var(--sa-shell-panel);
+  }
+
+  .sales-date-input {
+    border: 0.5px solid var(--sa-shell-border);
+    border-radius: 8px;
+    padding: 6px 10px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--sa-shell-text);
+    background: var(--sa-shell-surface);
+    outline: none;
+    font-family: inherit;
+    max-width: 150px;
+  }
+
+  .sales-date-input:focus {
+    border-color: #378ADD;
+    box-shadow: 0 0 0 2px rgba(55, 138, 221, 0.15);
+  }
+
+  .sales-date-separator {
+    color: var(--sa-shell-muted);
+    font-size: 13px;
+  }
+
+  .sales-date-apply-btn {
+    border: 0.5px solid var(--sa-shell-border);
+    border-radius: 8px;
+    padding: 6px 14px;
+    font-size: 12px;
+    font-weight: 700;
+    color: #fff;
+    background: #378ADD;
+    cursor: pointer;
+    transition: background 150ms ease;
+    font-family: inherit;
+  }
+
+  .sales-date-apply-btn:hover {
+    background: #2e76c2;
+  }
+
   .sales-analytics-body {
     display: grid;
     grid-template-columns: 195px minmax(0, 1fr);

@@ -7,6 +7,7 @@ const viewState = {
   analyticsPeriod: "all",
   analyticsChart: null,
   analyticsData: null,
+  customDateRange: null,
 };
 
 function toNumber(value) {
@@ -150,6 +151,21 @@ function getPeriodRange(period, now = new Date(), orders = []) {
   const end = new Date(now);
   const start = new Date(now);
 
+  if (period === "custom") {
+    const customState = viewState.customDateRange;
+    if (customState && customState.start && customState.end) {
+      const s = new Date(customState.start);
+      const e = new Date(customState.end);
+      s.setHours(0, 0, 0, 0);
+      e.setDate(e.getDate() + 1);
+      e.setHours(0, 0, 0, 0);
+      return { start: s, end: e };
+    }
+    start.setHours(0, 0, 0, 0);
+    end.setHours(0, 0, 0, 0);
+    return { start, end };
+  }
+
   if (period === "all") {
     const source = Array.isArray(orders) ? orders : [];
     const dates = source
@@ -275,6 +291,16 @@ function buildPeriodBuckets(period, range = null) {
   if (period === "month") {
     return ["W1", "W2", "W3", "W4"];
   }
+  if (period === "custom" && range) {
+    const labels = [];
+    const cursor = new Date(range.start);
+    const endMs = range.end.getTime();
+    while (cursor.getTime() < endMs) {
+      labels.push(`${MONTH_NAMES[cursor.getMonth()]} ${cursor.getDate()}`);
+      cursor.setDate(cursor.getDate() + 1);
+    }
+    return labels.length ? labels : ["No data"];
+  }
   const labels = [];
   for (let hour = 7; hour <= 20; hour += 1) {
     const nextHour = hour + 1;
@@ -299,6 +325,12 @@ function getBucketIndex(orderDate, period, range = null) {
   }
   if (period === "month") {
     return Math.min(3, Math.floor((orderDate.getDate() - 1) / 7));
+  }
+  if (period === "custom" && range) {
+    const startMs = range.start.getTime();
+    const dayMs = 24 * 60 * 60 * 1000;
+    const index = Math.floor((orderDate.getTime() - startMs) / dayMs);
+    return Math.max(0, index);
   }
   const hour = orderDate.getHours();
   return Math.max(0, Math.min(13, hour - 7));
@@ -721,6 +753,13 @@ function buildAnalyticsTemplate() {
             <button class="sales-period-tab" type="button" data-period="today" aria-pressed="false">Today</button>
             <button class="sales-period-tab" type="button" data-period="week" aria-pressed="false">Week</button>
             <button class="sales-period-tab" type="button" data-period="month" aria-pressed="false">Month</button>
+            <button class="sales-period-tab" type="button" data-period="custom" aria-pressed="false">Custom</button>
+          </div>
+          <div class="sales-custom-date-range" id="saCustomDateRange" style="display:none;">
+            <input type="date" id="saDateFrom" class="sales-date-input" aria-label="Start date" />
+            <span class="sales-date-separator">→</span>
+            <input type="date" id="saDateTo" class="sales-date-input" aria-label="End date" />
+            <button class="sales-date-apply-btn" type="button" id="saDateApply">Apply</button>
           </div>
         </div>
       </div>
@@ -787,7 +826,7 @@ function buildAnalyticsTemplate() {
 
       <div class="sales-analytics-footer">
         <div class="sales-footer-note" id="saFooterNote">Showing live sales data</div>
-        <button class="sales-footer-btn" type="button">
+        <button class="sales-footer-btn" id="saFullReportBtn" type="button">
           Full report <i class="ti ti-arrow-up-right"></i>
         </button>
       </div>
@@ -1002,12 +1041,24 @@ function buildAnalyticsPeriodData(period, orders, menuItems, pendingSyncCount = 
       ? `Peak day: ${peakBucket.label}`
       : period === "month"
         ? `Peak week: ${peakBucket.label}`
-        : `Peak month: ${peakBucket.label}`;
+        : period === "custom"
+          ? `Peak: ${peakBucket.label}`
+          : `Peak month: ${peakBucket.label}`;
+
+  const periodLabel = period === "custom"
+    ? "Custom"
+    : period === "all"
+      ? "All time"
+      : period.charAt(0).toUpperCase() + period.slice(1);
+
+  const trendTitle = period === "custom"
+    ? `Revenue trend — Custom (${formatShortDate(range.start)} to ${formatShortDate(new Date(range.end.getTime() - 1))})`
+    : `Revenue trend — ${period === "all" ? "All time" : period.charAt(0).toUpperCase() + period.slice(1)} (${period === "today" ? "hourly" : period === "week" ? "daily" : period === "month" ? "weekly" : "monthly"})`;
 
   return {
     period,
-    periodLabel: period === "all" ? "All time" : period.charAt(0).toUpperCase() + period.slice(1),
-    title: `Revenue trend — ${period === "all" ? "All time" : period.charAt(0).toUpperCase() + period.slice(1)} (${period === "today" ? "hourly" : period === "week" ? "daily" : period === "month" ? "weekly" : "monthly"})`,
+    periodLabel,
+    title: trendTitle,
     kicker: `Revenue trend`,
     stats: {
       revenue: {
@@ -1115,6 +1166,11 @@ function setAnalyticsPeriod(period) {
     button.setAttribute("aria-pressed", isActive ? "true" : "false");
   });
 
+  const customRange = document.getElementById("saCustomDateRange");
+  if (customRange) {
+    customRange.style.display = period === "custom" ? "inline-flex" : "none";
+  }
+
   renderAnalyticsSidebar(periodData);
   renderTopSellers(periodData);
   renderCategories(periodData);
@@ -1126,6 +1182,25 @@ function bindAnalyticsEvents() {
   document.querySelectorAll(".sales-period-tab").forEach((button) => {
     button.addEventListener("click", () => setAnalyticsPeriod(button.dataset.period));
   });
+
+  const applyBtn = document.getElementById("saDateApply");
+  const dateFrom = document.getElementById("saDateFrom");
+  const dateTo = document.getElementById("saDateTo");
+
+  if (applyBtn && dateFrom && dateTo) {
+    applyBtn.addEventListener("click", () => {
+      const fromVal = dateFrom.value;
+      const toVal = dateTo.value;
+      if (!fromVal || !toVal) return;
+      viewState.customDateRange = { start: fromVal, end: toVal };
+      setAnalyticsPeriod("custom");
+    });
+  }
+
+  const fullReportBtn = document.getElementById("saFullReportBtn");
+  if (fullReportBtn) {
+    fullReportBtn.addEventListener("click", () => openFullReport());
+  }
 }
 
 function handleOrderSavedEvent(e) {
@@ -1147,6 +1222,101 @@ function handleOrderSavedEvent(e) {
   } catch (err) {
     console.warn("[Analytics] order saved handler failed", err);
   }
+}
+
+function openFullReport() {
+  const period = viewState.analyticsPeriod || "today";
+  const orders = viewState.analyticsData?.orders || [];
+  const menuItems = viewState.analyticsData?.menuItems || [];
+  const pendingSyncCount = viewState.analyticsData?.pendingSyncCount || 0;
+  const todayOrders = viewState.analyticsData?.todayOrders || [];
+
+  const periodData = buildAnalyticsPeriodData(period, orders, menuItems, pendingSyncCount, new Date(), todayOrders);
+
+  const topSellersHtml = (periodData.topSellers || []).map((item, i) =>
+    `<tr><td>${i + 1}</td><td>${escapeHtml(item.name)}</td><td>${escapeHtml(item.category || "—")}</td><td>${item.quantity}</td><td>${formatPeso(item.revenue)}</td></tr>`
+  ).join("");
+
+  const categoriesHtml = (periodData.categories || []).map((cat) =>
+    `<tr><td>${escapeHtml(cat.name)}</td><td>${formatPeso(cat.value)}</td><td>${cat.percent}%</td></tr>`
+  ).join("");
+
+  const reportHtml = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Brother Bean — Full Sales Report</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: #1a1a1a; padding: 32px; background: #fff; }
+  .header { display: flex; align-items: center; gap: 16px; margin-bottom: 28px; border-bottom: 2px solid #1a1a1a; padding-bottom: 16px; }
+  .header h1 { font-size: 22px; font-weight: 700; }
+  .header .subtitle { font-size: 13px; color: #666; margin-top: 2px; }
+  .meta { font-size: 12px; color: #888; margin-bottom: 24px; }
+  .section-title { font-size: 14px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin: 24px 0 12px; padding-bottom: 6px; border-bottom: 1px solid #e0e0e0; }
+  .kpi-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 24px; }
+  .kpi-card { border: 1px solid #e0e0e0; border-radius: 8px; padding: 14px 16px; }
+  .kpi-label { font-size: 11px; text-transform: uppercase; color: #888; font-weight: 600; margin-bottom: 4px; }
+  .kpi-value { font-size: 20px; font-weight: 700; }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 24px; }
+  th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid #eee; font-size: 13px; }
+  th { font-weight: 700; text-transform: uppercase; font-size: 11px; color: #888; letter-spacing: 0.4px; }
+  tr:hover td { background: #f9f9f9; }
+  .footer { margin-top: 32px; font-size: 11px; color: #aaa; border-top: 1px solid #eee; padding-top: 12px; }
+  @media print { body { padding: 16px; } }
+</style>
+</head>
+<body>
+<div class="header">
+  <div>
+    <h1>Brother Bean — Sales Report</h1>
+    <div class="subtitle">${escapeHtml(periodData.periodLabel)} period${period === "custom" && viewState.customDateRange ? `: ${viewState.customDateRange.start} → ${viewState.customDateRange.end}` : ""}</div>
+  </div>
+</div>
+<div class="meta">Generated ${new Date().toLocaleString("en-PH")} &bull; ${periodData.footerLabel}</div>
+
+<div class="section-title">Key Metrics</div>
+<div class="kpi-grid">
+  <div class="kpi-card"><div class="kpi-label">Total Revenue</div><div class="kpi-value">${formatPeso(periodData.stats.revenue.value)}</div></div>
+  <div class="kpi-card"><div class="kpi-label">Orders</div><div class="kpi-value">${periodData.stats.orders.value}</div></div>
+  <div class="kpi-card"><div class="kpi-label">Avg. Ticket</div><div class="kpi-value">${formatPeso(periodData.stats.avgTicket.value)}</div></div>
+  <div class="kpi-card"><div class="kpi-label">Peak Hour</div><div class="kpi-value">${escapeHtml(String(periodData.stats.peakHour.value))}</div></div>
+  <div class="kpi-card"><div class="kpi-label">Discounts Given</div><div class="kpi-value">${formatPeso(periodData.stats.discounts.value)}</div></div>
+  <div class="kpi-card"><div class="kpi-label">Pending Sync</div><div class="kpi-value">${periodData.stats.sync.value}</div></div>
+</div>
+
+<div class="section-title">Top Sellers</div>
+<table>
+  <thead><tr><th>#</th><th>Item</th><th>Category</th><th>Qty Sold</th><th>Revenue</th></tr></thead>
+  <tbody>${topSellersHtml || '<tr><td colspan="5" style="color:#888;">No data</td></tr>'}</tbody>
+</table>
+
+<div class="section-title">Category Breakdown</div>
+<table>
+  <thead><tr><th>Category</th><th>Revenue</th><th>% of Total</th></tr></thead>
+  <tbody>${categoriesHtml || '<tr><td colspan="3" style="color:#888;">No data</td></tr>'}</tbody>
+</table>
+
+<div class="footer">
+  Brother Bean POS &bull; Sales Analytics &bull; Report generated automatically
+</div>
+</body>
+</html>`;
+
+  const reportWindow = window.open("", "_blank");
+  if (reportWindow) {
+    reportWindow.document.write(reportHtml);
+    reportWindow.document.close();
+  }
+}
+
+function escapeHtml(str) {
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }
 
 export function renderSalesAnalyticsDashboard(data = {}) {
