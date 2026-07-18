@@ -117,7 +117,10 @@
                   <span class="notif-dropdown-title">Notifications</span>
                   <span class="notif-dropdown-count" id="notifTotalCount">0</span>
                 </div>
-                <button class="notif-clear-all" id="notifClearAllBtn" type="button" style="display:none;">Clear all</button>
+                <div class="notif-header-actions">
+                  <button class="notif-clear-all" id="notifMarkReadBtn" type="button" style="display:none;"><i class="ri-check-double-line" style="font-size:12px;vertical-align:middle;margin-right:2px;"></i>Mark all read</button>
+                  <button class="notif-clear-all notif-clear-danger" id="notifClearAllBtn" type="button" style="display:none;"><i class="ri-delete-bin-line" style="font-size:12px;vertical-align:middle;margin-right:2px;"></i>Clear all</button>
+                </div>
               </div>
               <div class="notif-dropdown-body" id="notifDropdownBody">
                 <div class="notif-empty">
@@ -378,38 +381,39 @@
                 Track your ingredients and supplies
               </div>
             </div>
-            <div class="card inventory-form-card">
-              <div class="card-head">
-                <span class="card-title">Inventory Item</span>
+            <div class="card inventory-form-card" id="invFormCard">
+              <div class="card-head inv-form-head" id="invFormToggle">
+                <div class="inv-form-head-left">
+                  <span class="inv-form-head-icon"><i class="ri-add-circle-line"></i></span>
+                  <span class="card-title">Add New Item</span>
+                </div>
+                <i class="ri-arrow-up-s-line inv-form-chevron" id="invFormChevron"></i>
               </div>
-              <form id="inventoryForm" class="inventory-form-grid">
+              <form id="inventoryForm" class="inventory-form-grid inv-form-body">
                 <input id="invId" type="hidden" />
-                <div>
+                <div class="inv-form-field">
                   <div class="ls-label">Item Name</div>
                   <input
                     id="invName"
                     class="ls-input"
                     placeholder="e.g. Espresso Beans"
-                    style="margin-bottom: 0"
                     required
                   />
                 </div>
-                <div>
+                <div class="inv-form-field">
                   <div class="ls-label">Category</div>
                   <input
                     id="invCategory"
                     class="ls-input"
                     placeholder="Coffee"
-                    style="margin-bottom: 0"
                     required
                   />
                 </div>
-                <div>
+                <div class="inv-form-field">
                   <div class="ls-label">Unit</div>
                   <select
                     id="invUnit"
                     class="ls-input"
-                    style="margin-bottom: 0"
                     required
                   >
                     <option value="" disabled selected>
@@ -447,98 +451,103 @@
                     </optgroup>
                   </select>
                 </div>
-                <div>
+                <div class="inv-form-field">
                   <div class="ls-label">Current Stock</div>
                   <input
                     id="invQuantity"
                     type="number"
                     min="0"
                     step="0.01"
-                    class="ls-input"
+                    max="99999.99"
+                    class="ls-input inv-decimal-input"
                     placeholder="0"
-                    style="margin-bottom: 0"
                     required
                   />
                 </div>
-                <div>
+                <div class="inv-form-field">
                   <div class="ls-label">Restock Alert Level</div>
                   <input
                     id="invReorder"
                     type="number"
                     min="0"
                     step="0.01"
-                    class="ls-input"
+                    max="99999.99"
+                    class="ls-input inv-decimal-input"
                     placeholder="0"
-                    style="margin-bottom: 0"
                     required
                   />
                   <div class="inventory-field-note">
-                    We will mark this item as low stock when current stock
-                    reaches this number.
+                    Alerts when stock reaches this number.
                   </div>
                 </div>
-                <div>
+                <div class="inv-form-field">
                   <div class="ls-label">Price (Per Unit)</div>
                   <input
                     id="invPrice"
                     type="number"
                     min="0"
                     step="0.01"
-                    class="ls-input"
+                    max="99999.99"
+                    class="ls-input inv-decimal-input"
                     placeholder="0.00"
-                    style="margin-bottom: 0"
                     required
                   />
                 </div>
                 <div class="inventory-form-actions">
-                  <button class="orders-btn" type="submit" id="invSaveBtn">
-                    Save Item
+                  <button class="orders-btn ghost" type="button" id="invCancelBtn">
+                    <i class="ri-refresh-line"></i> Clear
                   </button>
-                  <button
-                    class="orders-btn ghost"
-                    type="button"
-                    id="invCancelBtn"
-                  >
-                    Clear
+                  <button class="orders-btn" type="submit" id="invSaveBtn">
+                    <i class="ri-save-line"></i> Save Item
                   </button>
                 </div>
               </form>
             </div>
 
             <div class="card inventory-stock-card">
-              <div class="card-head">
-                <span class="card-title">Stock Levels</span>
+              <div class="card-head inv-stock-head">
+                <div class="inv-stock-head-left">
+                  <span class="card-title">Stock Levels</span>
+                  <span class="inv-item-count" id="invItemCount"></span>
+                </div>
                 <div class="inventory-card-head-actions">
-                  <span
-                    class="card-action inventory-card-action"
-                    onclick="
-                      window.refreshInventory && window.refreshInventory()
-                    "
-                    >Refresh</span
-                  >
-                  <span
-                    class="card-action inventory-card-action text-danger"
+                  <select id="inventorySortSelect" class="ls-input inventory-sort-select">
+                    <option value="name">Sort: Name</option>
+                    <option value="status">Sort: Status</option>
+                    <option value="stock-asc">Sort: Stock ↑</option>
+                    <option value="stock-desc">Sort: Stock ↓</option>
+                    <option value="category">Sort: Category</option>
+                  </select>
+                  <button class="orders-btn ghost inv-toolbar-btn" type="button"
+                    onclick="window.refreshInventory && window.refreshInventory()"
+                    title="Refresh inventory">
+                    <i class="ri-refresh-line"></i>
+                  </button>
+                  <button class="orders-btn inv-toolbar-btn inv-toolbar-danger" type="button"
                     id="btnClearInventory"
-                    onclick="
-                      window.clearAllInventory && window.clearAllInventory()
-                    "
-                    >Clear all</span
-                  >
+                    onclick="window.clearAllInventory && window.clearAllInventory()"
+                    title="Clear all items">
+                    <i class="ri-delete-bin-line"></i> Clear All
+                  </button>
                 </div>
               </div>
+              <div id="inventoryCategoryPills" class="inv-category-pills"></div>
               <div class="inventory-search-row">
-                <input
-                  id="inventorySearchInput"
-                  class="ls-input"
-                  placeholder="Search stock item..."
-                />
+                <div class="inventory-search-wrap">
+                  <i class="ri-search-line inventory-search-icon" aria-hidden="true"></i>
+                  <input
+                    id="inventorySearchInput"
+                    class="ls-input inventory-search-input"
+                    placeholder="Search stock item..."
+                  />
+                </div>
                 <button
                   id="inventorySearchClear"
                   class="orders-btn ghost"
                   type="button"
                   title="Clear search"
                 >
-                  Clear
+                  <i class="ri-close-line"></i>
                 </button>
                 <button
                   id="quickAddStockBtn"
@@ -931,7 +940,8 @@
                 type="number"
                 min="0"
                 step="0.01"
-                class="ls-input"
+                max="99999.99"
+                class="ls-input inv-decimal-input"
                 placeholder="0"
                 style="margin-bottom: 0"
                 required
@@ -944,7 +954,8 @@
                 type="number"
                 min="0"
                 step="0.01"
-                class="ls-input"
+                max="99999.99"
+                class="ls-input inv-decimal-input"
                 placeholder="0"
                 style="margin-bottom: 0"
                 required
@@ -957,7 +968,8 @@
                 type="number"
                 min="0"
                 step="0.01"
-                class="ls-input"
+                max="99999.99"
+                class="ls-input inv-decimal-input"
                 placeholder="0.00"
                 style="margin-bottom: 0"
                 required
@@ -1069,7 +1081,8 @@
                   type="number"
                   min="0.01"
                   step="0.01"
-                  class="ls-input quick-add-qty-input"
+                  max="99999.99"
+                  class="ls-input quick-add-qty-input inv-decimal-input"
                   placeholder="0"
                 />
                 <span class="quick-add-qty-unit" id="quickAddQtyUnit"></span>

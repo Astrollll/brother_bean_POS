@@ -1,4 +1,8 @@
 import { logout as authLogout, watchAuth, createAuthUserByAdmin, updatePasswordByAdmin, getCurrentUser } from "../auth/firebaseAuth.js";
+import { db } from "../firebase.js";
+import {
+  doc, setDoc, getDoc, collection, getDocs, serverTimestamp
+} from "https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js";
 import { getAdminSettings, saveAdminSettings, getDefaultSettings } from "../../models/settingsModel.js";
 import { getUserRole, getUserProfile, listUsers, setUserRole, setUserProfile, ensureAdminAccessProfile } from "../../models/userModel.js";
 import { getMenuItems, saveMenuItem, deleteMenuItem, clearMenuItems } from "../../models/menuModel.js";
@@ -245,10 +249,58 @@ function notifTimeAgo(date) {
   return `${Math.floor(diff / 86_400_000)}d ago`;
 }
 
+const DISMISSED_NOTIFS_KEY = "bb_admin_dismissed_notifs";
+const READ_NOTIFS_KEY = "bb_admin_read_notifs";
 const dismissedNotifs = new Set();
+const readNotifs = new Set();
 
-function clearDismissedNotifs() {
+function loadNotifState() {
+  try {
+    const raw = localStorage.getItem(DISMISSED_NOTIFS_KEY);
+    if (raw) { const arr = JSON.parse(raw); if (Array.isArray(arr)) arr.forEach((id) => dismissedNotifs.add(id)); }
+  } catch {}
+  try {
+    const raw = localStorage.getItem(READ_NOTIFS_KEY);
+    if (raw) { const arr = JSON.parse(raw); if (Array.isArray(arr)) arr.forEach((id) => readNotifs.add(id)); }
+  } catch {}
+}
+
+function saveNotifState() {
+  try { localStorage.setItem(DISMISSED_NOTIFS_KEY, JSON.stringify(Array.from(dismissedNotifs))); } catch {}
+  try { localStorage.setItem(READ_NOTIFS_KEY, JSON.stringify(Array.from(readNotifs))); } catch {}
+}
+
+async function loadNotifStateFromFirestore() {
+  try {
+    const uid = getCurrentUser()?.uid;
+    if (!uid) return;
+    const snap = await getDoc(doc(db, "adminReadNotifications", uid));
+    if (snap.exists()) {
+      const data = snap.data();
+      if (Array.isArray(data.dismissedIds)) data.dismissedIds.forEach((id) => dismissedNotifs.add(id));
+      if (Array.isArray(data.readIds)) data.readIds.forEach((id) => readNotifs.add(id));
+    }
+  } catch {}
+}
+
+async function saveNotifStateToFirestore() {
+  try {
+    const uid = getCurrentUser()?.uid;
+    if (!uid) return;
+    await setDoc(doc(db, "adminReadNotifications", uid), {
+      dismissedIds: Array.from(dismissedNotifs),
+      readIds: Array.from(readNotifs),
+      updatedAt: serverTimestamp()
+    }, { merge: true });
+  } catch {}
+}
+
+function clearNotifState() {
   dismissedNotifs.clear();
+  readNotifs.clear();
+  localStorage.removeItem(DISMISSED_NOTIFS_KEY);
+  localStorage.removeItem(READ_NOTIFS_KEY);
+  saveNotifStateToFirestore().catch(() => {});
 }
 
 function getNotifId(n, i) {
@@ -322,33 +374,37 @@ function renderNotifications() {
   const body = document.getElementById("notifDropdownBody");
   const badge = document.getElementById("notifBadge");
   const countEl = document.getElementById("notifTotalCount");
+  const markReadBtn = document.getElementById("notifMarkReadBtn");
   const clearBtn = document.getElementById("notifClearAllBtn");
   if (!body) return;
 
   const all = buildNotifications();
+  const unreadCount = all.filter((n) => !readNotifs.has(n._id)).length;
   const totalCount = all.length;
 
-  if (countEl) countEl.textContent = totalCount;
+  if (countEl) countEl.textContent = unreadCount > 0 ? unreadCount : totalCount;
+  if (markReadBtn) markReadBtn.style.display = unreadCount > 0 ? "inline-block" : "none";
   if (clearBtn) clearBtn.style.display = totalCount > 0 ? "inline-block" : "none";
 
   if (badge) {
     const prevCount = parseInt(badge.textContent) || 0;
-    if (totalCount > 0) {
-      badge.textContent = totalCount > 99 ? "99+" : totalCount;
+    if (unreadCount > 0) {
+      badge.textContent = unreadCount > 99 ? "99+" : unreadCount;
       badge.classList.add("has-count");
-      if (totalCount !== prevCount) {
+      if (unreadCount !== prevCount) {
         badge.classList.remove("pulse");
         void badge.offsetWidth;
         badge.classList.add("pulse");
       }
     } else {
       badge.classList.remove("has-count");
+      badge.textContent = "";
     }
   }
 
   const bellBtn = document.getElementById("topbarNotifBtn");
   if (bellBtn) {
-    if (totalCount > 0) {
+    if (unreadCount > 0) {
       bellBtn.classList.add("has-notifs");
     } else {
       bellBtn.classList.remove("has-notifs");
@@ -375,15 +431,17 @@ function renderNotifications() {
     return `
       <div class="notif-section">
         <div class="notif-section-label">${escapeHtml(label)}</div>
-        ${items.map((n) => `
-          <div class="notif-item" data-notif-nav="${escapeHtml(n.navigate || "")}" data-notif-id="${escapeHtml(n._id || "")}">
+        ${items.map((n) => {
+          const isRead = readNotifs.has(n._id);
+          return `
+          <div class="notif-item${isRead ? " notif-item-read" : ""}" data-notif-nav="${escapeHtml(n.navigate || "")}" data-notif-id="${escapeHtml(n._id || "")}">
             <div class="notif-icon ${escapeHtml(iconClass)}">${iconHtml}</div>
             <div class="notif-content">
               <div class="notif-text">${escapeHtml(n.text)}</div>
               <div class="notif-meta">${escapeHtml(n.meta)}${n.date ? " \u2022 " + notifTimeAgo(n.date) : ""}</div>
             </div>
-          </div>
-        `).join("")}
+          </div>`;
+        }).join("")}
       </div>
     `;
   }
@@ -400,7 +458,11 @@ function renderNotifications() {
     el.addEventListener("click", async () => {
       const nid = el.getAttribute("data-notif-id");
       const target = el.getAttribute("data-notif-nav");
-      if (nid) dismissedNotifs.add(nid);
+      if (nid) {
+        dismissedNotifs.add(nid);
+        saveNotifState();
+        saveNotifStateToFirestore();
+      }
       closeNotifDropdown();
       if (target && window.showPage) {
         const navEl = document.querySelector(`.nav-item[onclick*="${target}"]`) || document.getElementById(`nav-${target}`);
@@ -421,9 +483,21 @@ function renderNotifications() {
     });
   }
 
+  if (markReadBtn) {
+    markReadBtn.onclick = () => {
+      all.forEach((n) => { if (n._id) readNotifs.add(n._id); });
+      saveNotifState();
+      saveNotifStateToFirestore();
+      renderNotifications();
+    };
+  }
+
   if (clearBtn) {
     clearBtn.onclick = () => {
       all.forEach((n) => { if (n._id) dismissedNotifs.add(n._id); });
+      readNotifs.clear();
+      saveNotifState();
+      saveNotifStateToFirestore();
       renderNotifications();
     };
   }
@@ -657,15 +731,17 @@ async function loadDashboard() {
     }
 
     // Fetch live data and render both dashboard and analytics as needed
-    const [menuItems, ordersToday, allOrders, staff, schedule] = await Promise.all([
+    const [menuItems, ordersToday, allOrders, staff, schedule, inventoryItems] = await Promise.all([
       getMenuItems().catch(() => []),
       getTodayOrders().catch(() => []),
       getAllSalesOrders().catch(() => []),
       getStaff().catch(() => []),
       getSchedule().catch(() => ({})),
+      getInventoryItems().catch(() => []),
     ]);
 
     state.ordersToday = ordersToday;
+    state.inventoryItems = inventoryItems;
     try { renderNotifications(); } catch (_) {}
 
     // Render legacy dashboard (uses today's orders, menu items, and staff schedule)
@@ -1730,6 +1806,8 @@ async function loadInventoryPage() {
   bindInventoryForm();
   bindInventoryEditForm();
   bindQuickAddStock();
+  clampDecimalInputs();
+  bindInventoryFormToggle();
 
   try { renderNotifications(); } catch (_) {}
 }
@@ -1745,76 +1823,187 @@ function inventoryStatus(item) {
   return "good";
 }
 
+let _invCategoryFilter = "All";
+let _invSortBy = "name";
+
 function renderInventorySection() {
   const listWrap = document.getElementById("inventoryListWrap");
   const strip = document.getElementById("inventoryAlertStrip");
   const pageSub = document.getElementById("inventoryPageSub");
   const navBadge = document.getElementById("inventoryNavBadge");
+  const catPills = document.getElementById("inventoryCategoryPills");
+  const sortEl = document.getElementById("inventorySortSelect");
+  const itemCountEl = document.getElementById("invItemCount");
   if (!listWrap || !strip) return;
 
   const syncText = state.lastInventorySyncMs ? ` • Last synced ${formatSyncTime(state.lastInventorySyncMs)}` : "";
 
-  // Read search input (if present) to filter displayed inventory items
+  // Read search input
   const searchEl = document.getElementById("inventorySearchInput");
   const searchTerm = (searchEl && String(searchEl.value || "").trim().toLowerCase()) || "";
-  const filteredItems = searchTerm
+  let filteredItems = searchTerm
     ? state.inventoryItems.filter((i) => {
         const hay = (String(i.name || "") + " " + String(i.category || "") + " " + String(i.id || "")).toLowerCase();
         return hay.includes(searchTerm);
       })
-    : state.inventoryItems;
+    : [...state.inventoryItems];
+
+  // Apply category filter
+  if (_invCategoryFilter !== "All") {
+    filteredItems = filteredItems.filter((i) => String(i.category || "").toLowerCase() === _invCategoryFilter.toLowerCase());
+  }
+
+  // Apply sort
+  const statusOrder = { out: 0, critical: 1, low: 2, good: 3 };
+  if (_invSortBy === "name") {
+    filteredItems.sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")));
+  } else if (_invSortBy === "stock-asc") {
+    filteredItems.sort((a, b) => Number(a.quantity || 0) - Number(b.quantity || 0));
+  } else if (_invSortBy === "stock-desc") {
+    filteredItems.sort((a, b) => Number(b.quantity || 0) - Number(a.quantity || 0));
+  } else if (_invSortBy === "status") {
+    filteredItems.sort((a, b) => (statusOrder[inventoryStatus(a)] ?? 4) - (statusOrder[inventoryStatus(b)] ?? 4));
+  } else if (_invSortBy === "category") {
+    filteredItems.sort((a, b) => String(a.category || "").localeCompare(String(b.category || "")));
+  }
 
   if (navBadge) navBadge.textContent = String(filteredItems.length);
 
+  // Update item count display
+  if (itemCountEl) {
+    const total = state.inventoryItems.length;
+    const showing = filteredItems.length;
+    if (searchTerm || _invCategoryFilter !== "All") {
+      itemCountEl.textContent = `Showing ${showing} of ${total}`;
+    } else {
+      itemCountEl.textContent = `${total} item${total === 1 ? "" : "s"}`;
+    }
+  }
+
+  // Extract unique categories for filter pills
+  const allCategories = [...new Set(state.inventoryItems.map((i) => String(i.category || "General").trim()).filter(Boolean))].sort();
+  if (catPills) {
+    const totalCount = state.inventoryItems.length;
+    catPills.innerHTML = `<button class="inv-cat-pill${_invCategoryFilter === "All" ? " active" : ""}" data-inv-cat="All">All (${totalCount})</button>` +
+      allCategories.map((cat) => {
+        const count = state.inventoryItems.filter((i) => String(i.category || "").toLowerCase() === cat.toLowerCase()).length;
+        return `<button class="inv-cat-pill${_invCategoryFilter === cat ? " active" : ""}" data-inv-cat="${escapeHtml(cat)}">${escapeHtml(cat)} (${count})</button>`;
+      }).join("");
+    catPills.querySelectorAll(".inv-cat-pill").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        _invCategoryFilter = btn.dataset.invCat || "All";
+        renderInventorySection();
+      });
+    });
+  }
+
+  // Sort select
+  if (sortEl && !sortEl.dataset.bound) {
+    sortEl.dataset.bound = "1";
+    sortEl.value = _invSortBy;
+    sortEl.addEventListener("change", () => {
+      _invSortBy = sortEl.value;
+      renderInventorySection();
+    });
+  }
+
   if (!state.inventoryItems.length) {
-    strip.innerHTML = `<span class="badge b-blue">No inventory items yet. Add your first item above.</span>`;
-    listWrap.innerHTML = renderSectionState("No inventory items found.", "warning");
+    strip.innerHTML = `<span class="badge b-blue">No inventory items yet</span>`;
+    listWrap.innerHTML = `
+      <div class="inv-empty-state">
+        <div class="inv-empty-icon"><i class="ri-archive-line"></i></div>
+        <div class="inv-empty-title">No inventory items yet</div>
+        <div class="inv-empty-sub">Add your first item using the form above to start tracking stock levels.</div>
+      </div>`;
+    if (catPills) catPills.innerHTML = "";
     if (pageSub) pageSub.textContent = `Track your ingredients and supplies${syncText}`;
     return;
   }
 
-  const low = filteredItems.filter((i) => inventoryStatus(i) === "low").length;
-  const critical = filteredItems.filter((i) => inventoryStatus(i) === "critical").length;
-  const out = filteredItems.filter((i) => inventoryStatus(i) === "out").length;
-  if (pageSub) pageSub.textContent = `${out} out, ${critical} critical, ${low} low stock item(s)${syncText}`;
+  if (searchTerm && !filteredItems.length) {
+    listWrap.innerHTML = `
+      <div class="inv-empty-state">
+        <div class="inv-empty-icon"><i class="ri-search-line"></i></div>
+        <div class="inv-empty-title">No results for "${escapeHtml(searchTerm)}"</div>
+        <div class="inv-empty-sub">Try a different search term or clear the filter.</div>
+      </div>`;
+    return;
+  }
+
+  // Summary stats
+  const allItems = state.inventoryItems;
+  const totalOut = allItems.filter((i) => inventoryStatus(i) === "out").length;
+  const totalCritical = allItems.filter((i) => inventoryStatus(i) === "critical").length;
+  const totalLow = allItems.filter((i) => inventoryStatus(i) === "low").length;
+  const totalValue = allItems.reduce((sum, i) => sum + (Number(i.quantity || 0) * Number(i.price || 0)), 0);
+  const needsRestock = allItems.filter((i) => inventoryStatus(i) !== "good").length;
+
+  if (pageSub) pageSub.textContent = `${totalOut} out, ${totalCritical} critical, ${totalLow} low stock item(s)${syncText}`;
 
   strip.innerHTML = `
-    <span class="badge b-red">Out: ${out}</span>
-    <span class="badge b-red">Critical: ${critical}</span>
-    <span class="badge b-orange">Low: ${low}</span>
-    <span class="badge b-green">Total: ${filteredItems.length}</span>
+    <span class="inv-stat-chip inv-stat-out"><i class="ri-error-warning-line"></i><span class="inv-stat-num">${totalOut}</span> Out</span>
+    <span class="inv-stat-chip inv-stat-critical"><i class="ri-alert-line"></i><span class="inv-stat-num">${totalCritical}</span> Critical</span>
+    <span class="inv-stat-chip inv-stat-low"><i class="ri-alert-fill"></i><span class="inv-stat-num">${totalLow}</span> Low</span>
+    <span class="inv-stat-chip inv-stat-good"><i class="ri-checkbox-circle-line"></i><span class="inv-stat-num">${allItems.length - needsRestock}</span> Good</span>
+    <span class="inv-stat-chip inv-stat-value"><i class="ri-money-currency-circle-line"></i><span class="inv-stat-num">₱${totalValue.toFixed(0)}</span> Total</span>
+    <span class="inv-stat-chip inv-stat-restock"><i class="ri-shopping-cart-2-line"></i><span class="inv-stat-num">${needsRestock}</span> Restock</span>
   `;
 
   listWrap.innerHTML = filteredItems.map((item) => {
     const quantity = Number(item.quantity || 0);
     const reorderLevel = Math.max(1, Number(item.reorderLevel || 1));
     const price = Number(item.price || 0).toFixed(2);
+    const qtyDisplay = quantity % 1 === 0 ? quantity : quantity.toFixed(2);
+    const reorderDisplay = reorderLevel % 1 === 0 ? reorderLevel : reorderLevel.toFixed(2);
     const percent = Math.max(5, Math.min(100, Math.round((quantity / (reorderLevel * 2)) * 100)));
     const status = inventoryStatus(item);
-    const statusBadge = status === "out"
-      ? `<span class="badge b-red">Out</span>`
-      : status === "critical"
-      ? `<span class="badge b-red">Critical</span>`
-      : status === "low"
-        ? `<span class="badge b-orange">Low</span>`
-        : `<span class="badge b-green">Good</span>`;
+    const statusClass = status === "out" ? "inv-status-out" : status === "critical" ? "inv-status-critical" : status === "low" ? "inv-status-low" : "inv-status-good";
+    const statusLabel = status === "out" ? "Out of Stock" : status === "critical" ? "Critical" : status === "low" ? "Low Stock" : "In Stock";
 
-    return `<div class="inv-row">
-      <div>
+    return `<div class="inv-row ${status === "out" || status === "critical" ? "inv-row-alert" : ""}">
+      <div class="inv-row-meta">
         <div class="inv-name">${escapeHtml(item.name)}</div>
-        <div class="inv-cat">${escapeHtml(item.category)}</div>
+        <div class="inv-row-tags">
+          <span class="inv-cat-tag">${escapeHtml(item.category)}</span>
+          <span class="inv-unit-tag">${escapeHtml(item.unit)}</span>
+        </div>
       </div>
       <div class="inv-bar-col">
-        <div class="inv-qty">Stock: ${quantity} ${escapeHtml(item.unit)} &middot; Restock alert at: ${reorderLevel} &middot; Cost: ₱${price}/unit</div>
+        <div class="inv-qty-row">
+          <span class="inv-qty-current"><strong>${qtyDisplay}</strong> ${escapeHtml(item.unit)}</span>
+          <span class="inv-qty-divider">/</span>
+          <span class="inv-qty-reorder">alert at ${reorderDisplay}</span>
+        </div>
         <div class="inv-bar-bg"><div class="inv-bar ${status === "critical" ? "crit" : status === "low" ? "low" : ""}" style="width:${percent}%"></div></div>
       </div>
-      ${statusBadge}
+      <div class="inv-row-right">
+        <span class="inv-price">₱${price}<span class="inv-price-unit">/unit</span></span>
+      </div>
+      <div class="inv-row-status">
+        <span class="inv-status-badge ${statusClass}">${statusLabel}</span>
+      </div>
       <div class="inventory-row-actions">
-        <button class="orders-btn ghost inventory-mini-btn row-action-btn" type="button" data-inv-action="edit" data-inv-id="${escapeHtml(item.id)}" title="Edit inventory item" aria-label="Edit inventory item"><i class="ri-pencil-line" aria-hidden="true"></i></button>
-        <button class="orders-btn ghost inventory-mini-btn danger row-action-btn" type="button" data-inv-action="delete" data-inv-id="${escapeHtml(item.id)}" title="Delete inventory item" aria-label="Delete inventory item"><i class="ri-delete-bin-line" aria-hidden="true"></i></button>
+        <button class="row-action-btn" type="button" data-inv-action="restock" data-inv-id="${escapeHtml(item.id)}" title="Quick restock" aria-label="Quick restock"><i class="ri-add-box-line" aria-hidden="true"></i></button>
+        <button class="row-action-btn" type="button" data-inv-action="edit" data-inv-id="${escapeHtml(item.id)}" title="Edit inventory item" aria-label="Edit inventory item"><i class="ri-pencil-line" aria-hidden="true"></i></button>
+        <button class="row-action-btn danger" type="button" data-inv-action="delete" data-inv-id="${escapeHtml(item.id)}" title="Delete inventory item" aria-label="Delete inventory item"><i class="ri-delete-bin-line" aria-hidden="true"></i></button>
       </div>
     </div>`;
   }).join("");
+
+  // Bind row actions
+  listWrap.querySelectorAll("button[data-inv-action='restock']").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const item = state.inventoryItems.find((i) => i.id === btn.dataset.invId);
+      if (item && typeof openQuickAddStock === "function") {
+        openQuickAddStock();
+        const searchInput = document.getElementById("quickAddSearchInput");
+        if (searchInput) {
+          searchInput.value = item.name;
+          searchInput.dispatchEvent(new Event("input"));
+        }
+      }
+    });
+  });
 
   listWrap.querySelectorAll("button[data-inv-action='edit']").forEach((btn) => {
     btn.addEventListener("click", () => {
@@ -1849,6 +2038,7 @@ function renderInventorySection() {
     clearBtn.dataset.bound = "1";
     clearBtn.addEventListener("click", () => {
       if (searchEl) searchEl.value = "";
+      _invCategoryFilter = "All";
       renderInventorySection();
       if (searchEl) searchEl.focus();
     });
@@ -1997,6 +2187,7 @@ function bindInventoryForm() {
     const quantity = Number(document.getElementById("invQuantity")?.value || 0);
     const reorderLevel = Number(document.getElementById("invReorder")?.value || 0);
     const price = Number(document.getElementById("invPrice")?.value || 0);
+    const saveBtn = document.getElementById("invSaveBtn");
 
     if (!name || !category || !unit) {
       await ModalUtils.warning("Validation Error", "Name, category, and unit are required.");
@@ -2007,26 +2198,71 @@ function bindInventoryForm() {
       return;
     }
 
-    await saveInventoryItem({ id: id || undefined, name, category, unit, quantity, reorderLevel, price });
-    await ModalUtils.success("Success", "Inventory item has been saved successfully.");
-    clearInventoryForm();
-    await loadInventoryPage();
+    setButtonLoadingState(saveBtn, true, "Saving...");
+    try {
+      await saveInventoryItem({ id: id || undefined, name, category, unit, quantity, reorderLevel, price });
+      await ModalUtils.success("Success", "Inventory item has been saved successfully.");
+      clearInventoryForm();
+      await loadInventoryPage();
+    } catch (error) {
+      await ModalUtils.error("Save Failed", error?.message || "Unable to save inventory item right now.");
+    } finally {
+      setButtonLoadingState(saveBtn, false, "Save Item");
+    }
   });
 
   cancelBtn?.addEventListener("click", clearInventoryForm);
 }
 
-let quickAddSelectedItem = null;
-
-function positionQuickAddDropdown() {
-  const input = document.getElementById("quickAddSearchInput");
-  const resultsEl = document.getElementById("quickAddSearchResults");
-  if (!input || !resultsEl) return;
-  const rect = input.getBoundingClientRect();
-  resultsEl.style.top = (rect.bottom + 4) + "px";
-  resultsEl.style.left = rect.left + "px";
-  resultsEl.style.width = rect.width + "px";
+function clampDecimalInputs() {
+  document.querySelectorAll(".inv-decimal-input").forEach((input) => {
+    if (input.dataset.decimalBound) return;
+    input.dataset.decimalBound = "1";
+    input.addEventListener("input", () => {
+      const raw = input.value;
+      if (raw === "" || raw === ".") return;
+      const parts = raw.split(".");
+      if (parts.length === 2 && parts[1].length > 2) {
+        input.value = parts[0] + "." + parts[1].slice(0, 2);
+      }
+      const num = Number(input.value);
+      if (Number.isFinite(num) && num > 99999.99) {
+        input.value = "99999.99";
+      }
+    });
+    input.addEventListener("blur", () => {
+      const num = Number(input.value);
+      if (Number.isFinite(num) && input.value.includes(".")) {
+        input.value = num.toFixed(2);
+      }
+    });
+  });
 }
+
+function bindInventoryFormToggle() {
+  const toggle = document.getElementById("invFormToggle");
+  const body = document.getElementById("inventoryForm");
+  const chevron = document.getElementById("invFormChevron");
+  if (!toggle || !body || !chevron || toggle.dataset.bound) return;
+  toggle.dataset.bound = "1";
+
+  // Start collapsed
+  body.classList.add("inv-form-collapsed");
+  chevron.classList.add("inv-form-collapsed");
+
+  toggle.addEventListener("click", () => {
+    const isCollapsed = body.classList.contains("inv-form-collapsed");
+    if (isCollapsed) {
+      body.classList.remove("inv-form-collapsed");
+      chevron.classList.remove("inv-form-collapsed");
+    } else {
+      body.classList.add("inv-form-collapsed");
+      chevron.classList.add("inv-form-collapsed");
+    }
+  });
+}
+
+let quickAddSelectedItem = null;
 
 function openQuickAddStock() {
   const modal = document.getElementById("quickAddStockModal");
@@ -3498,6 +3734,8 @@ window.addEventListener("keydown", (event) => {
 
 document.addEventListener("DOMContentLoaded", async () => {
   setupTopbarDate();
+  loadNotifState();
+  await loadNotifStateFromFirestore();
   setupTopbarActions();
   startDashboardAutoSync();
 
@@ -3640,7 +3878,7 @@ function initParallaxEffects() {
 
   function observeFadeTargets() {
     const currentPage = state.page || "dashboard";
-    const selectors = ".stat-card, .card.compact-card, .staff-kpi-card, .menu-card, .inventory-stock-card, .settings-card, .accounts-directory-card, .orders-kpi-card";
+    const selectors = ".stat-card, .card.compact-card, .staff-kpi-card, .menu-card, .settings-card, .accounts-directory-card, .orders-kpi-card";
     const newEls = [];
     mainEl.querySelectorAll(selectors).forEach((el) => {
       if (el.classList.contains("px-fade-in")) return;

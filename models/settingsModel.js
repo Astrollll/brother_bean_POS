@@ -77,7 +77,6 @@ export async function getAdminSettings() {
 }
 
 export async function saveAdminSettings(settings) {
-  saveToLocalStorage(settings);
   try {
     await setDoc(
       doc(db, SETTINGS_DOC_PATH),
@@ -87,6 +86,7 @@ export async function saveAdminSettings(settings) {
   } catch (error) {
     console.warn("[Settings] Firestore write failed, saved locally only:", error);
   }
+  saveToLocalStorage(settings);
 }
 
 export function getDefaultSettings() {

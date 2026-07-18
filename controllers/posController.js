@@ -5,13 +5,18 @@ import { getMenuItems, watchMenuItems }  from "../models/menuModel.js";
 import { getCategories } from "../models/categoryModel.js";
 import { getCategoryIconForName } from "../models/categoryModel.js";
 import { isDefaultTemplateMenuItem } from "../models/defaultSeedData.js";
-import { saveOrder, syncQueuedOrders, getPendingOrderCount, getTodayOrders, retryFailedInventoryDeduction } from "../models/orderModel.js";
+import { saveOrder, syncQueuedOrders, getPendingOrderCount, getTodayOrders, watchTodayOrders, retryFailedInventoryDeduction } from "../models/orderModel.js";
 import { watchAuth, getCurrentUser, logout as authLogout } from "./auth/firebaseAuth.js";
 import { getUserProfile, getUserRole } from "../models/userModel.js";
 import { navigateTo } from "./utils/routes.js";
+import { db } from "./firebase.js";
+import {
+  collection, getDocs, doc, setDoc, deleteDoc, query, where
+} from "https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js";
 import { 
   saveToStorage, 
   loadFromStorage, 
+  loadStatsFromFirestore,
   checkDailyReset, 
   getStorageCount,
   getKitchenOrders,
@@ -71,26 +76,65 @@ function loadUnpaidOrders() {
   }
 }
 
+async function loadUnpaidOrdersFromFirestore() {
+  try {
+    const uid = getCurrentUser()?.uid;
+    if (!uid) return loadUnpaidOrders();
+    const snap = await getDocs(
+      query(collection(db, "unpaidOrders"), where("cashierUid", "==", uid))
+    );
+    const remote = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    if (remote.length > 0) {
+      localStorage.setItem(UNPAID_ORDER_STORAGE_KEY, JSON.stringify(remote));
+      return remote;
+    }
+  } catch (error) {
+    console.warn("[POS] Firestore unpaid orders read failed.", error);
+  }
+  return loadUnpaidOrders();
+}
+
 function saveUnpaidOrders(orders) {
   localStorage.setItem(UNPAID_ORDER_STORAGE_KEY, JSON.stringify(orders));
 }
 
-function addUnpaidOrder(order) {
+async function addUnpaidOrder(order) {
   const orders = loadUnpaidOrders();
   orders.push(order);
   saveUnpaidOrders(orders);
+  try {
+    const orderId = String(order.id || `unpaid_${Date.now()}`);
+    await setDoc(doc(db, "unpaidOrders", orderId), {
+      ...order,
+      id: orderId,
+      savedAtMs: Date.now(),
+    });
+  } catch (error) {
+    console.warn("[POS] Firestore unpaid order write failed.", error);
+  }
 }
 
-function removeUnpaidOrderById(orderId) {
+async function removeUnpaidOrderById(orderId) {
   const orders = loadUnpaidOrders();
   const filtered = orders.filter(o => String(o.id) !== String(orderId));
   if (filtered.length !== orders.length) {
     saveUnpaidOrders(filtered);
   }
+  try {
+    await deleteDoc(doc(db, "unpaidOrders", String(orderId)));
+  } catch (error) {
+    console.warn("[POS] Firestore unpaid order delete failed.", error);
+  }
 }
 
-function clearUnpaidOrders() {
+async function clearUnpaidOrders() {
+  const orders = loadUnpaidOrders();
   localStorage.removeItem(UNPAID_ORDER_STORAGE_KEY);
+  for (const order of orders) {
+    try {
+      await deleteDoc(doc(db, "unpaidOrders", String(order.id)));
+    } catch {}
+  }
 }
 
 function getUnpaidOrders() {
@@ -189,7 +233,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     initialized = true;
 
     // Load from storage first
-    const storageData = loadFromStorage();
+    const storageData = await loadFromStorage();
     salesHistory = storageData.salesHistory;
     dailyStats = storageData.dailyStats;
 
@@ -245,6 +289,10 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     menuItems = sanitizePosMenuItems(await getMenuItems());
 
+    // Load unpaid orders from Firestore so they survive cache clears
+    await loadUnpaidOrdersFromFirestore();
+    updateUnpaidOrderSidebar();
+
     // Clear any stale cart data from previous sessions
     try { localStorage.removeItem("bb-pos-active-cart"); } catch {}
 
@@ -269,6 +317,32 @@ document.addEventListener("DOMContentLoaded", async () => {
       updateCart();
     }, (error) => {
       console.error("Menu listener failed:", error);
+    });
+
+    // Live-sync daily stats from Firestore so all terminals see shared sales
+    watchTodayOrders((todayOrders) => {
+      const now = Date.now();
+      const startOfDay = new Date(new Date(now).getFullYear(), new Date(now).getMonth(), new Date(now).getDate()).getTime();
+      const endOfDay = startOfDay + 86400000;
+
+      salesHistory = todayOrders.filter(o => {
+        const ts = getSaleTimestampMs(o);
+        return ts >= startOfDay && ts < endOfDay;
+      });
+      dailyStats = {
+        orders: salesHistory.length,
+        totalSales: salesHistory.reduce((sum, s) => sum + (Number(s.total) || 0), 0),
+        discountsApplied: salesHistory.filter(s => s.isPwdSenior || s.discount).length,
+        cashReceived: salesHistory.reduce((sum, s) => {
+          if (s.paymentMethod === "split") return sum + (Number(s.cashAmount) || 0);
+          if (s.paymentMethod === "cash") return sum + (Number(s.total) || 0);
+          return sum;
+        }, 0),
+      };
+      persistPosState();
+      updateStats();
+    }, (error) => {
+      console.warn("[POS] Order listener failed:", error);
     });
 
     // Storage indicator
@@ -1192,10 +1266,10 @@ function buildUnpaidOrderFromCart() {
   };
 }
 
-window.moveCurrentOrderToUnpaid = function() {
+window.moveCurrentOrderToUnpaid = async function() {
   if (!cart.length) return;
 
-  addUnpaidOrder(buildUnpaidOrderFromCart());
+  await addUnpaidOrder(buildUnpaidOrderFromCart());
   cart = [];
   isPwdSenior = false;
   enteredAmount = "";
@@ -1277,7 +1351,7 @@ window.openUnpaidOrderReceipt = function(orderId) {
   }
 };
 
-window.restoreUnpaidOrderToCart = function(orderId) {
+window.restoreUnpaidOrderToCart = async function(orderId) {
   const orders = getUnpaidOrders();
   const unpaid = orderId ? orders.find((o) => String(o.id) === String(orderId)) : null;
   if (!unpaid) {
@@ -1298,7 +1372,7 @@ window.restoreUnpaidOrderToCart = function(orderId) {
   if (pwdCheck) pwdCheck.checked = isPwdSenior;
   if (discountToggle) discountToggle.classList.toggle("active", isPwdSenior);
   document.querySelector(".discount-section")?.classList.toggle("is-active", isPwdSenior);
-  removeUnpaidOrderById(unpaid.id);
+  await removeUnpaidOrderById(unpaid.id);
   closeReceipt();
   closeUnpaidOrdersModal();
   updateCart();
@@ -1307,11 +1381,11 @@ window.restoreUnpaidOrderToCart = function(orderId) {
   showToast("Unpaid order moved back to current order.", "success");
 };
 
-window.deleteUnpaidOrder = function(orderId) {
+window.deleteUnpaidOrder = async function(orderId) {
   if (!orderId) return;
   const confirmed = window.confirm("Delete this unpaid order? This cannot be undone.");
   if (!confirmed) return;
-  removeUnpaidOrderById(orderId);
+  await removeUnpaidOrderById(orderId);
   renderUnpaidOrdersList();
   updateUnpaidOrderSidebar();
   showToast("Unpaid order deleted.", "success");
@@ -1555,7 +1629,7 @@ window.completePayment = async function() {
     const sale = await saveOrder(cart, total, subtotal, paymentMethod, isPwdSenior, amountTendered, user?.uid || null, cashierName, cashAmount, gcashAmount, { orderType: isEmployeeOrder ? "employee" : "regular", note: orderNote });
 
     // Add to kitchen pending queue so the order appears in the sidebar
-    saveKitchenOrder(sale);
+    await saveKitchenOrder(sale);
 
     // Notify other parts of the app (analytics/dashboard) about the new order
     try {
@@ -2197,7 +2271,7 @@ function updateStats() {
   refreshSalesVisuals();
 }
 
-function getPendingOrders() {
+async function getPendingOrders() {
   return getKitchenOrders();
 }
 
@@ -2221,16 +2295,16 @@ window.refreshPendingOrders = function() {
   updateConnectivityStatus();
 };
 
-window.markPendingOrderPrepared = function(orderId) {
+window.markPendingOrderPrepared = async function(orderId) {
   if (!orderId) return;
-  removeKitchenOrder(orderId);
+  await removeKitchenOrder(orderId);
   renderPendingOrdersList();
   updateConnectivityStatus();
   showToast("Order marked as prepared and removed from pending list", "success");
 };
 
-function renderPendingOrdersList() {
-  const pending = getPendingOrders();
+async function renderPendingOrdersList() {
+  const pending = await getPendingOrders();
   const listEl = document.getElementById("pendingOrdersModalList");
   if (!listEl) return;
 
@@ -2258,9 +2332,9 @@ function renderPendingOrdersList() {
   }).join("");
 }
 
-function updateConnectivityStatus() {
+async function updateConnectivityStatus() {
   const indicator = document.getElementById("storageStatus");
-  const pendingKitchenOrders = getPendingOrders();
+  const pendingKitchenOrders = await getPendingOrders();
   const pendingKitchenCount = Array.isArray(pendingKitchenOrders) ? pendingKitchenOrders.length : 0;
   const pendingSyncCount = getPendingOrderCount();
   const pendingEl = document.getElementById("pendingOrdersSidebar");
@@ -2273,7 +2347,7 @@ function updateConnectivityStatus() {
   const cloudLabel = isOnline ? "Online" : "Offline";
   indicator.innerHTML = `<i class="ri-wifi-line" aria-hidden="true"></i><span>Cloud: ${cloudLabel}</span><span class="storage-dot" aria-hidden="true">•</span><span>Queue: ${pendingSyncCount}</span><span class="storage-dot" aria-hidden="true">•</span><span>Local: ${savedCount}</span>`;
   indicator.setAttribute("title", `Cloud ${cloudLabel}; ${pendingSyncCount} order(s) waiting sync; ${savedCount} local record(s)`);
-  renderPendingOrdersList();
+  await renderPendingOrdersList();
 }
 
 function showToast(message, type = "success") {

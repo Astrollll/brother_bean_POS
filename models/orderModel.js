@@ -1,6 +1,6 @@
 import { db } from "../controllers/firebase.js";
 import {
-  collection, getDocs, getDoc, setDoc, doc, query, where, Timestamp, deleteDoc, writeBatch, updateDoc
+  collection, getDocs, getDoc, setDoc, doc, query, where, Timestamp, deleteDoc, writeBatch, updateDoc, onSnapshot
 } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js";
 import { getOrderOutbox, queueOrder, removeQueuedOrder } from "./storageModel.js";
 import { deductInventoryQuantities } from "./inventoryModel.js";
@@ -124,6 +124,21 @@ export async function getTodayOrders() {
   const snap = await getDocs(q);
   const orders = snap.docs.map(d => ({ id: d.id, ...d.data() }));
   return applyCashierNames(orders);
+}
+
+// Real-time listener for today's orders (cross-terminal sync)
+export function watchTodayOrders(onChange, onError) {
+  const { start, end } = todayRange();
+  const q = query(
+    collection(db, ORDERS_COLLECTION),
+    where("createdAt", ">=", start),
+    where("createdAt", "<",  end)
+  );
+  return onSnapshot(q, async (snap) => {
+    const orders = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    const named = await applyCashierNames(orders);
+    onChange(named);
+  }, onError);
 }
 
 // Fetch all orders with optional date range filter (YYYY-MM-DD)
