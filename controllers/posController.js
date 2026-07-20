@@ -42,7 +42,6 @@ let cashierName      = "Staff";
 let salesHistory     = [];
 let dailyStats       = { orders: 0, totalSales: 0, discountsApplied: 0, cashReceived: 0 };
 let isOnline         = navigator.onLine;
-const THEME_STORAGE_KEY = "bb-pos-theme";
 const CART_DENSITY_STORAGE_KEY = "bb-pos-cart-density";
 const UNPAID_ORDER_STORAGE_KEY = "bb-pos-unpaid-order";
 const AUTH_OPERATION_TIMEOUT_MS = 6000;
@@ -300,7 +299,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     renderCategoryControls();
     renderProducts();
     updateCart();
-    applySavedTheme();
     applySavedCartDensity();
     updateStats();
 
@@ -1985,29 +1983,6 @@ window.confirmLogout = async function() {
   }
 };
 
-function setThemeButton(theme) {
-  const btn = document.getElementById("themeToggleBtn");
-  if (!btn) return;
-  if (theme === "dark") {
-    btn.innerHTML = '<i class="ri-moon-line" aria-hidden="true"></i> Dark Mode';
-  } else {
-    btn.innerHTML = '<i class="ri-sun-line" aria-hidden="true"></i> Light Mode';
-  }
-  btn.disabled = false;
-}
-
-function applyTheme(theme) {
-  // Dark mode removed: always use light theme and do not persist.
-  const normalized = "light";
-  document.body.setAttribute("data-theme", normalized);
-  setThemeButton(normalized);
-}
-
-function applySavedTheme() {
-  // Ensure theme stays light; ignore saved preference.
-  applyTheme('light');
-}
-
 function setCartDensityButton(density) {
   const btn = document.getElementById("densityToggleBtn");
   if (!btn) return;
@@ -2027,11 +2002,6 @@ function applySavedCartDensity() {
   const saved = localStorage.getItem(CART_DENSITY_STORAGE_KEY);
   applyCartDensity(saved === "compact" ? "compact" : "regular");
 }
-
-window.toggleTheme = function() {
-  // Theme toggling removed; keep light theme for compatibility.
-  applyTheme('light');
-};
 
 window.toggleCartDensity = function() {
   const current = document.body.getAttribute("data-cart-density") === "compact" ? "compact" : "regular";

@@ -126,79 +126,6 @@ header,
   color: var(--info) !important;
 }
 
-/* Dark-mode variable overrides and enforced readable styles */
-body[data-theme="dark"] {
-  --bg-primary: #0e0906;
-  /* Deep espresso black/brown */
-  --bg-secondary: #16100c;
-  /* Dark roasted coffee bean brown */
-  --bg-tertiary: #1f1712;
-  /* Medium warm chocolate brown */
-  --text-primary: #f5efe9;
-  /* Steamed milk warm off-white */
-  --text-secondary: #d7c8ba;
-  /* Muted cappuccino brown */
-  --text-muted: #a38f7e;
-  /* Hazelnut gray-brown */
-  --text-light: #FFFFFF;
-  --border-color: rgba(220, 184, 146, 0.15);
-  /* Soft warm cream border */
-  --border-light: rgba(220, 184, 146, 0.08);
-  --primary: #DDB892;
-  --primary-dark: #B48A5C;
-  --primary-light: #F3E0C9;
-  --success: #34D399;
-  --warning: #FBBF24;
-  --danger: #F87171;
-  --info: #60A5FA;
-  --shadow-lg: 0 8px 20px rgba(0, 0, 0, 0.6);
-}
-
-/* Enforce readable backgrounds/text for common UI regions in dark mode */
-body[data-theme="dark"] .app-content,
-body[data-theme="dark"] .main-grid,
-body[data-theme="dark"] .card,
-body[data-theme="dark"] .sidebar-pending-box,
-body[data-theme="dark"] .sales-kpi-card,
-body[data-theme="dark"] .sidebar-stats,
-body[data-theme="dark"] .product-card,
-body[data-theme="dark"] header,
-body[data-theme="dark"] .section-header,
-body[data-theme="dark"] .order-header-actions,
-body[data-theme="dark"] .cart-section,
-body[data-theme="dark"] .product-header {
-  background-color: var(--bg-secondary) !important;
-  color: var(--text-primary) !important;
-  border-color: var(--border-color) !important;
-}
-
-body[data-theme="dark"] .btn,
-body[data-theme="dark"] .temp-btn {
-  color: var(--text-primary) !important;
-  background-color: var(--bg-tertiary) !important;
-  border-color: var(--border-color) !important;
-}
-
-body[data-theme="dark"] .bb-icon-btn {
-  color: var(--text-primary) !important;
-  background-color: transparent !important;
-  border-color: var(--border-color) !important;
-}
-
-body[data-theme="dark"] input,
-body[data-theme="dark"] textarea,
-body[data-theme="dark"] select,
-body[data-theme="dark"] .form-control {
-  background: var(--bg-primary) !important;
-  color: var(--text-primary) !important;
-  border-color: var(--border-color) !important;
-}
-
-body[data-theme="dark"] .toast {
-  background: linear-gradient(135deg, #059669 0%, #047857 100%) !important;
-  color: var(--text-light) !important;
-}
-
 
 html,
 body {
@@ -796,22 +723,6 @@ button,
   flex: 1 1 auto;
 }
 
-body[data-theme="dark"] .unpaid-delete-btn {
-  background: rgba(220, 80, 60, 0.2) !important;
-  color: #e07060 !important;
-  border-color: rgba(220, 80, 60, 0.3) !important;
-  box-shadow: none !important;
-}
-
-body[data-theme="dark"] .unpaid-delete-btn:hover {
-  background: rgba(220, 80, 60, 0.35) !important;
-}
-
-body[data-theme="dark"] .sidebar-pending-empty {
-  border-color: rgba(220, 184, 146, 0.15) !important;
-  background: rgba(30, 22, 16, 0.5) !important;
-  color: #a38f7e !important;
-}
 
 .sidebar-pending-open-btn {
   width: 100%;
@@ -4557,415 +4468,7 @@ body[data-theme="dark"] .sidebar-pending-empty {
 }
 
 /* Final readability patch for dark theme (anti-negative look) */
-body[data-theme="dark"] {
-  --text-primary: #f5efe9 !important;
-  --text-secondary: #d7c8ba !important;
-  --text-muted: #a38f7e !important;
-  --border-color: rgba(220, 184, 146, 0.15) !important;
-  --border-light: rgba(220, 184, 146, 0.08) !important;
-}
 
-body[data-theme="dark"] .bb-modal,
-body[data-theme="dark"] .bb-modal-header,
-body[data-theme="dark"] .bb-modal-body,
-body[data-theme="dark"] .bb-modal-footer {
-  color: var(--text-primary) !important;
-}
-
-body[data-theme="dark"] .bb-field-label,
-body[data-theme="dark"] .bb-field-hint,
-body[data-theme="dark"] .bb-mini-note,
-body[data-theme="dark"] .bb-summary-label,
-body[data-theme="dark"] .bb-recap-row,
-body[data-theme="dark"] .bb-recap-strong,
-body[data-theme="dark"] .bb-choice-main,
-body[data-theme="dark"] .bb-addon-name,
-body[data-theme="dark"] .bb-step-value,
-body[data-theme="dark"] .bb-modal-title,
-body[data-theme="dark"] .bb-modal-kicker {
-  color: var(--text-primary) !important;
-}
-
-body[data-theme="dark"] .bb-choice,
-body[data-theme="dark"] .bb-pill,
-body[data-theme="dark"] .bb-addon,
-body[data-theme="dark"] .bb-step,
-body[data-theme="dark"] .bb-qty-card,
-body[data-theme="dark"] .bb-recap,
-body[data-theme="dark"] .bb-modal-summary,
-body[data-theme="dark"] .bb-secondary-btn,
-body[data-theme="dark"] .bb-method,
-body[data-theme="dark"] .bb-amount-card,
-body[data-theme="dark"] .bb-pad {
-  background: rgba(31, 23, 18, 0.85) !important;
-  border-color: rgba(220, 184, 146, 0.22) !important;
-  color: var(--text-primary) !important;
-}
-
-body[data-theme="dark"] .bb-choice-sub,
-body[data-theme="dark"] .bb-addon-price,
-body[data-theme="dark"] .bb-recap-strong span:last-child,
-body[data-theme="dark"] .bb-summary-strong,
-body[data-theme="dark"] .bb-amount-value,
-body[data-theme="dark"] .bb-drawer-value,
-body[data-theme="dark"] .product-price,
-body[data-theme="dark"] .summary-row.total span:last-child {
-  color: #DDB892 !important;
-}
-
-body[data-theme="dark"] .bb-choice.is-selected,
-body[data-theme="dark"] .bb-pill.is-selected,
-body[data-theme="dark"] .bb-addon.is-selected,
-body[data-theme="dark"] .bb-method.active {
-  background: linear-gradient(135deg, rgba(220, 184, 146, 0.25), rgba(74, 47, 25, 0.35)) !important;
-  border-color: rgba(220, 184, 146, 0.78) !important;
-}
-
-body[data-theme="dark"] .bb-split-display {
-  background: rgba(245, 158, 11, 0.12);
-  border-color: rgba(245, 158, 11, 0.30);
-}
-
-body[data-theme="dark"] .bb-split-label {
-  color: #DDB892;
-}
-
-body[data-theme="dark"] .bb-split-value {
-  color: #F5D6A4;
-}
-
-body[data-theme="dark"] .bb-split-hint {
-  color: #8b7d6b;
-}
-
-body[data-theme="dark"] .bb-primary-btn,
-body[data-theme="dark"] .checkout-btn,
-body[data-theme="dark"] .btn-primary {
-  background: linear-gradient(135deg, #7c4e28 0%, #5f3c1f 100%) !important;
-  color: #FFFFFF !important;
-  border-color: rgba(220, 184, 146, 0.5) !important;
-  text-shadow: none;
-}
-
-body[data-theme="dark"] .bb-primary-btn:hover,
-body[data-theme="dark"] .checkout-btn:hover,
-body[data-theme="dark"] .btn-primary:hover {
-  filter: brightness(1.15);
-}
-
-body[data-theme="dark"] .bb-secondary-btn,
-body[data-theme="dark"] .sidebar-tool-btn,
-body[data-theme="dark"] .category-nav-btn,
-body[data-theme="dark"] .category-quick-select,
-body[data-theme="dark"] .nav-btn {
-  color: #f5efe9 !important;
-}
-
-body[data-theme="dark"] .bb-icon-btn {
-  background: rgba(31, 23, 18, 0.95) !important;
-  color: var(--text-primary) !important;
-  border-color: rgba(220, 184, 146, 0.25) !important;
-}
-
-body[data-theme="dark"] .bb-icon-btn:hover {
-  color: #EF4444 !important;
-  border-color: rgba(239, 68, 68, 0.5) !important;
-  background: rgba(43, 20, 15, 0.9) !important;
-}
-
-body[data-theme="dark"] .discount-section {
-  background: linear-gradient(135deg, rgba(107, 68, 35, 0.15), rgba(74, 47, 25, 0.22)) !important;
-  border-color: rgba(220, 184, 146, 0.3) !important;
-}
-
-body[data-theme="dark"] .discount-toggle-btn {
-  background: linear-gradient(135deg, #7c4e28, #5f3c1f) !important;
-  color: #FFFFFF !important;
-}
-
-body[data-theme="dark"] .cart-item-discount {
-  background: rgba(16, 185, 129, 0.2) !important;
-  color: #34D399 !important;
-}
-
-/* Final dark mode refinement (authoritative) */
-body[data-theme="dark"] {
-  --bg-primary: #0e0906 !important;
-  --bg-secondary: #16100c !important;
-  --bg-tertiary: #1f1712 !important;
-  --text-primary: #f5efe9 !important;
-  --text-secondary: #d7c8ba !important;
-  --text-muted: #a38f7e !important;
-  --border-color: rgba(220, 184, 146, 0.15) !important;
-  --border-light: rgba(220, 184, 146, 0.08) !important;
-  --primary: #DDB892 !important;
-  --primary-light: #F3E0C9 !important;
-  --secondary: #D97706 !important;
-  --secondary-light: #F59E0B !important;
-}
-
-body[data-theme="dark"],
-body[data-theme="dark"] .app-wrapper,
-body[data-theme="dark"] .app-container,
-body[data-theme="dark"] .main-grid {
-  background: linear-gradient(180deg, #0e0906 0%, #16100c 100%) !important;
-}
-
-body[data-theme="dark"] .sidebar-nav,
-body[data-theme="dark"] .products-section,
-body[data-theme="dark"] .cart-section,
-body[data-theme="dark"] .modal,
-body[data-theme="dark"] .bb-modal {
-  background: linear-gradient(165deg, rgba(22, 16, 12, 0.98), rgba(14, 9, 6, 0.98)) !important;
-  border-color: rgba(220, 184, 146, 0.15) !important;
-  box-shadow: 0 20px 52px rgba(0, 0, 0, 0.6) !important;
-}
-
-body[data-theme="dark"] .search-bar input,
-body[data-theme="dark"] .category-chip,
-body[data-theme="dark"] .sidebar-tool-btn,
-body[data-theme="dark"] .category-nav-btn,
-body[data-theme="dark"] .category-quick-select,
-body[data-theme="dark"] .discount-toggle,
-body[data-theme="dark"] .quantity-controls,
-body[data-theme="dark"] .bb-icon-btn,
-body[data-theme="dark"] .cart-item,
-body[data-theme="dark"] .sales-slot-list,
-body[data-theme="dark"] .sales-kpi-card,
-body[data-theme="dark"] .bb-drawer-card,
-body[data-theme="dark"] .sidebar-sales-chart,
-body[data-theme="dark"] .sidebar-stats {
-  background: rgba(31, 23, 18, 0.76) !important;
-  border-color: rgba(220, 184, 146, 0.18) !important;
-}
-
-body[data-theme="dark"] .category-chip.active,
-body[data-theme="dark"] .checkout-btn,
-body[data-theme="dark"] .bb-primary-btn,
-body[data-theme="dark"] .btn-primary {
-  background: linear-gradient(135deg, #7c4e28 0%, #5f3c1f 100%) !important;
-  border-color: rgba(220, 184, 146, 0.3) !important;
-  color: #FFFFFF !important;
-}
-
-body[data-theme="dark"] .section-title,
-body[data-theme="dark"] .product-name,
-body[data-theme="dark"] .cart-item-name,
-body[data-theme="dark"] .bb-modal-title,
-body[data-theme="dark"] .summary-row,
-body[data-theme="dark"] .sales-slot-label {
-  color: #f5efe9 !important;
-}
-
-body[data-theme="dark"] .product-category,
-body[data-theme="dark"] .cart-item-price,
-body[data-theme="dark"] .cart-item-variant,
-body[data-theme="dark"] .bb-modal-kicker,
-body[data-theme="dark"] .sidebar-sales-chart-range,
-body[data-theme="dark"] .sales-chart-axis,
-body[data-theme="dark"] .sidebar-stats>div {
-  color: #d7c8ba !important;
-}
-
-body[data-theme="dark"] .summary-row.total,
-body[data-theme="dark"] .product-price,
-body[data-theme="dark"] .bb-drawer-value,
-body[data-theme="dark"] .sales-kpi-value,
-body[data-theme="dark"] .bb-summary-strong,
-body[data-theme="dark"] .sidebar-stats span {
-  color: #DDB892 !important;
-}
-
-body[data-theme="dark"] .modal-overlay {
-  background: rgba(0, 0, 0, 0.72) !important;
-  backdrop-filter: blur(6px);
-}
-
-body[data-theme="dark"] .sales-chart-bar {
-  background: linear-gradient(180deg, #DDB892 0%, #B48A5C 40%, #7c4e28 100%) !important;
-}
-
-body[data-theme="dark"] .sales-chart-bar.is-idle {
-  background: linear-gradient(180deg, rgba(160, 140, 120, 0.3), rgba(100, 85, 70, 0.15)) !important;
-}
-
-body[data-theme="dark"] .sales-chart-bars {
-  background-image: repeating-linear-gradient(
-    to top,
-    transparent,
-    transparent calc(25% - 1px),
-    rgba(220, 184, 146, 0.06) calc(25% - 1px),
-    rgba(220, 184, 146, 0.06) 25%
-  ) !important;
-}
-
-body[data-theme="dark"] .sales-chart-bars-lg {
-  background-image: repeating-linear-gradient(
-    to top,
-    transparent,
-    transparent calc(20% - 1px),
-    rgba(220, 184, 146, 0.06) calc(20% - 1px),
-    rgba(220, 184, 146, 0.06) 20%
-  ) !important;
-}
-
-/* Dark mode polish: softer contrast, clearer hierarchy, better readability */
-body[data-theme="dark"] {
-  --bg-primary: #0e0906;
-  --bg-secondary: #16100c;
-  --bg-tertiary: #1f1712;
-  --text-primary: #f5efe9;
-  --text-secondary: #d7c8ba;
-  --text-muted: #a38f7e;
-  --border-color: rgba(220, 184, 146, 0.15);
-  --border-light: rgba(220, 184, 146, 0.08);
-  --primary: #DDB892;
-  --primary-light: #F3E0C9;
-  --primary-dark: #B48A5C;
-  --secondary: #D97706;
-  --secondary-light: #F59E0B;
-  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.35);
-  --shadow-md: 0 6px 14px -4px rgba(0, 0, 0, 0.48);
-  --shadow-lg: 0 14px 28px -10px rgba(0, 0, 0, 0.55);
-}
-
-body[data-theme="dark"],
-body[data-theme="dark"] .app-wrapper,
-body[data-theme="dark"] .app-container,
-body[data-theme="dark"] .main-grid {
-  background: linear-gradient(180deg, #0e0906 0%, #16100c 100%);
-}
-
-body[data-theme="dark"] .sidebar-nav,
-body[data-theme="dark"] .products-section,
-body[data-theme="dark"] .cart-section,
-body[data-theme="dark"] .modal,
-body[data-theme="dark"] .bb-modal {
-  background: linear-gradient(160deg, rgba(22, 16, 12, 0.98) 0%, rgba(14, 9, 6, 0.98) 100%) !important;
-  border-color: rgba(220, 184, 146, 0.15) !important;
-  color: var(--text-primary);
-  box-shadow: 0 22px 54px rgba(0, 0, 0, 0.6);
-}
-
-body[data-theme="dark"] .section-header,
-body[data-theme="dark"] .cart-summary,
-body[data-theme="dark"] .bb-modal-header,
-body[data-theme="dark"] .bb-modal-footer,
-body[data-theme="dark"] .sidebar-divider {
-  border-color: rgba(220, 184, 146, 0.15) !important;
-}
-
-body[data-theme="dark"] .search-bar input,
-body[data-theme="dark"] .category-chip,
-body[data-theme="dark"] .sidebar-tool-btn,
-body[data-theme="dark"] .category-nav-btn,
-body[data-theme="dark"] .category-quick-select,
-body[data-theme="dark"] .discount-toggle,
-body[data-theme="dark"] .quantity-controls,
-body[data-theme="dark"] .bb-icon-btn,
-body[data-theme="dark"] .cart-item,
-body[data-theme="dark"] .sales-slot-list,
-body[data-theme="dark"] .sales-kpi-card,
-body[data-theme="dark"] .bb-drawer-card,
-body[data-theme="dark"] .sidebar-sales-chart,
-body[data-theme="dark"] .sidebar-stats,
-body[data-theme="dark"] .sales-dashboard-main {
-  background: rgba(22, 16, 12, 0.78) !important;
-  border-color: rgba(220, 184, 146, 0.18) !important;
-  color: var(--text-primary);
-}
-
-body[data-theme="dark"] .category-chip:hover,
-body[data-theme="dark"] .sidebar-tool-btn:hover,
-body[data-theme="dark"] .category-nav-btn:hover,
-body[data-theme="dark"] .discount-toggle:hover,
-body[data-theme="dark"] .qty-btn:hover,
-body[data-theme="dark"] .nav-btn:hover {
-  border-color: #DDB892 !important;
-  color: #f5efe9;
-  background: rgba(59, 44, 35, 0.58) !important;
-}
-
-body[data-theme="dark"] .category-chip.active,
-body[data-theme="dark"] .nav-btn.active,
-body[data-theme="dark"] .btn-primary,
-body[data-theme="dark"] .checkout-btn,
-body[data-theme="dark"] .bb-primary-btn {
-  background: linear-gradient(135deg, #7c4e28 0%, #5f3c1f 100%) !important;
-  border-color: rgba(220, 184, 146, 0.3) !important;
-  color: #FFFFFF !important;
-}
-
-body[data-theme="dark"] .summary-row.total,
-body[data-theme="dark"] .product-price,
-body[data-theme="dark"] .bb-drawer-value,
-body[data-theme="dark"] .sales-kpi-value,
-body[data-theme="dark"] .bb-summary-strong,
-body[data-theme="dark"] .sidebar-stats span {
-  color: #DDB892 !important;
-}
-
-body[data-theme="dark"] .product-name,
-body[data-theme="dark"] .cart-item-name,
-body[data-theme="dark"] .section-title,
-body[data-theme="dark"] .bb-modal-title,
-body[data-theme="dark"] .summary-row,
-body[data-theme="dark"] .sales-slot-label {
-  color: #f5efe9;
-}
-
-body[data-theme="dark"] .product-category,
-body[data-theme="dark"] .cart-item-price,
-body[data-theme="dark"] .cart-item-variant,
-body[data-theme="dark"] .bb-modal-kicker,
-body[data-theme="dark"] .sales-chart-axis,
-body[data-theme="dark"] .sidebar-sales-chart-range,
-body[data-theme="dark"] .metric-label,
-body[data-theme="dark"] .sidebar-stats>div {
-  color: #d7c8ba !important;
-}
-
-body[data-theme="dark"] .sales-slot-row:hover {
-  background: rgba(30, 22, 16, 0.6) !important;
-}
-
-body[data-theme="dark"] .discount-section {
-  background: linear-gradient(135deg, rgba(107, 68, 35, 0.25) 0%, rgba(74, 47, 25, 0.3) 100%) !important;
-  border-color: rgba(220, 184, 146, 0.35) !important;
-}
-
-body[data-theme="dark"] .discount-section.is-active {
-  background: linear-gradient(135deg, rgba(16, 185, 129, 0.25) 0%, rgba(59, 44, 35, 0.3) 100%) !important;
-  border-color: rgba(16, 185, 129, 0.45) !important;
-}
-
-body[data-theme="dark"] .remove-btn {
-  color: #EF4444;
-}
-
-body[data-theme="dark"] .remove-btn:hover {
-  background: rgba(239, 68, 68, 0.2) !important;
-  color: #FCA5A5;
-}
-
-body[data-theme="dark"] .storage-indicator,
-body[data-theme="dark"] .cart-item-discount,
-body[data-theme="dark"] .discount-toggle-btn {
-  box-shadow: none;
-}
-
-body[data-theme="dark"] .modal-overlay {
-  background: rgba(0, 0, 0, 0.65);
-  backdrop-filter: blur(6px);
-}
-
-body[data-theme="dark"] ::-webkit-scrollbar-thumb {
-  background: var(--scrollbar-thumb);
-}
-
-body[data-theme="dark"] ::-webkit-scrollbar-thumb:hover {
-  background: var(--scrollbar-thumb-hover);
-}
 
 /* Final UI controls and theme modes */
 .sidebar-tools {
@@ -5194,68 +4697,6 @@ body[data-cart-density="compact"] .cart-section .checkout-btn {
   font-size: 13px !important;
 }
 
-body[data-theme="dark"] {
-  --bg-primary: #171B22;
-  --bg-secondary: #10141B;
-  --bg-tertiary: #0D1117;
-  --text-primary: #E5E7EB;
-  --text-secondary: #B0BAC9;
-  --text-muted: #8D98A9;
-  --border-color: #2A3443;
-  --border-light: #202938;
-  --primary: #D6A46B;
-  --primary-light: #E8B67C;
-  --primary-dark: #B08252;
-  --secondary: #F3A94A;
-  --secondary-light: #FFBE67;
-}
-
-body[data-theme="dark"] .sidebar-nav,
-body[data-theme="dark"] .products-section,
-body[data-theme="dark"] .cart-section,
-body[data-theme="dark"] .modal,
-body[data-theme="dark"] .bb-modal,
-body[data-theme="dark"] .bb-drawer-card,
-body[data-theme="dark"] .discount-toggle,
-body[data-theme="dark"] .category-chip,
-body[data-theme="dark"] .sidebar-tool-btn,
-body[data-theme="dark"] .category-nav-btn,
-body[data-theme="dark"] .category-quick-select,
-body[data-theme="dark"] .quantity-controls,
-body[data-theme="dark"] .cart-item,
-body[data-theme="dark"] .cart-summary,
-body[data-theme="dark"] .search-bar input,
-body[data-theme="dark"] .bb-icon-btn {
-  background-color: #1E2632 !important;
-  color: var(--text-primary);
-  border-color: var(--border-color);
-}
-
-body[data-theme="dark"] .main-grid,
-body[data-theme="dark"] .app-container,
-body[data-theme="dark"] .app-wrapper {
-  background: var(--bg-secondary);
-}
-
-body[data-theme="dark"] .summary-row.total,
-body[data-theme="dark"] .product-price,
-body[data-theme="dark"] .bb-drawer-value,
-body[data-theme="dark"] .sales-kpi-value,
-body[data-theme="dark"] .sidebar-stats span,
-body[data-theme="dark"] .bb-summary-strong {
-  color: #F2C58A;
-}
-
-body[data-theme="dark"] .sidebar-tool-btn:hover,
-body[data-theme="dark"] .category-nav-btn:hover {
-  border-color: #F2C58A;
-  color: #F2C58A;
-}
-
-body[data-theme="dark"] .nav-btn-logout {
-  color: #FFB4B4;
-  border-color: rgba(255, 120, 120, 0.45);
-}
 
 @media (max-width: 767px) {
   .order-header-actions {
@@ -10168,96 +9609,23 @@ body[data-theme="dark"] .nav-btn-logout {
    ============================================================ */
 
 /* Fix: nav-btn (Cash Drawer) — was hardcoded #FFFFFF, now uses dark surface */
-body[data-theme="dark"] .nav-btn {
-  background: rgba(30, 22, 16, 0.9) !important;
-  color: #f5efe9 !important;
-  border-color: rgba(220, 184, 146, 0.22) !important;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35) !important;
-}
 
-body[data-theme="dark"] .nav-btn:hover {
-  background: rgba(55, 40, 27, 0.85) !important;
-  border-color: #DDB892 !important;
-  color: #f5efe9 !important;
-}
 
 /* Fix: sidebar-tool-btn (Theme Toggle) — ensure dark background is applied */
-body[data-theme="dark"] .sidebar-tool-btn {
-  background: rgba(30, 22, 16, 0.9) !important;
-  color: #f5efe9 !important;
-  border-color: rgba(220, 184, 146, 0.22) !important;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35) !important;
-}
 
-body[data-theme="dark"] .sidebar-tool-btn:hover {
-  background: rgba(55, 40, 27, 0.85) !important;
-  border-color: #DDB892 !important;
-  color: #f5efe9 !important;
-}
 
 /* Fix: btn / btn-secondary (Compact View, Clear Order) — was transparent, now visible */
-body[data-theme="dark"] .btn {
-  background-color: rgba(30, 38, 50, 0.85) !important;
-  color: #e5e7eb !important;
-  border-color: rgba(220, 184, 146, 0.22) !important;
-}
 
-body[data-theme="dark"] .btn:hover {
-  background-color: rgba(42, 52, 68, 0.9) !important;
-  border-color: #DDB892 !important;
-  color: #f5efe9 !important;
-}
 
 /* Preserve btn-primary dark appearance (coffee brown gradient) */
-body[data-theme="dark"] .btn-primary,
-body[data-theme="dark"] .bb-primary-btn,
-body[data-theme="dark"] .checkout-btn {
-  background: linear-gradient(135deg, #7c4e28 0%, #5f3c1f 100%) !important;
-  color: #ffffff !important;
-  border-color: rgba(220, 184, 146, 0.4) !important;
-}
 
 /* Fix: logout button specifically — needs danger red styling */
-body[data-theme="dark"] .nav-btn-logout {
-  background: rgba(60, 18, 18, 0.8) !important;
-  color: #FFB4B4 !important;
-  border-color: rgba(255, 120, 120, 0.4) !important;
-}
 
-body[data-theme="dark"] .nav-btn-logout:hover {
-  background: rgba(90, 25, 25, 0.85) !important;
-  border-color: rgba(255, 120, 120, 0.7) !important;
-  color: #fca5a5 !important;
-}
-
-/* Fix: product-card icon badge remains visible in dark mode */
-body[data-theme="dark"] .product-icon-badge {
-  background: rgba(220, 184, 146, 0.12) !important;
-  color: #DDB892 !important;
-}
 
 /* Fix: category filter chips — ensure text is always readable */
-body[data-theme="dark"] .category-chip,
-body[data-theme="dark"] .category-nav-btn {
-  background: rgba(30, 22, 16, 0.85) !important;
-  color: #d7c8ba !important;
-  border-color: rgba(220, 184, 146, 0.18) !important;
-}
 
-body[data-theme="dark"] .category-chip.active,
-body[data-theme="dark"] .category-chip:hover,
-body[data-theme="dark"] .category-nav-btn:hover {
-  background: rgba(124, 78, 40, 0.75) !important;
-  color: #f5efe9 !important;
-  border-color: rgba(220, 184, 146, 0.45) !important;
-}
 
 /* Fix: temp-btn fallback */
-body[data-theme="dark"] .temp-btn {
-  background: rgba(30, 22, 16, 0.9) !important;
-  color: #f5efe9 !important;
-  border-color: rgba(220, 184, 146, 0.22) !important;
-}
 
 /* ============================================================
    DARK MODE FIX — Hardcoded white backgrounds (Phase 2)
@@ -10266,93 +9634,23 @@ body[data-theme="dark"] .temp-btn {
    ============================================================ */
 
 /* Fix: TOTAL / ORDERS / PEAK pills in Sales Trend sidebar widget */
-body[data-theme="dark"] .sidebar-sales-pill {
-  background: rgba(30, 22, 16, 0.85) !important;
-  border-color: rgba(220, 184, 146, 0.18) !important;
-}
 
-body[data-theme="dark"] .sidebar-sales-pill-label {
-  color: #a38f7e !important;
-}
-
-body[data-theme="dark"] .sidebar-sales-pill-value {
-  color: #DDB892 !important;
-}
-
-body[data-theme="dark"] .sidebar-sales-note {
-  color: #a38f7e !important;
-}
 
 /* Fix: "Pending orders" section box — hardcoded white gradient */
-body[data-theme="dark"] .sidebar-pending-box {
-  background: rgba(22, 16, 12, 0.92) !important;
-  border-color: rgba(220, 184, 146, 0.15) !important;
-}
 
-body[data-theme="dark"] .sidebar-pending-header {
-  color: #f5efe9 !important;
-}
 
 /* Fix: Individual pending order item cards — hardcoded rgba(250,250,250) */
-body[data-theme="dark"] .sidebar-pending-item {
-  background: rgba(30, 22, 16, 0.85) !important;
-  border-color: rgba(220, 184, 146, 0.18) !important;
-  box-shadow: none !important;
-}
 
-body[data-theme="dark"] .sidebar-pending-item:hover {
-  background: rgba(50, 36, 24, 0.9) !important;
-  border-color: rgba(220, 184, 146, 0.3) !important;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3) !important;
-}
-
-body[data-theme="dark"] .sidebar-pending-order {
-  color: #f5efe9 !important;
-}
-
-body[data-theme="dark"] .sidebar-pending-meta {
-  color: #a38f7e !important;
-}
 
 /* Fix: "View pending orders" button — hardcoded rgba(255,255,255,0.92) */
-body[data-theme="dark"] .sidebar-pending-open-btn {
-  background: rgba(30, 22, 16, 0.9) !important;
-  border-color: rgba(220, 184, 146, 0.22) !important;
-  color: #f5efe9 !important;
-}
 
-body[data-theme="dark"] .sidebar-pending-open-btn:hover {
-  background: rgba(55, 40, 27, 0.9) !important;
-  border-color: #DDB892 !important;
-}
 
 /* Fix: refresh button in pending section */
-body[data-theme="dark"] .sidebar-pending-refresh {
-  background: rgba(30, 22, 16, 0.85) !important;
-  border-color: rgba(220, 184, 146, 0.18) !important;
-  color: #f5efe9 !important;
-}
 
 /* Fix: pending orders count badge */
-body[data-theme="dark"] #pendingOrdersOpenCount,
-body[data-theme="dark"] #unpaidOrderOpenCount {
-  background: rgba(220, 184, 146, 0.18) !important;
-  color: #DDB892 !important;
-}
 
 /* Fix: sidebar-sales-chart container (the clickable button wrapper) */
-body[data-theme="dark"] .sidebar-sales-chart {
-  background: rgba(22, 16, 12, 0.88) !important;
-  border-color: rgba(220, 184, 146, 0.15) !important;
-}
 
-body[data-theme="dark"] .sidebar-sales-chart-title {
-  color: #f5efe9 !important;
-}
-
-body[data-theme="dark"] .sidebar-sales-chart-range {
-  color: #a38f7e !important;
-}
 
 /* ── Discount Quantity Picker ── */
 .bb-discount-picker-item {
@@ -10420,27 +9718,6 @@ body[data-theme="dark"] .sidebar-sales-chart-range {
   margin-top: 4px;
 }
 
-body[data-theme="dark"] .bb-discount-picker-btn {
-  background: rgba(30, 22, 16, 0.6);
-  border-color: rgba(220, 184, 146, 0.2);
-  color: #f5efe9;
-}
-
-body[data-theme="dark"] .bb-discount-picker-btn:hover {
-  border-color: var(--secondary);
-  background: rgba(217, 119, 6, 0.12);
-}
-
-body[data-theme="dark"] .bb-discount-picker-btn.is-selected {
-  border-color: var(--success);
-  background: rgba(16, 185, 129, 0.15);
-  color: #34d399;
-}
-
-body[data-theme="dark"] .bb-discount-picker-item {
-  border-bottom-color: rgba(220, 184, 146, 0.15);
-  color: #f5efe9;
-}
 
 /* ── Employee Order Section ── */
 .employee-order-section {
@@ -10520,36 +9797,4 @@ body[data-theme="dark"] .bb-discount-picker-item {
   box-shadow: 0 0 0 3px rgba(107, 68, 35, 0.1);
 }
 
-body[data-theme="dark"] .employee-order-section {
-  background: linear-gradient(135deg, rgba(59, 130, 246, 0.15) 0%, rgba(30, 58, 138, 0.3) 100%);
-  border-color: rgba(96, 165, 250, 0.4);
-}
 
-body[data-theme="dark"] .employee-order-section .discount-header {
-  color: #93C5FD;
-}
-
-body[data-theme="dark"] .employee-order-section .discount-toggle {
-  border-color: rgba(96, 165, 250, 0.3);
-  background: rgba(30, 58, 138, 0.2);
-}
-
-body[data-theme="dark"] .employee-order-section .discount-toggle:hover {
-  background: rgba(59, 130, 246, 0.15);
-  border-color: #60A5FA;
-}
-
-body[data-theme="dark"] .employee-order-section.is-active {
-  background: linear-gradient(135deg, rgba(59, 130, 246, 0.2) 0%, rgba(30, 58, 138, 0.35) 100%);
-  border-color: rgba(96, 165, 250, 0.5);
-}
-
-body[data-theme="dark"] .bb-note-input {
-  background: rgba(30, 58, 138, 0.2);
-  border-color: rgba(220, 184, 146, 0.15);
-  color: #f5efe9;
-}
-
-body[data-theme="dark"] .bb-note-label {
-  color: rgba(220, 184, 146, 0.6);
-}
