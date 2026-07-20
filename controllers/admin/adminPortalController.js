@@ -1116,7 +1116,9 @@ function applyOrderFilters() {
 
     const normalizedPayment = String(order.paymentMethod || "cash").toLowerCase();
     const orderType = String(order.orderType || "regular").toLowerCase();
-    if (payment === "employee") {
+    if (payment === "paid") {
+      if (orderType === "employee") return false;
+    } else if (payment === "employee") {
       if (orderType !== "employee") return false;
     } else if (payment !== "all" && normalizedPayment !== payment) {
       return false;
