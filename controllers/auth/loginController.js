@@ -1,17 +1,14 @@
-import { loginWithEmail, watchAuth, logout as authLogout, createAuthUserByAdmin } from "./firebaseAuth.js";
-import { auth } from "../firebase.js";
-import { getUserProfile, getUserRole, setUserRole, setUserProfile, ensureAdminAccessProfile } from "../../models/userModel.js";
+import { loginWithEmail, watchAuth, logout as authLogout } from "./firebaseAuth.js";
+import { getUserProfile, getUserRole } from "../../models/userModel.js";
 import { navigateTo } from "../utils/routes.js";
-import { fetchSignInMethodsForEmail } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-auth.js";
-import { DEFAULT_ADMIN_ACCOUNTS } from "../../config/app.config.js";
 
 const LOGIN_EMAIL_KEY = "bb_admin_remembered_email";
-const DEFAULT_ADMIN_BOOTSTRAP_KEY = "bb_admin_bootstrap_attempted";
-const DEFAULT_ADMIN_BOOTSTRAP_VERSION = "2";
-const DEFAULT_ADMIN_BOOTSTRAP_VERSIONED_KEY = `${DEFAULT_ADMIN_BOOTSTRAP_KEY}_v${DEFAULT_ADMIN_BOOTSTRAP_VERSION}`;
-const DEFAULT_ADMIN_EMAIL = DEFAULT_ADMIN_ACCOUNTS[0]?.email || "";
-const DEFAULT_ADMIN_PASSWORD = DEFAULT_ADMIN_ACCOUNTS[0]?.password || "";
-const DEFAULT_ADMIN_NAME = DEFAULT_ADMIN_ACCOUNTS[0]?.fullName || "Default Admin";
+const SESSION_DATE_KEY = "bb_auth_session_date";
+
+function todayString() {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+}
 
 const AUTH_OPERATION_TIMEOUT_MS = 6000;
 
@@ -68,45 +65,6 @@ function isValidEmail(value) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 }
 
-async function ensureDefaultAdminAccount() {
-  try {
-    const alreadyAttempted = localStorage.getItem(DEFAULT_ADMIN_BOOTSTRAP_VERSIONED_KEY);
-    if (alreadyAttempted) return;
-
-    localStorage.setItem(DEFAULT_ADMIN_BOOTSTRAP_VERSIONED_KEY, "true");
-    // Keep legacy key updated for backward compatibility with older builds.
-    localStorage.setItem(DEFAULT_ADMIN_BOOTSTRAP_KEY, "true");
-    setLoginLoadingState("Preparing admin account...");
-
-    for (const account of DEFAULT_ADMIN_ACCOUNTS) {
-      try {
-        const methods = await fetchSignInMethodsForEmail(auth, account.email).catch(() => []);
-        if (Array.isArray(methods) && methods.length > 0) {
-          continue;
-        }
-
-        const created = await createAuthUserByAdmin(account.email, account.password);
-        await setUserRole(created.uid, "admin", account.email);
-        await setUserProfile(created.uid, {
-          fullName: account.fullName,
-          email: account.email,
-          role: "admin",
-          status: "active",
-          isDefaultAdmin: true,
-          updatedAtMs: Date.now(),
-        });
-        console.log(`[Auth] Default account created: ${account.email}`);
-      } catch (e) {
-        if (e?.code !== "auth/email-already-in-use") {
-          console.warn(`[Auth] Default admin bootstrap failed for ${account.email}`, e);
-        }
-      }
-    }
-  } catch (error) {
-    console.error("[Auth] ensureDefaultAdminAccount error:", error);
-  }
-}
-
 async function routeByRole(user) {
   let profile = null;
   let role = "";
@@ -127,25 +85,12 @@ async function routeByRole(user) {
     const rawRole = await getUserRole(user.uid);
     role = String(rawRole || "").trim().toLowerCase();
   } catch (roleError) {
-    console.warn("[Auth] Unable to read role during routeByRole; defaulting to admin route.", roleError);
+    console.warn("[Auth] Unable to read role during routeByRole.", roleError);
   }
 
   if (!role) {
-    const knownDefaultEmail = DEFAULT_ADMIN_ACCOUNTS.some(
-      (account) => String(account.email || "").toLowerCase() === String(user.email || "").toLowerCase()
-    );
-    try {
-      await ensureAdminAccessProfile(user.uid, {
-        fullName: profile?.fullName || DEFAULT_ADMIN_NAME,
-        displayName: profile?.displayName || DEFAULT_ADMIN_NAME,
-        email: user.email || profile?.email || DEFAULT_ADMIN_EMAIL,
-        status: profile?.status || "active",
-        isDefaultAdmin: knownDefaultEmail || profile?.isDefaultAdmin === true,
-      });
-      role = "admin";
-    } catch (seedError) {
-      console.warn("[Auth] Unable to backfill admin profile; continuing with admin route fallback.", seedError);
-    }
+    await authLogout();
+    return { blocked: true, reason: "Your account has not been set up yet. Contact an administrator." };
   }
 
   if (role === "staff") {
@@ -153,7 +98,6 @@ async function routeByRole(user) {
     return;
   }
 
-  // Default to admin for admin/owner accounts and legacy users without an explicit role.
   navigateTo("admin", { replace: true });
 }
 
@@ -189,11 +133,13 @@ window.login = async function () {
       localStorage.removeItem(LOGIN_EMAIL_KEY);
     }
 
+    localStorage.setItem(SESSION_DATE_KEY, todayString());
     if (status) status.textContent = "Login successful. Redirecting...";
     const routeResult = await withTimeout(routeByRole(user), AUTH_OPERATION_TIMEOUT_MS, "route");
     if (routeResult?.blocked) {
       if (err) err.textContent = routeResult.reason;
       if (status) status.textContent = "";
+      showLoginScreen();
     }
   } catch (e) {
     const messageByCode = {
@@ -245,9 +191,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (remember) remember.checked = true;
   }
 
-  // The default admin accounts are provisioned separately; avoid running
-  // the bootstrap on every login load so we don't add auth noise or delay.
-
   const maybeLoginOnEnter = (e) => {
     if (e.key === "Enter") window.login();
   };
@@ -266,6 +209,15 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   watchAuth(async (user) => {
     if (!user) return;
+
+    const storedDate = localStorage.getItem(SESSION_DATE_KEY);
+    if (storedDate !== todayString()) {
+      localStorage.removeItem(SESSION_DATE_KEY);
+      await authLogout();
+      showLoginScreen();
+      return;
+    }
+
     try {
       await routeByRole(user);
     } catch (error) {

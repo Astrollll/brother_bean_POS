@@ -9,18 +9,3 @@ export const firebaseConfig = {
   appId: "YOUR_APP_ID",
   measurementId: "YOUR_MEASUREMENT_ID"
 };
-
-// Default Admin Accounts (bootstrap credentials)
-// These are created automatically on first run
-export const DEFAULT_ADMIN_ACCOUNTS = [
-  {
-    email: "admin@yourdomain.com",
-    password: "CHANGE_THIS_PASSWORD",
-    fullName: "Default Admin",
-  },
-  {
-    email: "owner@yourdomain.com",
-    password: "CHANGE_THIS_PASSWORD",
-    fullName: "Default Owner",
-  },
-];

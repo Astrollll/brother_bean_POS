@@ -19,12 +19,8 @@ service cloud.firestore {
       return userDocExists() ? get(userDocPath()).data.role : null;
     }
 
-    function isLegacyAdmin() {
-      return isSignedIn() && (!userDocExists() || role() == null);
-    }
-
     function isAdmin() {
-      return isSignedIn() && (role() == "admin" || isLegacyAdmin());
+      return isSignedIn() && role() == "admin";
     }
 
     function isWorker() {

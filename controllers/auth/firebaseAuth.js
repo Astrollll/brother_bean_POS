@@ -15,6 +15,7 @@ export async function loginWithEmail(email, password) {
 }
 
 export async function logout() {
+  localStorage.removeItem("bb_auth_session_date");
   await signOut(auth);
 }
 
