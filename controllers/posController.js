@@ -978,6 +978,10 @@ export function updateCart() {
     checkoutBtn.disabled   = true;
     if (moveUnpaidBtn) moveUnpaidBtn.disabled = true;
     if (clearOrderBtn) clearOrderBtn.disabled = true;
+    const discountRow      = document.getElementById("discountRow");
+    const originalTotalRow = document.getElementById("originalTotalRow");
+    if (discountRow) discountRow.classList.add("hidden");
+    if (originalTotalRow) originalTotalRow.classList.add("hidden");
     updateUnpaidOrderSidebar();
     return;
   }
@@ -1224,11 +1228,17 @@ window.clearCart = function() {
 
   cart = [];
   isPwdSenior = false;
+  isEmployeeOrder = false;
   const pwdCheck = document.getElementById("pwdSeniorCheck");
   const discountToggle = document.getElementById("discountToggle");
-  if (pwdCheck) pwdCheck.checked = false;
+  if (pwdCheck) { pwdCheck.checked = false; pwdCheck.disabled = false; }
   if (discountToggle) discountToggle.classList.remove("active");
   document.querySelector(".discount-section")?.classList.remove("is-active");
+  const empCheck = document.getElementById("employeeOrderCheck");
+  empCheck.checked = false;
+  empCheck.disabled = false;
+  document.getElementById("employeeOrderToggle")?.classList.remove("active");
+  document.querySelector(".employee-order-section")?.classList.remove("is-active");
   updateCart();
   showToast("Order cleared", "success");
 };
@@ -1253,6 +1263,7 @@ function buildUnpaidOrderFromCart() {
     timestamp: new Date().toLocaleString(),
     paymentMethod: currentPayMethod,
     isPwdSenior,
+    isEmployeeOrder,
     subtotal: summary.subtotal,
     discountAmount: isPwdSenior ? summary.subtotal * 0.2 : 0,
     total: summary.total,
@@ -1270,12 +1281,18 @@ window.moveCurrentOrderToUnpaid = async function() {
   await addUnpaidOrder(buildUnpaidOrderFromCart());
   cart = [];
   isPwdSenior = false;
+  isEmployeeOrder = false;
   enteredAmount = "";
   const pwdCheck = document.getElementById("pwdSeniorCheck");
   const discountToggle = document.getElementById("discountToggle");
-  if (pwdCheck) pwdCheck.checked = false;
+  if (pwdCheck) { pwdCheck.checked = false; pwdCheck.disabled = false; }
   if (discountToggle) discountToggle.classList.remove("active");
   document.querySelector(".discount-section")?.classList.remove("is-active");
+  const empCheck = document.getElementById("employeeOrderCheck");
+  empCheck.checked = false;
+  empCheck.disabled = false;
+  document.getElementById("employeeOrderToggle")?.classList.remove("active");
+  document.querySelector(".employee-order-section")?.classList.remove("is-active");
   updateCart();
   updateUnpaidOrderSidebar();
   showToast("Current order moved to unpaid.", "success");
@@ -1364,12 +1381,24 @@ window.restoreUnpaidOrderToCart = async function(orderId) {
 
   cart = cloneValue(unpaid.items) || [];
   isPwdSenior = !!unpaid.isPwdSenior;
+  isEmployeeOrder = !!unpaid.isEmployeeOrder;
   currentPayMethod = unpaid.paymentMethod || currentPayMethod;
   const pwdCheck = document.getElementById("pwdSeniorCheck");
   const discountToggle = document.getElementById("discountToggle");
+  const empCheck = document.getElementById("employeeOrderCheck");
+  const empToggle = document.getElementById("employeeOrderToggle");
+  const empSection = document.querySelector(".employee-order-section");
   if (pwdCheck) pwdCheck.checked = isPwdSenior;
   if (discountToggle) discountToggle.classList.toggle("active", isPwdSenior);
   document.querySelector(".discount-section")?.classList.toggle("is-active", isPwdSenior);
+  if (empCheck) empCheck.checked = isEmployeeOrder;
+  if (empToggle) empToggle.classList.toggle("active", isEmployeeOrder);
+  if (empSection) empSection.classList.toggle("is-active", isEmployeeOrder);
+  if (isPwdSenior) {
+    if (empCheck) empCheck.disabled = true;
+  } else if (isEmployeeOrder) {
+    if (pwdCheck) pwdCheck.disabled = true;
+  }
   await removeUnpaidOrderById(unpaid.id);
   closeReceipt();
   closeUnpaidOrdersModal();
@@ -1390,18 +1419,38 @@ window.deleteUnpaidOrder = async function(orderId) {
 };
 
 window.toggleDiscount = function() {
-  isPwdSenior = !isPwdSenior;
-  document.getElementById("pwdSeniorCheck").checked = isPwdSenior;
+  isPwdSenior = document.getElementById("pwdSeniorCheck").checked;
   document.getElementById("discountToggle").classList.toggle("active", isPwdSenior);
   document.querySelector(".discount-section")?.classList.toggle("is-active", isPwdSenior);
+  const empCheck = document.getElementById("employeeOrderCheck");
+  const empSection = document.querySelector(".employee-order-section");
+  if (isPwdSenior) {
+    isEmployeeOrder = false;
+    empCheck.checked = false;
+    empCheck.disabled = true;
+    empSection?.classList.remove("is-active");
+    document.getElementById("employeeOrderToggle")?.classList.remove("active");
+  } else {
+    empCheck.disabled = false;
+  }
   updateCart();
 };
 
 window.toggleEmployeeOrder = function() {
-  isEmployeeOrder = !isEmployeeOrder;
-  document.getElementById("employeeOrderCheck").checked = isEmployeeOrder;
+  isEmployeeOrder = document.getElementById("employeeOrderCheck").checked;
   document.getElementById("employeeOrderToggle")?.classList.toggle("active", isEmployeeOrder);
   document.querySelector(".employee-order-section")?.classList.toggle("is-active", isEmployeeOrder);
+  const pwdCheck = document.getElementById("pwdSeniorCheck");
+  const pwdSection = document.querySelector(".discount-section");
+  if (isEmployeeOrder) {
+    isPwdSenior = false;
+    pwdCheck.checked = false;
+    pwdCheck.disabled = true;
+    pwdSection?.classList.remove("is-active");
+    document.getElementById("discountToggle")?.classList.remove("active");
+  } else {
+    pwdCheck.disabled = false;
+  }
   updateCart();
 };
 
@@ -1672,10 +1721,13 @@ window.completePayment = async function() {
     enteredAmount = "";
     if (noteEl) noteEl.value = "";
     document.getElementById("pwdSeniorCheck").checked = false;
+    document.getElementById("pwdSeniorCheck").disabled = false;
     document.getElementById("discountToggle").classList.remove("active");
+    document.querySelector(".discount-section")?.classList.remove("is-active");
     document.getElementById("employeeOrderToggle")?.classList.remove("active");
     document.querySelector(".employee-order-section")?.classList.remove("is-active");
     document.getElementById("employeeOrderCheck").checked = false;
+    document.getElementById("employeeOrderCheck").disabled = false;
     updateCart();
     updateStats();
     closePaymentModal();

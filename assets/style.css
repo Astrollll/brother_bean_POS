@@ -1493,6 +1493,7 @@ button,
   transition: all var(--transition-fast);
   font-weight: 600;
   color: var(--text-primary);
+  user-select: none;
 }
 
 /* Keep order list visible: compact discount block */
@@ -5720,6 +5721,7 @@ body[data-cart-density="compact"] .cart-section .checkout-btn {
   transition: all var(--transition-fast);
   font-weight: 600;
   color: var(--text-primary);
+  user-select: none;
 }
 
 /* Keep order list visible: compact discount block */
@@ -9761,6 +9763,11 @@ body[data-cart-density="compact"] .cart-section .checkout-btn {
 
 .employee-order-section .discount-toggle input[type="checkbox"] {
   accent-color: #3B82F6;
+}
+
+.discount-toggle:has(input:disabled) {
+  opacity: 0.45;
+  pointer-events: none;
 }
 
 /* ── Order Note Input ── */
