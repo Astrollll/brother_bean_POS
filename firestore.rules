@@ -20,20 +20,15 @@ service cloud.firestore {
     }
 
     function isAdmin() {
-      return isSignedIn() && (role() == "admin" || isLegacyAdmin());
-    }
-
-    function isLegacyAdmin() {
-      return isSignedIn() && (!userDocExists() || role() == null);
+      return isSignedIn() && role() == "admin";
     }
 
     function isWorker() {
       return isSignedIn() && (role() in ["admin", "staff"]);
     }
 
-    // Users can read their own profile; only admins can write roles for others.
     match /users/{uid} {
-      allow read: if isSignedIn() && (request.auth.uid == uid || isAdmin());
+      allow read: if isSignedIn() && request.auth.uid == uid;
       allow create: if isSignedIn() && request.auth.uid == uid;
       allow update: if isSignedIn() && request.auth.uid == uid;
       allow delete: if isAdmin();
@@ -97,4 +92,3 @@ service cloud.firestore {
     }
   }
 }
-
