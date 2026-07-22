@@ -1,36 +1,27 @@
-import { loginWithEmail, watchAuth, logout as authLogout, createAuthUserByAdmin } from "./firebaseAuth.js";
-import { auth } from "../firebase.js";
-import { getUserProfile, getUserRole, setUserRole, setUserProfile, ensureAdminAccessProfile } from "../../models/userModel.js";
+import { loginWithEmail, watchAuth, logout as authLogout } from "./firebaseAuth.js";
+import { getUserProfile, getUserRole, setUserProfile } from "../../models/userModel.js";
 import { navigateTo } from "../utils/routes.js";
-import { fetchSignInMethodsForEmail } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-auth.js";
 import { DEFAULT_ADMIN_ACCOUNTS, DEFAULT_STAFF_ACCOUNTS } from "../../config/app.config.js";
 
 const LOGIN_EMAIL_KEY = "bb_admin_remembered_email";
 const SESSION_DATE_KEY = "bb_auth_session_date";
 const ALL_DEFAULT_ACCOUNTS = [...DEFAULT_ADMIN_ACCOUNTS, ...DEFAULT_STAFF_ACCOUNTS];
 
+let routingInProgress = false;
+
 function todayString() {
   const now = new Date();
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 }
 
-const AUTH_OPERATION_TIMEOUT_MS = 6000;
+const AUTH_OPERATION_TIMEOUT_MS = 10000;
 
 function withTimeout(promise, timeoutMs, label) {
   return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => {
-      reject(new Error(`${label}_timeout`));
-    }, timeoutMs);
-
+    const timer = setTimeout(() => reject(new Error(`${label}_timeout`)), timeoutMs);
     Promise.resolve(promise)
-      .then((value) => {
-        clearTimeout(timer);
-        resolve(value);
-      })
-      .catch((error) => {
-        clearTimeout(timer);
-        reject(error);
-      });
+      .then((value) => { clearTimeout(timer); resolve(value); })
+      .catch((error) => { clearTimeout(timer); reject(error); });
   });
 }
 
@@ -69,100 +60,72 @@ function isValidEmail(value) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 }
 
-async function ensureDefaultAccounts() {
-  try {
-    for (const account of ALL_DEFAULT_ACCOUNTS) {
-      try {
-        const methods = await fetchSignInMethodsForEmail(auth, account.email).catch(() => []);
-        if (Array.isArray(methods) && methods.length > 0) {
-          continue;
-        }
-
-        const created = await createAuthUserByAdmin(account.email, account.password);
-        const isAdmin = DEFAULT_ADMIN_ACCOUNTS.some((a) => a.email === account.email);
-        const role = isAdmin ? "admin" : "staff";
-
-        await setUserRole(created.uid, role, account.email);
-        await setUserProfile(created.uid, {
-          fullName: account.fullName,
-          email: account.email,
-          role,
-          status: "active",
-          isDefaultAdmin: isAdmin,
-          updatedAtMs: Date.now(),
-        });
-        console.log(`[Auth] Default account created: ${account.email} (${role})`);
-      } catch (e) {
-        if (e?.code !== "auth/email-already-in-use") {
-          console.warn(`[Auth] Default account bootstrap failed for ${account.email}`, e);
-        }
-      }
-    }
-  } catch (error) {
-    console.error("[Auth] ensureDefaultAccounts error:", error);
-  }
-}
-
 async function routeByRole(user) {
-  let profile = null;
-  let role = "";
+  if (routingInProgress) return null;
+  routingInProgress = true;
 
   try {
-    profile = await getUserProfile(user.uid);
-  } catch (profileError) {
-    console.warn("[Auth] Unable to read profile during routeByRole; continuing with safe defaults.", profileError);
-  }
+    let profile = null;
+    let role = "";
 
-  const status = String(profile?.status || "active").trim().toLowerCase();
-  if (status === "suspended") {
-    await authLogout();
-    return { blocked: true, reason: "Your account is suspended. Contact an administrator." };
-  }
+    try {
+      profile = await getUserProfile(user.uid);
+    } catch (profileError) {
+      console.warn("[Auth] Unable to read profile:", profileError);
+    }
 
-  try {
-    const rawRole = await getUserRole(user.uid);
-    role = String(rawRole || "").trim().toLowerCase();
-  } catch (roleError) {
-    console.warn("[Auth] Unable to read role during routeByRole.", roleError);
-  }
+    const status = String(profile?.status || "active").trim().toLowerCase();
+    if (status === "suspended") {
+      await authLogout();
+      return { blocked: true, reason: "Your account is suspended. Contact an administrator." };
+    }
 
-  if (!role) {
-    const email = String(user.email || "").toLowerCase();
-    const matchedAccount = ALL_DEFAULT_ACCOUNTS.find(
-      (a) => a.email.toLowerCase() === email
-    );
+    try {
+      const rawRole = await getUserRole(user.uid);
+      role = String(rawRole || "").trim().toLowerCase();
+    } catch (roleError) {
+      console.warn("[Auth] Unable to read role:", roleError);
+    }
 
-    if (matchedAccount) {
-      const isAdmin = DEFAULT_ADMIN_ACCOUNTS.some((a) => a.email === matchedAccount.email);
-      const roleToSet = isAdmin ? "admin" : "staff";
-      try {
-        await setUserProfile(user.uid, {
-          fullName: profile?.fullName || matchedAccount.fullName,
-          displayName: profile?.displayName || matchedAccount.fullName,
-          email: user.email || profile?.email || matchedAccount.email,
-          role: roleToSet,
-          status: profile?.status || "active",
-          isDefaultAdmin: isAdmin,
-          updatedAtMs: Date.now(),
-        });
-        role = roleToSet;
-      } catch (seedError) {
-        console.warn("[Auth] Unable to backfill profile; continuing with admin route fallback.", seedError);
+    if (!role) {
+      const email = String(user.email || "").toLowerCase();
+      const matchedAccount = ALL_DEFAULT_ACCOUNTS.find(
+        (a) => a.email.toLowerCase() === email
+      );
+
+      if (matchedAccount) {
+        const isAdmin = DEFAULT_ADMIN_ACCOUNTS.some((a) => a.email === matchedAccount.email);
+        const roleToSet = isAdmin ? "admin" : "staff";
+        try {
+          await setUserProfile(user.uid, {
+            fullName: matchedAccount.fullName,
+            email: user.email || matchedAccount.email,
+            role: roleToSet,
+            status: "active",
+            isDefaultAdmin: isAdmin,
+            updatedAtMs: Date.now(),
+          });
+          role = roleToSet;
+        } catch (e) {
+          console.warn("[Auth] Failed to create profile:", e);
+        }
       }
     }
-  }
 
-  if (!role) {
-    await authLogout();
-    return { blocked: true, reason: "Your account has not been set up yet. Contact an administrator." };
-  }
+    if (!role) {
+      await authLogout();
+      return { blocked: true, reason: "Your account has not been set up yet. Contact an administrator." };
+    }
 
-  if (role === "staff") {
-    navigateTo("pos", { replace: true });
-    return;
+    if (role === "staff") {
+      navigateTo("pos", { replace: true });
+    } else {
+      navigateTo("admin", { replace: true });
+    }
+    return null;
+  } finally {
+    routingInProgress = false;
   }
-
-  navigateTo("admin", { replace: true });
 }
 
 window.login = async function () {
@@ -189,7 +152,6 @@ window.login = async function () {
     setLoginBusy(true);
     setLoginLoadingState("Signing in...");
     if (status) status.textContent = "Authenticating account...";
-    const user = await withTimeout(loginWithEmail(email, password), AUTH_OPERATION_TIMEOUT_MS, "login");
 
     if (remember) {
       localStorage.setItem(LOGIN_EMAIL_KEY, email);
@@ -198,14 +160,13 @@ window.login = async function () {
     }
 
     localStorage.setItem(SESSION_DATE_KEY, todayString());
+
+    await withTimeout(loginWithEmail(email, password), AUTH_OPERATION_TIMEOUT_MS, "login");
+
     if (status) status.textContent = "Login successful. Redirecting...";
-    const routeResult = await withTimeout(routeByRole(user), AUTH_OPERATION_TIMEOUT_MS, "route");
-    if (routeResult?.blocked) {
-      if (err) err.textContent = routeResult.reason;
-      if (status) status.textContent = "";
-      showLoginScreen();
-    }
   } catch (e) {
+    localStorage.removeItem(SESSION_DATE_KEY);
+
     const messageByCode = {
       "auth/invalid-email": "Invalid email format.",
       "auth/user-disabled": "This account has been disabled.",
@@ -220,7 +181,6 @@ window.login = async function () {
       : messageByCode[e?.code] || "Login failed. Check your credentials.";
     if (status) status.textContent = "";
     showLoginScreen();
-  } finally {
     setLoginBusy(false);
   }
 };
@@ -241,7 +201,7 @@ window.toggleLoginPassword = function () {
   toggleBtn.setAttribute("aria-pressed", showing ? "false" : "true");
 };
 
-document.addEventListener("DOMContentLoaded", async () => {
+document.addEventListener("DOMContentLoaded", () => {
   const emailInput = document.getElementById("u");
   const passwordInput = document.getElementById("p");
   const capsWarn = document.getElementById("capsWarn");
@@ -254,9 +214,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     const remember = document.getElementById("rememberEmail");
     if (remember) remember.checked = true;
   }
-
-  setLoginLoadingState("Preparing accounts...");
-  await ensureDefaultAccounts();
 
   const maybeLoginOnEnter = (e) => {
     if (e.key === "Enter") window.login();
@@ -282,14 +239,22 @@ document.addEventListener("DOMContentLoaded", async () => {
       localStorage.removeItem(SESSION_DATE_KEY);
       await authLogout();
       showLoginScreen();
+      setLoginBusy(false);
       return;
     }
 
     try {
-      await routeByRole(user);
+      const result = await routeByRole(user);
+      if (result?.blocked) {
+        const err = document.getElementById("err");
+        if (err) err.textContent = result.reason;
+        showLoginScreen();
+        setLoginBusy(false);
+      }
     } catch (error) {
       console.warn("[Auth] Login redirect failed:", error);
       showLoginScreen();
+      setLoginBusy(false);
     }
   });
 
