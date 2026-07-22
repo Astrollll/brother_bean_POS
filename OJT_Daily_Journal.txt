@@ -1,0 +1,207 @@
+================================================================================
+                    OJT DAILY JOURNAL — BROTHER BEAN POS SYSTEM
+                          July 13 – July 27, 2026
+================================================================================
+
+Week 1 (July 13 – July 18, 2026)
+---------------------------------
+Starting my OJT as the only IT intern at the coffee shop was exciting but
+nerve-wracking. I spent the first few days exploring the POS codebase and
+quickly fixed a bug that left the sales tab showing zero amounts despite
+existing sales. I moved sensitive credentials into a hidden config file,
+improved the loading screen with a branded spinner, and updated the admin
+dashboard with a responsive layout and time-based greeting. On my first
+onsite day, I built a Quick Add Stock feature for inventory and on my last
+day of the week I fixed multiple sales system bugs including receipt math,
+order ID conflicts, and cashier name display.
+
+Week 2 (July 20 – July 25, 2026)
+---------------------------------
+I began the second week with a focus on improving the overall look and feel of
+the admin interface.
+
+July 20 (Monday) — The first task I tackled was redesigning the admin receipt
+so that it would visually match the cashier receipt style. This involved
+creating a brand-new card layout with decorative borders around each section
+and implementing an animated close button that gave the receipt a more polished
+and professional appearance.
+
+July 22 (Wednesday) — After finishing the receipt redesign, I turned my
+attention to the discount display on receipts, ensuring that discount
+information was presented clearly and accurately to customers. I also fixed
+several layout issues with the transactions table, making it more organized and
+easier to read.
+
+July 23 (Thursday) — To wrap up that portion of work, I went through the
+codebase and cleaned up any unnecessary or messy code to keep things tidy.
+
+July 24 (Friday, Onsite) — On my second onsite day, I addressed a practical
+issue with long receipts by adding scrollbars so that users could navigate
+through lengthy order details without difficulty. I also built a new account
+editing popup that allowed admin users to update account information directly
+from the dashboard. Additionally, I made sure that cashier names were being
+pulled and displayed correctly from their respective profiles, resolving a
+display inconsistency.
+
+July 25 (Saturday) — On my last day of the week, I dedicated my time to
+building a complete animation system for the admin portal. This system included
+smooth page transitions when navigating between sections, subtle scroll effects
+that triggered as the user moved down the page, hover effects on interactive
+elements for better visual feedback, and a scroll progress bar at the top of
+the screen to indicate how far the user had scrolled through the page.
+
+Week 3 (July 27, 2026)
+---------------------------------
+July 27 (Monday) — The main task today was fixing a critical login issue that
+prevented users from signing into the POS system. After logging in, the app
+would show "Login successful. Redirecting..." but never actually redirect,
+requiring the user to click Sign In a second time. On top of that, Firestore
+was returning "Missing or insufficient permissions" errors on every profile
+read and write, even though the user was correctly authenticated.
+
+After extensive debugging, the root cause was identified: the code was calling
+Firestore (to read/write user profiles) before the Firebase Auth state had
+fully propagated to the Firestore SDK. When signInWithEmailAndPassword
+returns, the user object is available but the internal auth token that
+Firestore uses has not been set yet. Firestore then sends requests without an
+auth token, and the security rules reject them. The fix was to move all
+routing logic into the watchAuth callback, which fires after onAuthStateChanged
+ensures the auth state is fully synced with Firestore. Additionally, a session
+date race condition was found — onAuthStateChanged fired before the session
+date was set in localStorage, causing the app to immediately log the user
+back out. This was fixed by setting the session date before calling
+loginWithEmail.
+
+Other fixes applied during this session:
+- Removed ensureDefaultAccounts(), which tried to write to Firestore before
+  any user was signed in, causing permission denials that got cached.
+- Disabled persistent Firestore cache to prevent stale cached denials from
+  poisoning future requests.
+- Updated Firestore security rules to allow admins to read, create, and update
+  all user documents in the users collection, fixing the accounts directory
+  in the admin portal.
+- Removed unused imports (createAuthUserByAdmin, fetchSignInMethodsForEmail).
+- Added a routingInProgress guard to prevent double navigation from concurrent
+  watchAuth and window.login calls.
+
+Later in the day, I improved the Employee Order and PWD/Senior discount
+checkboxes on the POS interface. The original implementation had a
+double-toggle bug: the <label> element had an onclick handler that toggled
+the state, but the native browser label-to-checkbox behavior also toggled
+it, causing the two to cancel each other out. This meant clicking anywhere
+on the label text did nothing — users had to click the tiny checkbox itself.
+
+Fixes applied:
+- Moved onclick from <label> to onchange on <input type="checkbox"> for both
+  the Employee Order and PWD/Senior toggles, letting the native label
+  behavior handle the toggle and only reading the state on change.
+- Added mutual exclusivity: when one discount is checked, the other is
+  automatically unchecked, disabled, and visually dimmed (opacity 0.45 with
+  pointer-events: none). Unchecking re-enables the other.
+- Added user-select: none to the discount toggle labels to prevent accidental
+  text selection when clicking.
+- Fixed clearCart and moveCurrentOrderToUnpaid to properly reset both
+  discount states and re-enable both checkboxes (previously only PWD/Senior
+  was reset, leaving Employee Order stuck in a checked/disabled state).
+- Fixed the payment success reset to also re-enable both checkboxes.
+- Fixed the updateCart empty-cart early return to hide discount rows
+  (previously the discount row remained visible after clearing the cart
+  because updateCart returned before reaching the hide/show logic).
+- Fixed buildUnpaidOrderFromCart to save isEmployeeOrder (previously only
+  isPwdSenior was saved, so restoring an unpaid employee order lost that
+  state).
+- Fixed restoreUnpaidOrderToCart to restore both discount states and apply
+  mutual exclusivity when restoring from unpaid orders.
+
+================================================================================
+                              SUMMARY
+================================================================================
+Total Working Days: 11
+Total Commits Covered: 45
+Project: Brother Bean POS System
+Technologies: HTML, CSS, JavaScript, Firebase (Firestore, Auth, Hosting)
+
+================================================================================
+                    SECURITY AUDIT FINDINGS (July 22, 2026)
+================================================================================
+
+FIXED:
+- Removed hardcoded admin credentials (email/password) from source code
+- Removed auto-provisioning of default admin account (ensureDefaultAdminAccount)
+- Fixed session expiry: auth session now resets at midnight (date-based check)
+- Fixed privilege escalation: users without a role document are now denied
+  access instead of being silently promoted to admin
+- Fixed Firestore rules: removed isLegacyAdmin() which granted admin access
+  to any signed-in user without a role document
+- Fixed auth race condition: Firestore calls fired before auth state propagated
+- Fixed session date race condition: date set before login to prevent logout
+- Fixed accounts directory: admin can now read all user documents
+
+OPEN -- XSS VULNERABILITIES (16 sites across 4 files):
+Firestore-sourced data (menu names, category names, variant names, addon
+names, order IDs) is interpolated into innerHTML templates without using
+escapeHtml(). If an admin account were compromised, malicious data could
+execute scripts in the browser.
+
+  HIGH SEVERITY (onclick injection):
+
+  1. posController.js:809
+     Variant name injected raw into onclick attribute
+     onclick="selectMenuVariant('${v.name}', ${v.price})"
+
+  2. posController.js:1317
+     Order ID injected raw into onclick attribute
+     onclick="openUnpaidOrderReceipt('${order.id}')"
+
+  3. posController.js:2293
+     Order ID injected raw into onclick attribute
+     onclick="openPendingOrder('${order.id}')"
+
+  4. adminPortalController.js:4084
+     Menu item name uses partial escaping (only double quotes)
+     Missing &, <, > escaping
+
+  MEDIUM SEVERITY (innerHTML injection):
+
+  5. posController.js:622, 627
+     Category names in onclick for category chips / quick menu
+
+  6. posController.js:810
+     Variant name in menu modal body (unescaped span)
+
+  7. posController.js:837
+     Addon name in menu modal body (unescaped span)
+
+  8. posController.js:861
+     Product category in menu modal note (unescaped div)
+
+  9. posController.js:993-996
+     Cart item name, variant, temperature, addon names (all unescaped)
+
+  10. posController.js:1318-1319
+      Order ID and item names in unpaid orders list (unescaped)
+
+  11. posController.js:2295-2296
+      Pending order ID and item names (unescaped)
+
+  12. adminPortalController.js:1505-1507, 1565
+      Order item names rendered in transactions table (unescaped)
+
+  13. menuView.js:49
+      Category name in admin category card (no escapeHtml function exists)
+
+  14. menuView.js:88, 90
+      Menu item name and addon summary (no escapeHtml function exists)
+
+  15. dashboardView.js:862, 863
+      Top seller item name and category (unescaped)
+
+  16. dashboardView.js:895
+      Category breakdown name (unescaped)
+
+OTHER NOTES:
+- Firebase API key is in git history; rotation not possible without project
+  owner access. Key is semi-public by design; security relies on Firestore
+  rules and Auth, not key secrecy.
+- localStorage stores login email, unpaid orders, sales history, and pending
+  orders in plain text. Low risk if XSS is fixed.
