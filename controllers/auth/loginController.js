@@ -136,14 +136,15 @@ async function routeByRole(user) {
       const isAdmin = DEFAULT_ADMIN_ACCOUNTS.some((a) => a.email === matchedAccount.email);
       const roleToSet = isAdmin ? "admin" : "staff";
       try {
-        await ensureAdminAccessProfile(user.uid, {
+        await setUserProfile(user.uid, {
           fullName: profile?.fullName || matchedAccount.fullName,
           displayName: profile?.displayName || matchedAccount.fullName,
           email: user.email || profile?.email || matchedAccount.email,
+          role: roleToSet,
           status: profile?.status || "active",
           isDefaultAdmin: isAdmin,
+          updatedAtMs: Date.now(),
         });
-        await setUserRole(user.uid, roleToSet, user.email || matchedAccount.email);
         role = roleToSet;
       } catch (seedError) {
         console.warn("[Auth] Unable to backfill profile; continuing with admin route fallback.", seedError);

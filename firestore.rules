@@ -34,8 +34,9 @@ service cloud.firestore {
     // Users can read their own profile; only admins can write roles for others.
     match /users/{uid} {
       allow read: if isSignedIn() && (request.auth.uid == uid || isAdmin());
-      allow create: if isSignedIn() && (request.auth.uid == uid || isAdmin());
-      allow update, delete: if isAdmin();
+      allow create: if isSignedIn() && request.auth.uid == uid;
+      allow update: if isSignedIn() && request.auth.uid == uid;
+      allow delete: if isAdmin();
     }
 
     match /inventory/{docId} {
