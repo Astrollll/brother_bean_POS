@@ -1,10 +1,13 @@
-import { loginWithEmail, watchAuth, logout as authLogout } from "./firebaseAuth.js";
-import { getUserProfile, getUserRole, setUserProfile } from "../../models/userModel.js";
+import { loginWithEmail, watchAuth, logout as authLogout, createAuthUserByAdmin } from "./firebaseAuth.js";
+import { auth } from "../firebase.js";
+import { getUserProfile, getUserRole, setUserRole, setUserProfile, ensureAdminAccessProfile } from "../../models/userModel.js";
 import { navigateTo } from "../utils/routes.js";
-import { ADMIN_EMAILS } from "../../config/app.config.js";
+import { fetchSignInMethodsForEmail } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-auth.js";
+import { DEFAULT_ADMIN_ACCOUNTS, DEFAULT_STAFF_ACCOUNTS } from "../../config/app.config.js";
 
 const LOGIN_EMAIL_KEY = "bb_admin_remembered_email";
 const SESSION_DATE_KEY = "bb_auth_session_date";
+const ALL_DEFAULT_ACCOUNTS = [...DEFAULT_ADMIN_ACCOUNTS, ...DEFAULT_STAFF_ACCOUNTS];
 
 function todayString() {
   const now = new Date();
@@ -66,6 +69,40 @@ function isValidEmail(value) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 }
 
+async function ensureDefaultAccounts() {
+  try {
+    for (const account of ALL_DEFAULT_ACCOUNTS) {
+      try {
+        const methods = await fetchSignInMethodsForEmail(auth, account.email).catch(() => []);
+        if (Array.isArray(methods) && methods.length > 0) {
+          continue;
+        }
+
+        const created = await createAuthUserByAdmin(account.email, account.password);
+        const isAdmin = DEFAULT_ADMIN_ACCOUNTS.some((a) => a.email === account.email);
+        const role = isAdmin ? "admin" : "staff";
+
+        await setUserRole(created.uid, role, account.email);
+        await setUserProfile(created.uid, {
+          fullName: account.fullName,
+          email: account.email,
+          role,
+          status: "active",
+          isDefaultAdmin: isAdmin,
+          updatedAtMs: Date.now(),
+        });
+        console.log(`[Auth] Default account created: ${account.email} (${role})`);
+      } catch (e) {
+        if (e?.code !== "auth/email-already-in-use") {
+          console.warn(`[Auth] Default account bootstrap failed for ${account.email}`, e);
+        }
+      }
+    }
+  } catch (error) {
+    console.error("[Auth] ensureDefaultAccounts error:", error);
+  }
+}
+
 async function routeByRole(user) {
   let profile = null;
   let role = "";
@@ -91,26 +128,32 @@ async function routeByRole(user) {
 
   if (!role) {
     const email = String(user.email || "").toLowerCase();
-    const isAdminEmail = ADMIN_EMAILS.some((e) => e.toLowerCase() === email);
+    const matchedAccount = ALL_DEFAULT_ACCOUNTS.find(
+      (a) => a.email.toLowerCase() === email
+    );
 
-    if (isAdminEmail) {
+    if (matchedAccount) {
+      const isAdmin = DEFAULT_ADMIN_ACCOUNTS.some((a) => a.email === matchedAccount.email);
+      const roleToSet = isAdmin ? "admin" : "staff";
       try {
-        await setUserProfile(user.uid, {
-          fullName: user.displayName || "Admin",
-          email: user.email || "",
-          role: "admin",
-          status: "active",
+        await ensureAdminAccessProfile(user.uid, {
+          fullName: profile?.fullName || matchedAccount.fullName,
+          displayName: profile?.displayName || matchedAccount.fullName,
+          email: user.email || profile?.email || matchedAccount.email,
+          status: profile?.status || "active",
+          isDefaultAdmin: isAdmin,
         });
-        role = "admin";
-      } catch (e) {
-        console.warn("[Auth] Failed to auto-provision admin profile:", e);
-        await authLogout();
-        return { blocked: true, reason: "Failed to set up admin account. Contact support." };
+        await setUserRole(user.uid, roleToSet, user.email || matchedAccount.email);
+        role = roleToSet;
+      } catch (seedError) {
+        console.warn("[Auth] Unable to backfill profile; continuing with admin route fallback.", seedError);
       }
-    } else {
-      await authLogout();
-      return { blocked: true, reason: "Your account has not been set up yet. Contact an administrator." };
     }
+  }
+
+  if (!role) {
+    await authLogout();
+    return { blocked: true, reason: "Your account has not been set up yet. Contact an administrator." };
   }
 
   if (role === "staff") {
@@ -210,6 +253,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     const remember = document.getElementById("rememberEmail");
     if (remember) remember.checked = true;
   }
+
+  setLoginLoadingState("Preparing accounts...");
+  await ensureDefaultAccounts();
 
   const maybeLoginOnEnter = (e) => {
     if (e.key === "Enter") window.login();

@@ -8,6 +8,18 @@ export const firebaseConfig = {
   measurementId: "G-8CQ5FCYQSV"
 };
 
-export const ADMIN_EMAILS = [
-  "admin@brotherbean.com",
+export const DEFAULT_ADMIN_ACCOUNTS = [
+  {
+    email: "admin@brotherbean.com",
+    password: "admin123",
+    fullName: "Default Admin",
+  },
+];
+
+export const DEFAULT_STAFF_ACCOUNTS = [
+  {
+    email: "staff@gmail.com",
+    password: "staff123",
+    fullName: "Staff",
+  },
 ];

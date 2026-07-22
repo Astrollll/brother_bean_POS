@@ -20,7 +20,11 @@ service cloud.firestore {
     }
 
     function isAdmin() {
-      return isSignedIn() && role() == "admin";
+      return isSignedIn() && (role() == "admin" || isLegacyAdmin());
+    }
+
+    function isLegacyAdmin() {
+      return isSignedIn() && (!userDocExists() || role() == null);
     }
 
     function isWorker() {

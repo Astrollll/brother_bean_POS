@@ -10,7 +10,21 @@ export const firebaseConfig = {
   measurementId: "YOUR_MEASUREMENT_ID"
 };
 
-// Admin emails that auto-provision on first login (no passwords stored)
-export const ADMIN_EMAILS = [
-  "admin@yourdomain.com",
+// Default Admin Accounts (bootstrap credentials)
+// These are created automatically on first run
+export const DEFAULT_ADMIN_ACCOUNTS = [
+  {
+    email: "admin@yourdomain.com",
+    password: "CHANGE_THIS_PASSWORD",
+    fullName: "Default Admin",
+  },
+];
+
+// Default Staff Accounts (bootstrap credentials)
+export const DEFAULT_STAFF_ACCOUNTS = [
+  {
+    email: "staff@yourdomain.com",
+    password: "CHANGE_THIS_PASSWORD",
+    fullName: "Staff",
+  },
 ];
