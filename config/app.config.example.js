@@ -9,3 +9,8 @@ export const firebaseConfig = {
   appId: "YOUR_APP_ID",
   measurementId: "YOUR_MEASUREMENT_ID"
 };
+
+// Admin emails that auto-provision on first login (no passwords stored)
+export const ADMIN_EMAILS = [
+  "admin@yourdomain.com",
+];

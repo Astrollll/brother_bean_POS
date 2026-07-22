@@ -7,3 +7,7 @@ export const firebaseConfig = {
   appId: "1:609430570192:web:3f1a5a15f0f68eada10ad5",
   measurementId: "G-8CQ5FCYQSV"
 };
+
+export const ADMIN_EMAILS = [
+  "admin@brotherbean.com",
+];

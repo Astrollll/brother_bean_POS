@@ -1,6 +1,7 @@
 import { loginWithEmail, watchAuth, logout as authLogout } from "./firebaseAuth.js";
-import { getUserProfile, getUserRole } from "../../models/userModel.js";
+import { getUserProfile, getUserRole, setUserProfile } from "../../models/userModel.js";
 import { navigateTo } from "../utils/routes.js";
+import { ADMIN_EMAILS } from "../../config/app.config.js";
 
 const LOGIN_EMAIL_KEY = "bb_admin_remembered_email";
 const SESSION_DATE_KEY = "bb_auth_session_date";
@@ -89,8 +90,27 @@ async function routeByRole(user) {
   }
 
   if (!role) {
-    await authLogout();
-    return { blocked: true, reason: "Your account has not been set up yet. Contact an administrator." };
+    const email = String(user.email || "").toLowerCase();
+    const isAdminEmail = ADMIN_EMAILS.some((e) => e.toLowerCase() === email);
+
+    if (isAdminEmail) {
+      try {
+        await setUserProfile(user.uid, {
+          fullName: user.displayName || "Admin",
+          email: user.email || "",
+          role: "admin",
+          status: "active",
+        });
+        role = "admin";
+      } catch (e) {
+        console.warn("[Auth] Failed to auto-provision admin profile:", e);
+        await authLogout();
+        return { blocked: true, reason: "Failed to set up admin account. Contact support." };
+      }
+    } else {
+      await authLogout();
+      return { blocked: true, reason: "Your account has not been set up yet. Contact an administrator." };
+    }
   }
 
   if (role === "staff") {
