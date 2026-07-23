@@ -3250,11 +3250,55 @@ th:not(:first-child), td:not(:first-child) {
   background:
     radial-gradient(circle at top right, rgba(245, 158, 11, 0.08) 0%, rgba(245, 158, 11, 0) 46%),
     linear-gradient(180deg, #fffdfa 0%, #ffffff 34%);
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.staff-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  border-bottom: 1px solid rgba(107, 68, 35, 0.1);
+  background: rgba(255, 255, 255, 0.9);
+}
+
+.staff-card-head .card-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.staff-card-sub {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+
+.staff-add-btn {
+  border-radius: 999px;
+  padding-inline: 14px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.staff-close-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
 }
 
 .staff-loading {
   color: var(--text-muted);
   font-size: 13px;
+  padding: 24px;
+  text-align: center;
 }
 
 .staff-empty {
@@ -3289,6 +3333,14 @@ th:not(:first-child), td:not(:first-child) {
   max-width: 320px;
 }
 
+.staff-empty-cta {
+  margin-top: 4px;
+  border-radius: 999px;
+  padding-inline: 16px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
 .staff-summary-strip {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -3300,11 +3352,27 @@ th:not(:first-child), td:not(:first-child) {
   border: 1px solid rgba(107, 68, 35, 0.14);
   background: rgba(255, 255, 255, 0.9);
   border-radius: 12px;
-  padding: 10px 12px;
+  padding: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.staff-kpi-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 8px;
+  background: rgba(107, 68, 35, 0.1);
+  color: var(--primary);
+  font-size: 12px;
+  flex-shrink: 0;
 }
 
 .staff-kpi-label {
-  font-size: 11px;
+  font-size: 10px;
   letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--text-muted);
@@ -3332,11 +3400,25 @@ th:not(:first-child), td:not(:first-child) {
 
 .staff-table {
   min-width: 600px;
+  width: 100%;
+  border-collapse: collapse;
 }
 
 .staff-table th,
 .staff-table td {
   vertical-align: middle;
+  padding: 10px 12px;
+  border-bottom: 1px solid rgba(107, 68, 35, 0.06);
+}
+
+.staff-table th {
+  background: rgba(249, 250, 251, 0.8);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  font-weight: 700;
+  border-bottom: 1px solid rgba(107, 68, 35, 0.1);
 }
 
 .staff-table th:first-child,
@@ -3347,6 +3429,18 @@ th:not(:first-child), td:not(:first-child) {
 .staff-table th:last-child,
 .staff-table td:last-child {
   padding-right: 12px;
+}
+
+.staff-table tbody tr {
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.staff-table tbody tr:hover {
+  background: rgba(107, 68, 35, 0.03);
+}
+
+.staff-table tbody tr:last-child td {
+  border-bottom: none;
 }
 
 .staff-cell-person {
@@ -3378,6 +3472,16 @@ th:not(:first-child), td:not(:first-child) {
   text-align: right;
 }
 
+.staff-action-cell .row-action-btn {
+  opacity: 0.6;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+.staff-action-cell .row-action-btn:hover {
+  opacity: 1;
+  transform: scale(1.05);
+}
+
 .staff-add-form-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -3385,9 +3489,15 @@ th:not(:first-child), td:not(:first-child) {
   margin-bottom: 12px;
 }
 
+.staff-add-form-grid .ls-input {
+  border-radius: 10px;
+  padding: 8px 12px;
+}
+
 .staff-form-actions {
   display: inline-flex;
   gap: 10px;
+  align-items: center;
 }
 
 .staff-schedule-card .card-head .orders-btn {
@@ -3427,6 +3537,9 @@ th:not(:first-child), td:not(:first-child) {
   border-bottom: 1px solid var(--border-color);
   padding: 10px 6px;
   background: #fff;
+  color: var(--text-muted);
+  font-weight: 700;
+  text-transform: uppercase;
 }
 
 .staff-schedule-table th:first-child {
@@ -3441,8 +3554,13 @@ th:not(:first-child), td:not(:first-child) {
   vertical-align: top;
 }
 
+.staff-schedule-table tbody tr:hover {
+  background: rgba(107, 68, 35, 0.02);
+}
+
 .schedule-staff-cell {
   padding-left: 12px;
+  background: rgba(249, 250, 251, 0.3);
 }
 
 .schedule-staff-name {
@@ -3459,6 +3577,12 @@ th:not(:first-child), td:not(:first-child) {
 
 .schedule-day-cell {
   text-align: center;
+  min-width: 100px;
+  transition: background-color 0.15s ease;
+}
+
+.schedule-day-cell.has-shift {
+  background: rgba(16, 185, 129, 0.04);
 }
 
 .schedule-duty-label {
@@ -3469,10 +3593,24 @@ th:not(:first-child), td:not(:first-child) {
   color: var(--text-muted);
   margin-bottom: 6px;
   user-select: none;
+  cursor: pointer;
+}
+
+.schedule-duty-label:hover {
+  color: var(--primary);
 }
 
 .staff-duty-toggle {
   accent-color: var(--primary);
+  cursor: pointer;
+  width: 14px;
+  height: 14px;
+}
+
+.schedule-duty-check {
+  font-size: 10px;
+  color: var(--primary);
+  margin-left: 2px;
 }
 
 .staff-shift-input {
@@ -4545,6 +4683,10 @@ input:checked + .tslider::before {
 
   .staff-summary-strip {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .staff-kpi-card {
+    padding: 10px;
   }
 
   .inventory-search-row .ls-input {

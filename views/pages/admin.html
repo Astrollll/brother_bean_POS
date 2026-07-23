@@ -571,7 +571,7 @@
           </div>
 
           <!-- ── STAFF ── -->
-          <div id="staff" class="page staff-page">
+           <div id="staff" class="page staff-page">
             <div class="page-header">
               <div class="page-title">Staff</div>
               <div class="page-sub">Manage your team and weekly schedule</div>
@@ -580,8 +580,23 @@
             <div class="staff-grid">
               <!-- Staff Members -->
               <div class="card staff-card">
-                <div class="card-head">
-                  <span class="card-title">Staff Members</span>
+                <div class="card-head staff-card-head">
+                  <div>
+                    <span class="card-title">Staff Members</span>
+                    <div class="staff-card-sub">
+                      Add, view, and remove team members
+                    </div>
+                  </div>
+                  <div class="staff-card-actions">
+                    <button
+                      class="orders-btn ghost staff-add-btn"
+                      id="showAddStaffBtn"
+                      type="button"
+                    >
+                      <i class="ri-user-add-line" aria-hidden="true"></i>
+                      Add Staff
+                    </button>
+                  </div>
                 </div>
                 <div id="staffList">
                   <div class="staff-loading">Loading...</div>
@@ -590,12 +605,25 @@
 
               <!-- Add Staff Form (hidden by default) -->
               <div
-                class="card staff-card"
+                class="card staff-card staff-add-card"
                 id="addStaffForm"
                 style="display: none"
               >
-                <div class="card-head">
-                  <span class="card-title">Add New Staff</span>
+                <div class="card-head staff-card-head">
+                  <div>
+                    <span class="card-title">Add New Staff</span>
+                    <div class="staff-card-sub">
+                      Create a new team member profile
+                    </div>
+                  </div>
+                  <button
+                    class="orders-btn ghost staff-close-btn"
+                    id="hideAddStaffBtn"
+                    type="button"
+                    aria-label="Close add staff form"
+                  >
+                    <i class="ri-close-line" aria-hidden="true"></i>
+                  </button>
                 </div>
                 <div class="staff-add-form-grid">
                   <div>
@@ -604,7 +632,6 @@
                       class="ls-input"
                       id="newStaffName"
                       placeholder="e.g. Maria Reyes"
-                      style="margin-bottom: 0"
                     />
                   </div>
                   <div>
@@ -613,7 +640,6 @@
                       class="ls-input"
                       id="newStaffRole"
                       placeholder="e.g. Barista"
-                      style="margin-bottom: 0"
                     />
                   </div>
                 </div>
@@ -624,10 +650,8 @@
                   </button>
                   <button
                     class="orders-btn ghost"
-                    onclick="
-                      document.getElementById('addStaffForm').style.display =
-                        'none'
-                    "
+                    id="cancelAddStaffBtn"
+                    type="button"
                   >
                     Cancel
                   </button>
@@ -636,8 +660,13 @@
 
               <!-- Weekly Schedule -->
               <div class="card staff-card staff-schedule-card">
-                <div class="card-head">
-                  <span class="card-title">Weekly Schedule</span>
+                <div class="card-head staff-card-head">
+                  <div>
+                    <span class="card-title">Weekly Schedule</span>
+                    <div class="staff-card-sub">
+                      Assign shifts per day for each team member
+                    </div>
+                  </div>
                   <button class="orders-btn" onclick="window.saveSchedule()">
                     <i class="ri-save-line" aria-hidden="true"></i> Save
                     Schedule

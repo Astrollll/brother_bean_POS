@@ -528,6 +528,13 @@ function setupTopbarActions() {
   makeKeyboardClickable(document.getElementById("topbarNotifBtn"), toggleNotifDropdown);
   makeKeyboardClickable(document.getElementById("topbarAvatarBtn"), openTopbarAccount);
 
+  const showAddBtn = document.getElementById("showAddStaffBtn");
+  const hideAddBtn = document.getElementById("hideAddStaffBtn");
+  const cancelAddBtn = document.getElementById("cancelAddStaffBtn");
+  if (showAddBtn) showAddBtn.addEventListener("click", window.showAddStaff);
+  if (hideAddBtn) hideAddBtn.addEventListener("click", window.hideAddStaff);
+  if (cancelAddBtn) cancelAddBtn.addEventListener("click", window.hideAddStaff);
+
   document.addEventListener("click", (e) => {
     const dropdown = document.getElementById("notifDropdown");
     const btn = document.getElementById("topbarNotifBtn");
@@ -3665,7 +3672,15 @@ window.addStaff = async function () {
 };
 
 window.showAddStaff = function () {
-  document.getElementById("addStaffForm").style.display = "block";
+  const form = document.getElementById("addStaffForm");
+  if (form) form.style.display = "block";
+  const input = document.getElementById("newStaffName");
+  if (input) input.focus();
+};
+
+window.hideAddStaff = function () {
+  const form = document.getElementById("addStaffForm");
+  if (form) form.style.display = "none";
 };
 
 window.saveSchedule = async function () {

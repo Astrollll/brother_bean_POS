@@ -19,7 +19,17 @@ export function renderStaffList(staff, onRemove) {
       <div class="staff-empty">
         <i class="ri-team-line" aria-hidden="true"></i>
         <div class="staff-empty-title">No staff records yet</div>
-        <div class="staff-empty-sub">Add team members to start assigning shifts for the week.</div>
+        <div class="staff-empty-sub">
+          Add team members to start assigning shifts for the week.
+        </div>
+        <button
+          class="orders-btn staff-empty-cta"
+          type="button"
+          onclick="document.getElementById('showAddStaffBtn')?.click()"
+        >
+          <i class="ri-user-add-line" aria-hidden="true"></i>
+          Add First Staff Member
+        </button>
       </div>
     `;
     return;
@@ -39,15 +49,24 @@ export function renderStaffList(staff, onRemove) {
 
   el.innerHTML = `<div class="staff-summary-strip" role="status" aria-label="Staff summary">
     <div class="staff-kpi-card">
+      <div class="staff-kpi-icon">
+        <i class="ri-team-line" aria-hidden="true"></i>
+      </div>
       <div class="staff-kpi-label">Total Team Members</div>
       <div class="staff-kpi-value">${staff.length}</div>
     </div>
     <div class="staff-kpi-card">
+      <div class="staff-kpi-icon">
+        <i class="ri-shield-user-line" aria-hidden="true"></i>
+      </div>
       <div class="staff-kpi-label">Active Roles</div>
       <div class="staff-kpi-value">${uniqueRoles.size}</div>
     </div>
     <div class="staff-kpi-card">
-      <div class="staff-kpi-label">With Shift Notes</div>
+      <div class="staff-kpi-icon">
+        <i class="ri-calendar-check-line" aria-hidden="true"></i>
+      </div>
+      <div class="staff-kpi-label">With Shift Schedules</div>
       <div class="staff-kpi-value">${scheduledMembers.size}</div>
     </div>
   </div>
@@ -110,12 +129,14 @@ export function renderScheduleEditor(staff, savedSchedule = {}) {
         </td>
         ${DAYS.map(d => {
           const dayData = staffSched[d] || {};
-          const checked = dayData.onDuty ? "checked" : "";
+          const onDuty = !!dayData.onDuty;
           const shift = dayData.shift || "";
-          return `<td class="schedule-day-cell">
+          const hasShift = onDuty && shift.trim();
+          return `<td class="schedule-day-cell ${hasShift ? 'has-shift' : ''}">
             <label class="schedule-duty-label" for="chk_${s.id}_${d}">
-              <input class="staff-duty-toggle" type="checkbox" id="chk_${s.id}_${d}" ${checked}>
+              <input class="staff-duty-toggle" type="checkbox" id="chk_${s.id}_${d}" ${onDuty ? "checked" : ""}>
               <span>On Duty</span>
+              ${onDuty ? '<i class="ri-check-line schedule-duty-check" aria-hidden="true"></i>' : ''}
             </label>
             <input class="staff-shift-input" type="text" id="shift_${s.id}_${d}" value="${escapeHtml(shift)}" placeholder="7AM-3PM" maxlength="20">
           </td>`;
