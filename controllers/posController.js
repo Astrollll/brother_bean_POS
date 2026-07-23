@@ -1809,7 +1809,7 @@ function generateReceipt(sale) {
   const savingsRounded = Math.round(totalItemSavings * 100) / 100;
   const totalRounded = Math.round((Number(sale.total) || 0) * 100) / 100;
 
-  const isEmployeeOrder = sale.orderType === "employee" || sale.paymentMethod === "employee";
+  const isEmployeeOrder = sale.orderType === "employee" || sale.paymentMethod === "employee" || sale.isEmployeeOrder === true;
 
   let itemDiscountBlock = "";
   let discountBlock = "";
