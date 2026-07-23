@@ -1706,7 +1706,7 @@ window.completePayment = async function() {
     dailyStats.totalSales += total;
     if (isPwdSenior) dailyStats.discountsApplied++;
     if (currentPayMethod === "cash") {
-      dailyStats.cashReceived += parseFloat(enteredAmount) || total;
+      dailyStats.cashReceived += total;
     } else if (currentPayMethod === "split") {
       dailyStats.cashReceived += parseFloat(enteredAmount) || 0;
     }
@@ -1789,11 +1789,6 @@ function generateReceipt(sale) {
     `;
   }).join("");
 
-  const discountAmount = sale.isPwdSenior ? (sale.discountAmount || (sale.subtotal * 0.2)) : 0;
-  const discountBlock = discountAmount > 0
-    ? `<div class="totals-row sub"><span>Discount</span><span>− ${formatMoney(discountAmount)}</span></div>`
-    : "";
-
   const totalItemSavings = (sale.items || []).reduce((sum, item) => {
     const qty = Number(item.quantity) || 1;
     const addons = Array.isArray(item.addons) ? item.addons : [];
@@ -1809,9 +1804,37 @@ function generateReceipt(sale) {
     const originalUnit = (Number(item.price) || 0) + addonsTotal;
     return sum + originalUnit * qty;
   }, 0);
-  const itemDiscountBlock = totalItemSavings > 0
-    ? `<div class="totals-row sub"><span>Item discounts</span><span>− ${formatMoney(totalItemSavings)}</span></div>`
-    : "";
+
+  const subtotalRounded = Math.round(originalSubtotal * 100) / 100;
+  const savingsRounded = Math.round(totalItemSavings * 100) / 100;
+  const totalRounded = Math.round((Number(sale.total) || 0) * 100) / 100;
+
+  const isEmployeeOrder = sale.orderType === "employee" || sale.paymentMethod === "employee";
+
+  let itemDiscountBlock = "";
+  let discountBlock = "";
+
+  if (isEmployeeOrder) {
+    const employeeDiscount = Math.max(0, subtotalRounded - totalRounded);
+    if (employeeDiscount > 0) {
+      discountBlock = `<div class="totals-row sub"><span>Employee discount</span><span>− ${formatMoney(employeeDiscount)}</span></div>`;
+    }
+  } else {
+    let displayItemSavings = 0;
+    if (totalItemSavings > 0) {
+      displayItemSavings = sale.isPwdSenior ? savingsRounded : (subtotalRounded - totalRounded);
+    }
+    const displayDiscount = sale.isPwdSenior
+      ? Math.max(0, subtotalRounded - displayItemSavings - totalRounded)
+      : 0;
+
+    itemDiscountBlock = displayItemSavings > 0
+      ? `<div class="totals-row sub"><span>Item discounts</span><span>− ${formatMoney(displayItemSavings)}</span></div>`
+      : "";
+    discountBlock = displayDiscount > 0
+      ? `<div class="totals-row sub"><span>Discount</span><span>− ${formatMoney(displayDiscount)}</span></div>`
+      : "";
+  }
 
   const paidStamp = sale.unpaid ? "UNPAID" : sale.queued ? "PENDING" : "PAID";
 

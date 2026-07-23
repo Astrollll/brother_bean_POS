@@ -1345,13 +1345,37 @@ function buildAdminReceiptHTML(order) {
     const originalUnit = (Number(item.price) || 0) + addonTotal;
     return sum + originalUnit * qty;
   }, 0);
-  const discountAmount = Number(order.discountAmount || 0);
-  const discountBlock = discountAmount > 0
-    ? `<div class="totals-row sub"><span>Discount</span><span>− ${formatMoney(discountAmount)}</span></div>`
-    : "";
-  const itemDiscountBlock = totalItemSavings > 0
-    ? `<div class="totals-row sub"><span>Item discounts</span><span>− ${formatMoney(totalItemSavings)}</span></div>`
-    : "";
+  const subtotalRounded = Math.round(originalSubtotal * 100) / 100;
+  const savingsRounded = Math.round(totalItemSavings * 100) / 100;
+  const totalRounded = Math.round((Number(order.total) || 0) * 100) / 100;
+
+  const isEmployeeOrder = order.orderType === "employee" || order.paymentMethod === "employee";
+
+  let itemDiscountBlock = "";
+  let discountBlock = "";
+
+  if (isEmployeeOrder) {
+    const employeeDiscount = Math.max(0, subtotalRounded - totalRounded);
+    if (employeeDiscount > 0) {
+      discountBlock = `<div class="totals-row sub"><span>Employee discount</span><span>− ${formatMoney(employeeDiscount)}</span></div>`;
+    }
+  } else {
+    const hasDiscount = Number(order.discountAmount) > 0;
+    let displayItemSavings = 0;
+    if (totalItemSavings > 0) {
+      displayItemSavings = hasDiscount ? savingsRounded : (subtotalRounded - totalRounded);
+    }
+    const displayDiscount = hasDiscount
+      ? Math.max(0, subtotalRounded - displayItemSavings - totalRounded)
+      : 0;
+
+    itemDiscountBlock = displayItemSavings > 0
+      ? `<div class="totals-row sub"><span>Item discounts</span><span>− ${formatMoney(displayItemSavings)}</span></div>`
+      : "";
+    discountBlock = displayDiscount > 0
+      ? `<div class="totals-row sub"><span>Discount</span><span>− ${formatMoney(displayDiscount)}</span></div>`
+      : "";
+  }
 
   const timestamp = date
     ? date.toLocaleString("en-PH", { month: "numeric", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" })
