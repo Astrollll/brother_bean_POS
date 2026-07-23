@@ -541,6 +541,40 @@ function setupTopbarActions() {
   });
 }
 
+function setupSidebarToggle() {
+  const toggleBtn = document.getElementById("sidebarToggle");
+  const sidebar = document.querySelector(".sidebar");
+  const overlay = document.getElementById("sidebarOverlay");
+  if (!toggleBtn || !sidebar || !overlay) return;
+
+  function closeSidebar() {
+    sidebar.classList.remove("is-open");
+    overlay.classList.remove("is-visible");
+  }
+
+  toggleBtn.addEventListener("click", () => {
+    const isOpen = sidebar.classList.contains("is-open");
+    if (isOpen) {
+      closeSidebar();
+    } else {
+      sidebar.classList.add("is-open");
+      overlay.classList.add("is-visible");
+    }
+  });
+
+  overlay.addEventListener("click", closeSidebar);
+
+  sidebar.querySelectorAll(".nav-item").forEach((item) => {
+    item.addEventListener("click", closeSidebar);
+  });
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && sidebar.classList.contains("is-open")) {
+      closeSidebar();
+    }
+  });
+}
+
 function showPage(pageId) {
   const mainEl = document.querySelector(".main");
   if (mainEl) mainEl.scrollTop = 0;
@@ -3739,6 +3773,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   loadNotifState();
   await loadNotifStateFromFirestore();
   setupTopbarActions();
+  setupSidebarToggle();
   startDashboardAutoSync();
 
   let authSettled = false;
