@@ -761,12 +761,14 @@ function getEligibleAddons(product) {
     return { label: "Add-ons", addons: normalizedAddons };
   }
 
-  const drinkAddons = menuItems.filter(i =>
+  const rawDrinkAddons = menuItems.filter(i =>
     i.category === "addons" || i.category === "Add-ons" || i.category === "Add-ons Drink"
   );
-  const foodAddons = menuItems.filter(i =>
+  const drinkAddons = normalizeAddons(rawDrinkAddons, "fallback-drink");
+  const rawFoodAddons = menuItems.filter(i =>
     i.category === "addons" || i.category === "Add-ons" || i.category === "Add-ons Food"
   );
+  const foodAddons = normalizeAddons(rawFoodAddons, "fallback-food");
   const productCategory = product.category;
   const drinkCats = ["coffee", "oat series", "coconut series", "matcha series", "non-dairy specials", "non-coffee"];  
 
@@ -910,7 +912,7 @@ window.confirmMenuItem = function() {
 
   const price    = selectedVariant ? selectedVariant.price : product.price;
   const variant  = selectedVariant ? selectedVariant.name  : null;
-  const temp     = product.hasTemp ? (selectedTemp || null) : "N/A";
+  const temp     = product.hasTemp ? (selectedTemp || null) : null;
   const addons   = [...selectedAddons];
 
   const existingIdx = cart.findIndex(i =>
@@ -1462,7 +1464,7 @@ window.searchProducts = function() {
 let capturedPaymentTotal = 0;
 
 window.openPaymentModal = function() {
-  capturedPaymentTotal = parseFloat(document.getElementById("total").textContent.replace("₱","").replace(",",""));
+  capturedPaymentTotal = parseFloat(document.getElementById("total").textContent.replace("₱","").replace(/,/g,""));
   document.getElementById("paymentAmount").textContent = `₱${capturedPaymentTotal.toFixed(2)}`;
   document.getElementById("paymentModal").classList.add("active");
   enteredAmount = "";
@@ -1519,11 +1521,11 @@ window.selectPaymentMethod = function(method) {
 };
 
 window.enterDigit = function(digit) {
-  if (enteredAmount.length < 10) {
-    enteredAmount += digit;
-    updateChangeDisplay();
-    updateDoneButton();
-  }
+  if (enteredAmount.length >= 10) return;
+  if (digit === "." && enteredAmount.includes(".")) return;
+  enteredAmount += digit;
+  updateChangeDisplay();
+  updateDoneButton();
 };
 
 window.clearAmount = function() {
@@ -1615,7 +1617,7 @@ function updateChangeDisplay() {
 
   if (currentPayMethod === "split") {
     const cashAmount = entered;
-    const gcashAmount = Math.max(0, capturedPaymentTotal - cashAmount);
+    const gcashAmount = Math.round(Math.max(0, capturedPaymentTotal - cashAmount) * 100) / 100;
     document.getElementById("tenderedDisplay").textContent = enteredAmount ? `₱${cashAmount.toFixed(2)}` : "₱0.00";
     const display = document.getElementById("changeDisplay");
     display.innerHTML = "";
@@ -1661,7 +1663,7 @@ window.completePayment = async function() {
     amountTendered = parseFloat(enteredAmount) || total;
   } else if (currentPayMethod === "split") {
     cashAmount = parseFloat(enteredAmount) || 0;
-    gcashAmount = Math.max(0, total - cashAmount);
+    gcashAmount = Math.round(Math.max(0, total - cashAmount) * 100) / 100;
     amountTendered = total;
   } else {
     amountTendered = total;
@@ -1787,7 +1789,10 @@ function generateReceipt(sale) {
     `;
   }).join("");
 
-  const discountBlock = `<div class="totals-row sub"><span>Discount</span><span>− ${formatMoney(sale.isPwdSenior ? sale.discountAmount : 0)}</span></div>`;
+  const discountAmount = sale.isPwdSenior ? (sale.discountAmount || (sale.subtotal * 0.2)) : 0;
+  const discountBlock = discountAmount > 0
+    ? `<div class="totals-row sub"><span>Discount</span><span>− ${formatMoney(discountAmount)}</span></div>`
+    : "";
 
   const totalItemSavings = (sale.items || []).reduce((sum, item) => {
     const qty = Number(item.quantity) || 1;
@@ -1797,7 +1802,16 @@ function generateReceipt(sale) {
     const originalUnit = (Number(item.price) || 0) + addonsTotal;
     return sum + (originalUnit * discountPct * qty);
   }, 0);
-  const itemDiscountBlock = `<div class="totals-row sub"><span>Item discounts</span><span>− ${formatMoney(totalItemSavings)}</span></div>`;
+  const originalSubtotal = (sale.items || []).reduce((sum, item) => {
+    const qty = Number(item.quantity) || 1;
+    const addons = Array.isArray(item.addons) ? item.addons : [];
+    const addonsTotal = addons.reduce((s, a) => s + (Number(a?.price) || 0), 0);
+    const originalUnit = (Number(item.price) || 0) + addonsTotal;
+    return sum + originalUnit * qty;
+  }, 0);
+  const itemDiscountBlock = totalItemSavings > 0
+    ? `<div class="totals-row sub"><span>Item discounts</span><span>− ${formatMoney(totalItemSavings)}</span></div>`
+    : "";
 
   const paidStamp = sale.unpaid ? "UNPAID" : sale.queued ? "PENDING" : "PAID";
 
@@ -1838,7 +1852,7 @@ function generateReceipt(sale) {
 
         <hr class="rule">
 
-        <div class="totals-row sub"><span>Subtotal</span><span>${formatMoney(sale.subtotal)}</span></div>
+        <div class="totals-row sub"><span>Subtotal</span><span>${formatMoney(originalSubtotal)}</span></div>
         ${itemDiscountBlock}
         ${discountBlock}
         <div class="totals-row grand"><span>TOTAL</span><span>${formatMoney(sale.total)}</span></div>

@@ -1226,11 +1226,12 @@ function summarizeInventoryDeductions(auditRows) {
       name: String(entry?.name || inventoryId),
       unit: String(entry?.unit || ""),
       totalDeducted: 0,
-      remainingQty: Number(entry?.remainingQty || 0),
+      remainingQty: entry?.remainingQty ?? 0,
     };
 
     existing.totalDeducted += Number(entry?.deductedQty || 0);
-    existing.remainingQty = Number(entry?.remainingQty || existing.remainingQty || 0);
+    const rawQty = entry?.remainingQty;
+    existing.remainingQty = rawQty != null ? Number(rawQty) : (existing.remainingQty ?? 0);
     byInventory.set(inventoryId, existing);
   });
 
@@ -1330,8 +1331,6 @@ function buildAdminReceiptHTML(order) {
     `;
   }).join("");
 
-  const discountBlock = `<div class="totals-row sub"><span>Discount</span><span>− ${formatMoney(order.discountAmount || 0)}</span></div>`;
-
   const totalItemSavings = items.reduce((sum, item) => {
     const qty = Number(item.quantity || 1) || 1;
     const addonTotal = Array.isArray(item.addons) ? item.addons.reduce((s, a) => s + (Number(a?.price) || 0), 0) : 0;
@@ -1340,7 +1339,19 @@ function buildAdminReceiptHTML(order) {
     const savings = originalUnit * discountPct * qty;
     return sum + savings;
   }, 0);
-  const itemDiscountBlock = `<div class="totals-row sub"><span>Item discounts</span><span>− ${formatMoney(totalItemSavings)}</span></div>`;
+  const originalSubtotal = items.reduce((sum, item) => {
+    const qty = Number(item.quantity || 1) || 1;
+    const addonTotal = Array.isArray(item.addons) ? item.addons.reduce((s, a) => s + (Number(a?.price) || 0), 0) : 0;
+    const originalUnit = (Number(item.price) || 0) + addonTotal;
+    return sum + originalUnit * qty;
+  }, 0);
+  const discountAmount = Number(order.discountAmount || 0);
+  const discountBlock = discountAmount > 0
+    ? `<div class="totals-row sub"><span>Discount</span><span>− ${formatMoney(discountAmount)}</span></div>`
+    : "";
+  const itemDiscountBlock = totalItemSavings > 0
+    ? `<div class="totals-row sub"><span>Item discounts</span><span>− ${formatMoney(totalItemSavings)}</span></div>`
+    : "";
 
   const timestamp = date
     ? date.toLocaleString("en-PH", { month: "numeric", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" })
@@ -1383,7 +1394,7 @@ function buildAdminReceiptHTML(order) {
 
         <hr class="rule">
 
-        <div class="totals-row sub"><span>Subtotal</span><span>${formatMoney(order.subtotal)}</span></div>
+        <div class="totals-row sub"><span>Subtotal</span><span>${formatMoney(originalSubtotal)}</span></div>
         ${itemDiscountBlock}
         ${discountBlock}
         <div class="totals-row grand"><span>TOTAL</span><span>${formatMoney(order.total)}</span></div>
