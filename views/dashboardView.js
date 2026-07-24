@@ -8,6 +8,7 @@ const viewState = {
   analyticsChart: null,
   analyticsData: null,
   customDateRange: null,
+  showAllItems: false,
 };
 
 function toNumber(value) {
@@ -365,7 +366,7 @@ function buildMoneyDelta(current, previous) {
   return `${delta >= 0 ? "+" : "-"}₱${Math.abs(Math.round(delta)).toLocaleString("en-PH")}`;
 }
 
-function computeTopItems(orders, menuItems) {
+function computeTopItems(orders, menuItems, limit = 5) {
   const menuLookup = getMenuLookup(menuItems);
   const items = new Map();
 
@@ -390,7 +391,7 @@ function computeTopItems(orders, menuItems) {
 
   return [...items.values()]
     .sort((a, b) => b.quantity - a.quantity || b.revenue - a.revenue || a.name.localeCompare(b.name))
-    .slice(0, 5);
+    .slice(0, limit);
 }
 
 function computeCategoryBreakdown(orders, menuItems) {
@@ -800,7 +801,10 @@ function buildAnalyticsTemplate() {
 
         <main class="sales-analytics-main">
           <section class="sales-panel sales-top-sellers-panel">
-            <div class="sales-section-kicker">Top sellers</div>
+            <div class="sales-top-sellers-header">
+              <div class="sales-section-kicker">Top sellers</div>
+              <button class="sales-show-all-toggle" type="button" id="saShowAllToggle" data-show-all="false">Show all</button>
+            </div>
             <div class="sales-top-sellers-list" id="saTopSellers"></div>
           </section>
 
@@ -1014,7 +1018,7 @@ function buildAnalyticsSeries(periodData) {
   });
 }
 
-function buildAnalyticsPeriodData(period, orders, menuItems, pendingSyncCount = 0, now = new Date(), todayOrders = []) {
+function buildAnalyticsPeriodData(period, orders, menuItems, pendingSyncCount = 0, now = new Date(), todayOrders = [], showAll = false) {
   const range = getPeriodRange(period, now, orders);
   const previousRange = getPreviousRange(period, range);
   const sourceOrders = period === "today" && Array.isArray(todayOrders) && todayOrders.length
@@ -1032,7 +1036,7 @@ function buildAnalyticsPeriodData(period, orders, menuItems, pendingSyncCount = 
   const trend = buildTrendSeries(currentOrders, period, range);
   const previousTrend = buildTrendSeries(previousOrders, period, previousRange);
   const peakBucket = computePeakBucket(trend, period, range);
-  const topSellers = computeTopItems(currentOrders, menuItems);
+  const topSellers = computeTopItems(currentOrders, menuItems, showAll ? Infinity : 5);
   const categories = computeCategoryBreakdown(currentOrders, menuItems);
 
   const peakLabel = period === "today"
@@ -1156,7 +1160,8 @@ function setAnalyticsPeriod(period) {
     viewState.analyticsData?.menuItems || [],
     viewState.analyticsData?.pendingSyncCount || 0,
     new Date(),
-    viewState.analyticsData?.todayOrders || []
+    viewState.analyticsData?.todayOrders || [],
+    viewState.showAllItems
   );
   viewState.analyticsPeriod = period;
 
@@ -1200,6 +1205,16 @@ function bindAnalyticsEvents() {
   const fullReportBtn = document.getElementById("saFullReportBtn");
   if (fullReportBtn) {
     fullReportBtn.addEventListener("click", () => openFullReport());
+  }
+
+  const showAllToggle = document.getElementById("saShowAllToggle");
+  if (showAllToggle) {
+    showAllToggle.addEventListener("click", () => {
+      viewState.showAllItems = !viewState.showAllItems;
+      showAllToggle.dataset.showAll = String(viewState.showAllItems);
+      showAllToggle.textContent = viewState.showAllItems ? "Show top 5" : "Show all";
+      setAnalyticsPeriod(viewState.analyticsPeriod || "all");
+    });
   }
 }
 

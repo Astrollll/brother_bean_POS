@@ -378,6 +378,34 @@
     font-weight: 700;
   }
 
+  .sales-top-sellers-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+  }
+
+  .sales-top-sellers-header .sales-section-kicker {
+    margin-bottom: 0;
+  }
+
+  .sales-show-all-toggle {
+    font-size: 11px;
+    background: none;
+    border: 0.5px solid var(--sa-shell-border);
+    border-radius: 4px;
+    padding: 2px 8px;
+    color: var(--sa-shell-muted);
+    cursor: pointer;
+    font-weight: 600;
+    transition: background 0.15s, color 0.15s;
+  }
+
+  .sales-show-all-toggle:hover {
+    background: var(--sa-shell-panel);
+    color: var(--sa-shell-text);
+  }
+
   .sales-top-sellers-list {
     display: grid;
     gap: 10px;
