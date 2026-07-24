@@ -8,6 +8,7 @@ const viewState = {
   analyticsChart: null,
   analyticsData: null,
   customDateRange: null,
+  specificDate: null,
   showAllItems: false,
 };
 
@@ -151,6 +152,21 @@ function mergeUniqueOrders(baseOrders = [], fallbackOrders = []) {
 function getPeriodRange(period, now = new Date(), orders = []) {
   const end = new Date(now);
   const start = new Date(now);
+
+  if (period === "specific") {
+    const dateStr = viewState.specificDate;
+    if (dateStr) {
+      const s = new Date(dateStr);
+      s.setHours(0, 0, 0, 0);
+      const e = new Date(s);
+      e.setDate(e.getDate() + 1);
+      return { start: s, end: e };
+    }
+    start.setHours(0, 0, 0, 0);
+    end.setDate(start.getDate() + 1);
+    end.setHours(0, 0, 0, 0);
+    return { start, end };
+  }
 
   if (period === "custom") {
     const customState = viewState.customDateRange;
@@ -755,12 +771,17 @@ function buildAnalyticsTemplate() {
             <button class="sales-period-tab" type="button" data-period="week" aria-pressed="false">Week</button>
             <button class="sales-period-tab" type="button" data-period="month" aria-pressed="false">Month</button>
             <button class="sales-period-tab" type="button" data-period="custom" aria-pressed="false">Custom</button>
+            <button class="sales-period-tab" type="button" data-period="specific" aria-pressed="false">Specific date</button>
           </div>
           <div class="sales-custom-date-range" id="saCustomDateRange" style="display:none;">
             <input type="date" id="saDateFrom" class="sales-date-input" aria-label="Start date" />
             <span class="sales-date-separator">→</span>
             <input type="date" id="saDateTo" class="sales-date-input" aria-label="End date" />
             <button class="sales-date-apply-btn" type="button" id="saDateApply">Apply</button>
+          </div>
+          <div class="sales-specific-date" id="saSpecificDate" style="display:none;">
+            <input type="date" id="saSpecificDateInput" class="sales-date-input" aria-label="Pick a date" />
+            <button class="sales-date-apply-btn" type="button" id="saSpecificDateApply">Show</button>
           </div>
         </div>
       </div>
@@ -1045,19 +1066,23 @@ function buildAnalyticsPeriodData(period, orders, menuItems, pendingSyncCount = 
       ? `Peak day: ${peakBucket.label}`
       : period === "month"
         ? `Peak week: ${peakBucket.label}`
-        : period === "custom"
+        : period === "custom" || period === "specific"
           ? `Peak: ${peakBucket.label}`
           : `Peak month: ${peakBucket.label}`;
 
   const periodLabel = period === "custom"
     ? "Custom"
-    : period === "all"
-      ? "All time"
-      : period.charAt(0).toUpperCase() + period.slice(1);
+    : period === "specific"
+      ? formatShortDate(range.start)
+      : period === "all"
+        ? "All time"
+        : period.charAt(0).toUpperCase() + period.slice(1);
 
   const trendTitle = period === "custom"
     ? `Revenue trend — Custom (${formatShortDate(range.start)} to ${formatShortDate(new Date(range.end.getTime() - 1))})`
-    : `Revenue trend — ${period === "all" ? "All time" : period.charAt(0).toUpperCase() + period.slice(1)} (${period === "today" ? "hourly" : period === "week" ? "daily" : period === "month" ? "weekly" : "monthly"})`;
+    : period === "specific"
+      ? `Revenue trend — ${formatShortDate(range.start)}`
+      : `Revenue trend — ${period === "all" ? "All time" : period.charAt(0).toUpperCase() + period.slice(1)} (${period === "today" ? "hourly" : period === "week" ? "daily" : period === "month" ? "weekly" : "monthly"})`;
 
   return {
     period,
@@ -1103,8 +1128,8 @@ function buildAnalyticsPeriodData(period, orders, menuItems, pendingSyncCount = 
       current: trend.values,
       previous: previousTrend.values,
     },
-    footerLabel: period === "today"
-      ? formatShortDate(now)
+    footerLabel: period === "today" || period === "specific"
+      ? formatShortDate(range.start)
       : period === "all"
         ? `${formatShortDate(range.start)} → ${formatShortDate(new Date(range.end.getTime() - 1))}`
         : `${formatShortDate(range.start)} → ${formatShortDate(new Date(range.end.getTime() - 1))}`,
@@ -1176,6 +1201,11 @@ function setAnalyticsPeriod(period) {
     customRange.style.display = period === "custom" ? "inline-flex" : "none";
   }
 
+  const specificDate = document.getElementById("saSpecificDate");
+  if (specificDate) {
+    specificDate.style.display = period === "specific" ? "inline-flex" : "none";
+  }
+
   renderAnalyticsSidebar(periodData);
   renderTopSellers(periodData);
   renderCategories(periodData);
@@ -1199,6 +1229,17 @@ function bindAnalyticsEvents() {
       if (!fromVal || !toVal) return;
       viewState.customDateRange = { start: fromVal, end: toVal };
       setAnalyticsPeriod("custom");
+    });
+  }
+
+  const specificApplyBtn = document.getElementById("saSpecificDateApply");
+  const specificDateInput = document.getElementById("saSpecificDateInput");
+  if (specificApplyBtn && specificDateInput) {
+    specificApplyBtn.addEventListener("click", () => {
+      const val = specificDateInput.value;
+      if (!val) return;
+      viewState.specificDate = val;
+      setAnalyticsPeriod("specific");
     });
   }
 

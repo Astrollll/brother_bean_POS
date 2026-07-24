@@ -220,7 +220,8 @@
     border-color: var(--sa-shell-border);
   }
 
-  .sales-custom-date-range {
+  .sales-custom-date-range,
+  .sales-specific-date {
     display: inline-flex;
     align-items: center;
     gap: 8px;
