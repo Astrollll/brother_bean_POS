@@ -2243,6 +2243,7 @@ button,
   border-bottom: 1px dashed rgba(107, 68, 35, 0.15);
   margin-bottom: 14px;
   gap: 10px;
+  flex-wrap: wrap;
 }
 
 .inv-stock-head-left {
@@ -4737,7 +4738,7 @@ input:checked + .tslider::before {
   }
 
   .main {
-    padding: var(--spacing-lg);
+    padding: var(--spacing-lg) var(--spacing-lg) 200px;
   }
 
   .page-title {
@@ -4755,6 +4756,10 @@ input:checked + .tslider::before {
 
   .card {
     padding: var(--spacing-lg);
+  }
+
+  .inventory-stock-card {
+    margin-bottom: 60px;
   }
 
   .inv-row {
@@ -4918,6 +4923,10 @@ input:checked + .tslider::before {
 }
 
 @media (max-width: 992px) {
+  html, body { overflow: auto; height: auto; }
+
+  #app { height: auto; min-height: 100vh; overflow: visible; }
+
   .topbar-hamburger {
     display: inline-flex;
   }
@@ -4926,9 +4935,23 @@ input:checked + .tslider::before {
     width: auto;
   }
 
-  .sidebar {
+  .topbar {
+    position: static;
+    z-index: 100;
+  }
+
+  .px-scroll-progress {
     position: fixed;
     top: 0;
+    left: 0;
+    right: 0;
+    z-index: 101;
+    transition: width 0.1s linear;
+  }
+
+  .sidebar {
+    position: fixed;
+    top: var(--topbar-h);
     left: 0;
     bottom: 0;
     width: var(--sidebar-w);
@@ -4946,14 +4969,14 @@ input:checked + .tslider::before {
   .body-wrap {
     flex-direction: column;
     height: auto;
-    min-height: calc(100vh - var(--topbar-h));
+    overflow: visible;
   }
 
   .main {
-    padding: 20px;
+    padding: 20px 20px 180px;
     width: 100%;
-    overflow-y: auto;
-    overflow-x: hidden;
+    overflow: visible;
+    overflow-x: visible;
   }
 
   .page-header {
@@ -5006,12 +5029,8 @@ input:checked + .tslider::before {
     display: none;
   }
 
-  .topbar-logout {
-    display: none;
-  }
-
-  .main {
-    padding: 16px;
+.main {
+    padding: 16px 16px 180px;
   }
 
   .page-title {
@@ -5024,10 +5043,6 @@ input:checked + .tslider::before {
 
   .stat-card {
     padding: 12px 20px;
-  }
-
-  .stat-val {
-    font-size: 1.2rem;
   }
 
   .stats-grid {
@@ -5142,7 +5157,7 @@ input:checked + .tslider::before {
   }
 
   .main {
-    padding: 12px;
+    padding: 12px 12px 180px;
   }
 
   .page-title {
@@ -5268,7 +5283,7 @@ input:checked + .tslider::before {
   }
 
   .main {
-    padding: 8px;
+    padding: 8px 8px 160px;
   }
 
   .page-title {
@@ -5350,6 +5365,8 @@ input:checked + .tslider::before {
     border-radius: var(--radius-md);
   }
 }
+
+
 
 /* Colored admin menu icons (Twemoji) */
 .card-title {
@@ -6314,7 +6331,7 @@ input:checked + .tslider::before {
 
 /* ── Topbar scroll-responsive shadow ── */
 .topbar {
-  transition: box-shadow 0.35s ease, background 0.35s ease;
+  transition: transform 0.3s ease, box-shadow 0.35s ease, background 0.35s ease;
 }
 .topbar.px-scrolled {
   box-shadow: 0 4px 20px -4px rgba(0, 0, 0, 0.12);
@@ -6817,5 +6834,7 @@ input:checked + .tslider::before {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+
 
 

@@ -4024,6 +4024,22 @@ function initParallaxEffects() {
     });
   });
 
+  /* — Window scroll handler for mobile (natural page scroll) — */
+  let mobileTicking = false;
+  window.addEventListener("scroll", () => {
+    if (window.innerWidth > 992) return;
+    if (mobileTicking) return;
+    mobileTicking = true;
+    requestAnimationFrame(() => {
+      const doc = document.documentElement;
+      const scrollY = window.scrollY;
+      const scrollH = doc.scrollHeight - window.innerHeight;
+      const pct = scrollH > 0 ? Math.min((scrollY / scrollH) * 100, 100) : 0;
+      progressBar.style.width = `${pct}%`;
+      mobileTicking = false;
+    });
+  });
+
   /* — Stat card tilt on mousemove — */
   mainEl.addEventListener("mousemove", (e) => {
     const card = e.target.closest(".stat-card");
