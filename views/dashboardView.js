@@ -1,6 +1,25 @@
 const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const WEEKDAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
+const DRINK_CATEGORIES = [
+  "coffee", "oat series", "coconut series", "matcha series",
+  "non-dairy specials", "non-coffee", "mocktails",
+  "drinks", "beverages", "tea", "milk",
+];
+
+const FOOD_CATEGORIES = [
+  "starter", "rice meals", "toasties", "pasta", "korean street food",
+  "party platters", "sandwiches", "pastries", "desserts", "cakes",
+  "snacks", "breakfast", "lunch", "dinner", "fruit",
+];
+
+function getCategoryType(category) {
+  const cat = String(category || "").trim().toLowerCase();
+  if (DRINK_CATEGORIES.includes(cat)) return "drink";
+  if (FOOD_CATEGORIES.includes(cat)) return "food";
+  return null;
+}
+
 const viewState = {
   dashboardInitialized: false,
   analyticsInitialized: false,
@@ -10,6 +29,7 @@ const viewState = {
   customDateRange: null,
   specificDate: null,
   showAllItems: false,
+  categoryFilter: "all",
 };
 
 function toNumber(value) {
@@ -382,7 +402,7 @@ function buildMoneyDelta(current, previous) {
   return `${delta >= 0 ? "+" : "-"}₱${Math.abs(Math.round(delta)).toLocaleString("en-PH")}`;
 }
 
-function computeTopItems(orders, menuItems, limit = 5) {
+function computeTopItems(orders, menuItems, limit = 5, categoryFilter = "all") {
   const menuLookup = getMenuLookup(menuItems);
   const items = new Map();
 
@@ -397,6 +417,11 @@ function computeTopItems(orders, menuItems, limit = 5) {
       const revenue = getLineTotal(orderItem, menuItem);
       const category = String(menuItem?.category || orderItem?.category || "Uncategorized").trim();
 
+      if (categoryFilter !== "all") {
+        const itemType = getCategoryType(category);
+        if (itemType !== categoryFilter) continue;
+      }
+
       const current = items.get(key) || { name, quantity: 0, revenue: 0, category };
       current.quantity += quantity;
       current.revenue += revenue;
@@ -410,7 +435,7 @@ function computeTopItems(orders, menuItems, limit = 5) {
     .slice(0, limit);
 }
 
-function computeCategoryBreakdown(orders, menuItems) {
+function computeCategoryBreakdown(orders, menuItems, categoryFilter = "all") {
   const menuLookup = getMenuLookup(menuItems);
   const categories = new Map();
 
@@ -418,6 +443,12 @@ function computeCategoryBreakdown(orders, menuItems) {
     for (const orderItem of getOrderItems(order)) {
       const menuItem = resolveMenuItem(orderItem, menuLookup);
       const category = String(menuItem?.category || orderItem?.category || "Uncategorized").trim() || "Uncategorized";
+
+      if (categoryFilter !== "all") {
+        const itemType = getCategoryType(category);
+        if (itemType !== categoryFilter) continue;
+      }
+
       const revenue = getLineTotal(orderItem, menuItem);
       const current = categories.get(category) || { name: category, revenue: 0 };
       current.revenue += revenue;
@@ -773,6 +804,11 @@ function buildAnalyticsTemplate() {
             <button class="sales-period-tab" type="button" data-period="custom" aria-pressed="false">Custom</button>
             <button class="sales-period-tab" type="button" data-period="specific" aria-pressed="false">Specific date</button>
           </div>
+          <div class="sales-category-tabs" role="tablist" aria-label="Category filter">
+            <button class="sales-category-tab is-active" type="button" data-cat="all" aria-pressed="true">All</button>
+            <button class="sales-category-tab" type="button" data-cat="drink" aria-pressed="false">Drinks</button>
+            <button class="sales-category-tab" type="button" data-cat="food" aria-pressed="false">Foods</button>
+          </div>
           <div class="sales-custom-date-range" id="saCustomDateRange" style="display:none;">
             <input type="date" id="saDateFrom" class="sales-date-input" aria-label="Start date" />
             <span class="sales-date-separator">→</span>
@@ -1039,7 +1075,7 @@ function buildAnalyticsSeries(periodData) {
   });
 }
 
-function buildAnalyticsPeriodData(period, orders, menuItems, pendingSyncCount = 0, now = new Date(), todayOrders = [], showAll = false) {
+function buildAnalyticsPeriodData(period, orders, menuItems, pendingSyncCount = 0, now = new Date(), todayOrders = [], showAll = false, categoryFilter = "all") {
   const range = getPeriodRange(period, now, orders);
   const previousRange = getPreviousRange(period, range);
   const sourceOrders = period === "today" && Array.isArray(todayOrders) && todayOrders.length
@@ -1057,8 +1093,8 @@ function buildAnalyticsPeriodData(period, orders, menuItems, pendingSyncCount = 
   const trend = buildTrendSeries(currentOrders, period, range);
   const previousTrend = buildTrendSeries(previousOrders, period, previousRange);
   const peakBucket = computePeakBucket(trend, period, range);
-  const topSellers = computeTopItems(currentOrders, menuItems, showAll ? Infinity : 5);
-  const categories = computeCategoryBreakdown(currentOrders, menuItems);
+  const topSellers = computeTopItems(currentOrders, menuItems, showAll ? Infinity : 5, categoryFilter);
+  const categories = computeCategoryBreakdown(currentOrders, menuItems, categoryFilter);
 
   const peakLabel = period === "today"
     ? `${peakBucket.label}`
@@ -1084,9 +1120,13 @@ function buildAnalyticsPeriodData(period, orders, menuItems, pendingSyncCount = 
       ? `Revenue trend — ${formatShortDate(range.start)}`
       : `Revenue trend — ${period === "all" ? "All time" : period.charAt(0).toUpperCase() + period.slice(1)} (${period === "today" ? "hourly" : period === "week" ? "daily" : period === "month" ? "weekly" : "monthly"})`;
 
+  const filterLabel = categoryFilter === "drink" ? "Drinks" : categoryFilter === "food" ? "Foods" : "All";
+
   return {
     period,
     periodLabel,
+    categoryFilter,
+    filterLabel,
     title: trendTitle,
     kicker: `Revenue trend`,
     stats: {
@@ -1174,7 +1214,8 @@ function renderAnalyticsSidebar(periodData) {
 function renderAnalyticsFooter(periodData) {
   const footer = document.getElementById("saFooterNote");
   if (footer) {
-    footer.textContent = `Showing ${periodData.periodLabel.toLowerCase()} sales data • ${periodData.footerLabel}`;
+    const filterNote = periodData.categoryFilter !== "all" ? ` • ${periodData.filterLabel} only` : "";
+    footer.textContent = `Showing ${periodData.periodLabel.toLowerCase()} sales data${filterNote} • ${periodData.footerLabel}`;
   }
 }
 
@@ -1186,7 +1227,8 @@ function setAnalyticsPeriod(period) {
     viewState.analyticsData?.pendingSyncCount || 0,
     new Date(),
     viewState.analyticsData?.todayOrders || [],
-    viewState.showAllItems
+    viewState.showAllItems,
+    viewState.categoryFilter
   );
   viewState.analyticsPeriod = period;
 
@@ -1257,6 +1299,20 @@ function bindAnalyticsEvents() {
       setAnalyticsPeriod(viewState.analyticsPeriod || "all");
     });
   }
+
+  function setCategoryFilter(cat) {
+    viewState.categoryFilter = cat;
+    document.querySelectorAll(".sales-category-tab").forEach((btn) => {
+      const isActive = btn.dataset.cat === cat;
+      btn.classList.toggle("is-active", isActive);
+      btn.setAttribute("aria-pressed", isActive ? "true" : "false");
+    });
+    setAnalyticsPeriod(viewState.analyticsPeriod || "all");
+  }
+
+  document.querySelectorAll(".sales-category-tab").forEach((button) => {
+    button.addEventListener("click", () => setCategoryFilter(button.dataset.cat));
+  });
 }
 
 function handleOrderSavedEvent(e) {

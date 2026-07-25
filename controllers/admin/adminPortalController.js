@@ -1128,6 +1128,7 @@ async function loadOrdersPage() {
 
   try {
     state.allOrders = await getAllSalesOrders();
+    state.orderStockExpanded = {};
     bindOrdersControls();
     applyOrderFilters();
   } catch (error) {
@@ -1185,6 +1186,7 @@ function applyOrderFilters() {
   state.pagedOrders = state.filteredOrders.slice(start, start + pageSize);
 
   renderOrdersTable(state.pagedOrders);
+  renderStockDetail();
   renderOrdersKpis(state.filteredOrders);
   renderOrdersPagination(totalPages);
 }
@@ -1297,6 +1299,88 @@ function toggleOrderStockDetails(orderKey) {
   const next = { ...(state.orderStockExpanded || {}) };
   next[key] = !next[key];
   state.orderStockExpanded = next;
+}
+
+function renderStockDetail() {
+  const container = document.getElementById("ordersStockDetail");
+  if (!container) return;
+
+  const expandedKey = Object.keys(state.orderStockExpanded || {}).find((k) => state.orderStockExpanded[k]);
+  if (!expandedKey) {
+    container.style.display = "none";
+    container.innerHTML = "";
+    return;
+  }
+
+  const order = findOrderByKey(expandedKey);
+  if (!order) {
+    container.style.display = "none";
+    container.innerHTML = "";
+    return;
+  }
+
+  const { summary: stockSummary, recorded: stockRecorded } = getOrderInventorySummary(order);
+  if (!stockSummary.length) {
+    container.style.display = "none";
+    container.innerHTML = "";
+    return;
+  }
+
+  const shortId = (order.orderId || order.id || "").slice(-6);
+  const items = (order.items || [])
+    .map((i) => `${i.name}${i.quantity > 1 ? ` x${i.quantity}` : ""}`)
+    .join(", ");
+  const date = getOrderDate(order);
+  const time = date
+    ? date.toLocaleString("en-PH", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })
+    : "-";
+  const total = Number(order.total || 0).toFixed(2);
+
+  const stockRows = stockSummary.map((entry) => {
+    const remainingText = entry.remainingQty === null || entry.remainingQty === undefined
+      ? "Not recorded"
+      : `${formatInventoryQty(entry.remainingQty)} ${entry.unit || "unit"}`;
+    return `
+      <div class="osd-row">
+        <div class="osd-row-main">
+          <div class="osd-row-name">${escapeHtml(entry.name)}</div>
+          <div class="osd-row-deducted">− ${escapeHtml(formatInventoryQty(entry.totalDeducted))} ${escapeHtml(entry.unit || "unit")}</div>
+        </div>
+        <div class="osd-row-meta">Remaining: ${escapeHtml(remainingText)}</div>
+      </div>`;
+  }).join("");
+
+  container.style.display = "";
+  container.innerHTML = `
+    <div class="osd-card">
+      <div class="osd-header">
+        <div class="osd-header-left">
+          <i class="ri-stack-line" aria-hidden="true"></i>
+          <span class="osd-title">Stock Used</span>
+          <span class="osd-order-id">#${escapeHtml(shortId)}</span>
+          <span class="osd-audit-badge ${stockRecorded ? "recorded" : "estimated"}">${stockRecorded ? "Recorded Audit" : "Estimated"}</span>
+        </div>
+        <button class="orders-btn ghost osd-close-btn" type="button" data-order-action="close-stock" title="Close" aria-label="Close stock details"><i class="ri-close-line" aria-hidden="true"></i></button>
+      </div>
+      <div class="osd-info-bar">
+        <div class="osd-info-item"><span class="osd-info-label">Order</span><span class="osd-info-value">#${escapeHtml(shortId)}</span></div>
+        <div class="osd-info-item"><span class="osd-info-label">Items</span><span class="osd-info-value">${escapeHtml(items || "-")}</span></div>
+        <div class="osd-info-item"><span class="osd-info-label">Total</span><span class="osd-info-value">₱${total}</span></div>
+        <div class="osd-info-item"><span class="osd-info-label">Time</span><span class="osd-info-value">${escapeHtml(time)}</span></div>
+      </div>
+      <div class="osd-section">
+        <div class="osd-section-label">${stockRecorded ? "Recorded deductions" : "Estimated from recipe — no audit record"}</div>
+        <div class="osd-stock-list">${stockRows}</div>
+      </div>
+    </div>`;
+
+  container.scrollIntoView({ behavior: "smooth", block: "nearest" });
+
+  container.querySelector(".osd-close-btn")?.addEventListener("click", () => {
+    state.orderStockExpanded = {};
+    renderOrdersTable(state.pagedOrders);
+    renderStockDetail();
+  });
 }
 
 function buildAdminReceiptHTML(order) {
@@ -1601,39 +1685,11 @@ function renderOrdersTable(orders) {
     const stockCountLabel = stockSummary.length ? `${stockSummary.length} item(s)` : "—";
     const stockCell = stockSummary.length
       ? `<div class="orders-stock-cell">
-          <div class="orders-stock-summary" title="${escapeHtml(stockRecorded ? stockPreview : `${stockPreview} (estimated)`)}">${escapeHtml(stockPreview)}</div>
-          ${stockRecorded ? "" : `<div class="orders-stock-empty-note">Estimated from recipe</div>`}
-          <button class="orders-btn ghost inventory-mini-btn order-stock-btn" type="button" data-order-action="toggle-stock" data-order-id="${escapeHtml(orderKey)}" title="${stockExpanded ? "Hide stock used" : "Show stock used"}" aria-label="${stockExpanded ? "Hide stock used" : "Show stock used"}">${stockExpanded ? "Hide" : "View"}</button>
+          <div class="orders-stock-preview" title="${escapeHtml(stockRecorded ? stockPreview : `${stockPreview} (estimated)`)}">${escapeHtml(stockPreview)}</div>
+          ${stockRecorded ? "" : `<span class="orders-stock-badge">Estimated</span>`}
+          <button class="orders-btn ghost inventory-mini-btn order-stock-btn ${stockExpanded ? "active" : ""}" type="button" data-order-action="toggle-stock" data-order-id="${escapeHtml(orderKey)}" title="${stockExpanded ? "Collapse stock details" : "Expand stock details"}" aria-label="${stockExpanded ? "Collapse stock details" : "Expand stock details"}"><i class="ri-${stockExpanded ? "subtract" : "add"}-circle-line" aria-hidden="true"></i> ${stockExpanded ? "Hide" : "View"}</button>
         </div>`
       : `<span class="orders-stock-empty">—</span>`;
-    const detailRow = stockSummary.length
-      ? `      <tr class="orders-stock-detail-row-wrap ${stockExpanded ? "is-open" : ""}" data-order-stock-detail="${escapeHtml(orderKey)}">
-          <td colspan="9">
-            <div class="orders-stock-detail-panel">
-              <div class="orders-stock-detail-card">
-                <div class="orders-stock-detail-meta">${stockRecorded ? "Recorded audit" : "Estimated from recipe"}</div>
-                <div class="orders-stock-detail-items">${escapeHtml(items || "-")}</div>
-                <div class="orders-stock-detail-meta" style="margin-top:6px;">${escapeHtml(stockCountLabel)} used</div>
-                ${stockRecorded ? "" : `<div class="orders-stock-empty-note">Estimated from recipe. No audit record available.</div>`}
-              </div>
-              <div class="orders-stock-detail-list">
-                ${stockSummary.map((entry) => `
-                  <div class="orders-stock-detail-row">
-                    <div>
-                      <div class="orders-stock-detail-name">${escapeHtml(entry.name)}</div>
-                      <div class="orders-stock-detail-meta">${entry.remainingQty === null || entry.remainingQty === undefined
-                        ? "Remaining stock not recorded"
-                        : `Remaining stock: ${escapeHtml(formatInventoryQty(entry.remainingQty))} ${escapeHtml(entry.unit || "unit")}`
-                      }</div>
-                    </div>
-                    <div class="orders-stock-detail-value">− ${escapeHtml(formatInventoryQty(entry.totalDeducted))} ${escapeHtml(entry.unit || "unit")}</div>
-                  </div>
-                `).join("")}
-              </div>
-            </div>
-          </td>
-        </tr>`
-      : "";
 
     return `
       <tr>
@@ -1643,14 +1699,13 @@ function renderOrdersTable(orders) {
       <td>${time}</td>
       <td>₱${total}</td>
       <td>${status}</td>
-      <td>${note ? `<span class="orders-note-text" title="${escapeHtml(note)}">${escapeHtml(note.length > 30 ? note.slice(0, 30) + "..." : note)}</span>` : "—"}</td>
+      <td>${note ? `<span class="orders-note-text">${escapeHtml(note)}</span>` : "—"}</td>
       <td>${stockCell}</td>
       <td>
         <button class="orders-btn ghost inventory-mini-btn order-view-btn" type="button" data-order-action="view" data-order-id="${escapeHtml(orderKey)}" title="View receipt" aria-label="View receipt"><i class="ri-receipt-line" aria-hidden="true"></i></button>
         <button class="orders-btn ghost inventory-mini-btn danger order-delete-btn" type="button" data-order-action="delete" data-order-id="${escapeHtml(orderKey)}" title="Delete transaction" aria-label="Delete transaction"><i class="ri-delete-bin-line" aria-hidden="true"></i></button>
       </td>
-    </tr>
-    ${detailRow}`;
+    </tr>`;
   }).join("");
 
   wrap.innerHTML = `<table>
@@ -1661,8 +1716,8 @@ function renderOrdersTable(orders) {
       <th style="width:110px">Time</th>
       <th style="width:80px">Amount</th>
       <th style="width:60px">Status</th>
-      <th style="width:140px">Note</th>
-      <th style="width:120px">Stock Used</th>
+      <th style="width:160px">Note</th>
+      <th style="width:180px">Stock Used</th>
       <th style="width:70px">Action</th>
     </tr>
     ${rows}
@@ -1681,6 +1736,7 @@ function renderOrdersTable(orders) {
       if (action === "toggle-stock") {
         toggleOrderStockDetails(orderId);
         renderOrdersTable(state.pagedOrders);
+        renderStockDetail();
         return;
       }
 
