@@ -700,7 +700,8 @@ button,
   background: rgba(249, 247, 244, 0.5);
 }
 
-.unpaid-item-actions {
+.unpaid-item-actions,
+.pending-item-actions {
   display: flex;
   flex-direction: row;
   gap: 6px;

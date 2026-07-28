@@ -1921,8 +1921,8 @@ window.closeReceipt = function() {
   if (titleEl) titleEl.textContent = "Receipt";
 };
 
-window.openPendingOrder = function(orderId) {
-  const pending = getPendingOrders();
+window.openPendingOrder = async function(orderId) {
+  const pending = await getPendingOrders();
   const order = pending.find((o) => String(o.id) === String(orderId));
   if (!order) return;
 
@@ -2379,13 +2379,16 @@ async function renderPendingOrdersList() {
     const createdAt = order.createdAt ? new Date(order.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "--";
     const total = Number(order.payload?.total) || 0;
     return `
-      <div class="sidebar-pending-item" onclick="openPendingOrder('${order.id}')">
+      <div class="sidebar-pending-item">
         <div>
           <div class="sidebar-pending-order">#${String(order.id).replace(/^q_/, "")}</div>
           <div class="sidebar-pending-meta">${createdAt} · ${itemNames}</div>
           <div class="sidebar-pending-meta">Total: ₱${total.toFixed(2)}</div>
         </div>
-        <button class="sidebar-pending-button" type="button" onclick="event.stopPropagation(); markPendingOrderPrepared('${order.id}')">Done preparing</button>
+        <div class="pending-item-actions">
+          <button class="sidebar-pending-button" type="button" onclick="event.stopPropagation(); openPendingOrder('${order.id}')">View Receipt</button>
+          <button class="sidebar-pending-button" type="button" onclick="event.stopPropagation(); markPendingOrderPrepared('${order.id}')">Done preparing</button>
+        </div>
       </div>
     `;
   }).join("");
