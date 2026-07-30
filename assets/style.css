@@ -690,6 +690,20 @@ button,
   box-shadow: 0 6px 16px rgba(107, 68, 35, 0.22);
 }
 
+.sidebar-pending-note {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-top: 4px;
+  padding: 4px 8px;
+  background: rgba(249, 247, 244, 0.8);
+  border-radius: 6px;
+  border-left: 2px solid var(--primary);
+  line-height: 1.4;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: none;
+}
+
 .sidebar-pending-empty {
   text-align: center;
   font-size: 13px;

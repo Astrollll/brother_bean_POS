@@ -2378,12 +2378,14 @@ async function renderPendingOrdersList() {
       : "No items";
     const createdAt = order.createdAt ? new Date(order.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "--";
     const total = Number(order.payload?.total) || 0;
+    const note = order.payload?.note || "";
     return `
       <div class="sidebar-pending-item">
         <div>
           <div class="sidebar-pending-order">#${String(order.id).replace(/^q_/, "")}</div>
           <div class="sidebar-pending-meta">${createdAt} · ${itemNames}</div>
           <div class="sidebar-pending-meta">Total: ₱${total.toFixed(2)}</div>
+          ${note ? `<div class="sidebar-pending-note">Note: ${escapeHtml(note)}</div>` : ""}
         </div>
         <div class="pending-item-actions">
           <button class="sidebar-pending-button" type="button" onclick="event.stopPropagation(); openPendingOrder('${order.id}')">View Receipt</button>
