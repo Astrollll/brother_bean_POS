@@ -692,7 +692,7 @@ button,
 
 .sidebar-pending-note {
   font-size: 13px;
-  color: var(--text-muted);
+  color: #000000;
   margin-top: 4px;
   padding: 4px 8px;
   background: rgba(249, 247, 244, 0.8);
