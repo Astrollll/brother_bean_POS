@@ -704,6 +704,22 @@ button,
   max-height: none;
 }
 
+.sidebar-pending-note-toggle {
+  border: none;
+  background: none;
+  color: var(--primary);
+  font-weight: 700;
+  font-size: 11px;
+  padding: 2px 8px 4px;
+  cursor: pointer;
+  text-decoration: underline;
+  display: block;
+}
+
+.sidebar-pending-note-toggle:hover {
+  opacity: 0.7;
+}
+
 .sidebar-pending-empty {
   text-align: center;
   font-size: 13px;

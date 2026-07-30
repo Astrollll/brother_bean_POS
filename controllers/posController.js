@@ -2379,13 +2379,18 @@ async function renderPendingOrdersList() {
     const createdAt = order.createdAt ? new Date(order.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "--";
     const total = Number(order.payload?.total) || 0;
     const note = order.payload?.note || "";
+    const noteId = `note_${order.id}`.replace(/[^a-zA-Z0-9_-]/g, "_");
+    const maxNoteLen = 100;
+    const noteTruncated = note.length > maxNoteLen;
+    const noteEscaped = escapeHtml(note);
+    const noteDisplay = noteTruncated ? escapeHtml(note.slice(0, maxNoteLen)) + "..." : noteEscaped;
     return `
       <div class="sidebar-pending-item">
         <div>
           <div class="sidebar-pending-order">#${String(order.id).replace(/^q_/, "")}</div>
           <div class="sidebar-pending-meta">${createdAt} · ${itemNames}</div>
           <div class="sidebar-pending-meta">Total: ₱${total.toFixed(2)}</div>
-          ${note ? `<div class="sidebar-pending-note">Note: ${escapeHtml(note)}</div>` : ""}
+          ${note ? `<div class="sidebar-pending-note" id="${noteId}" data-full="${noteEscaped.replace(/"/g, "&quot;")}">Note: ${noteDisplay}</div>${noteTruncated ? `<button class="sidebar-pending-note-toggle" type="button" onclick="togglePendingNote('${noteId}')">See more</button>` : ""}` : ""}
         </div>
         <div class="pending-item-actions">
           <button class="sidebar-pending-button" type="button" onclick="event.stopPropagation(); openPendingOrder('${order.id}')">View Receipt</button>
@@ -2395,6 +2400,20 @@ async function renderPendingOrdersList() {
     `;
   }).join("");
 }
+
+window.togglePendingNote = function(id) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const full = el.getAttribute("data-full");
+  if (full) {
+    el.textContent = "Note: " + full;
+    el.removeAttribute("data-full");
+  }
+  const btn = el.nextElementSibling;
+  if (btn && btn.classList.contains("sidebar-pending-note-toggle")) {
+    btn.remove();
+  }
+};
 
 async function updateConnectivityStatus() {
   const indicator = document.getElementById("storageStatus");
