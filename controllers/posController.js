@@ -2390,7 +2390,7 @@ async function renderPendingOrdersList() {
           <div class="sidebar-pending-order">#${String(order.id).replace(/^q_/, "")}</div>
           <div class="sidebar-pending-meta">${createdAt} · ${itemNames}</div>
           <div class="sidebar-pending-meta">Total: ₱${total.toFixed(2)}</div>
-          ${note ? `<div class="sidebar-pending-note" id="${noteId}" data-full="${noteEscaped.replace(/"/g, "&quot;")}">Note: ${noteDisplay}</div>${noteTruncated ? `<button class="sidebar-pending-note-toggle" type="button" onclick="togglePendingNote('${noteId}')">See more</button>` : ""}` : ""}
+          ${note ? `<div class="sidebar-pending-note" id="${noteId}" data-full="${noteEscaped.replace(/"/g, "&quot;")}" data-short="${noteDisplay.replace(/"/g, "&quot;")}">Note: ${noteDisplay}</div>${noteTruncated ? `<button class="sidebar-pending-note-toggle" type="button" onclick="togglePendingNote('${noteId}')">See more</button>` : ""}` : ""}
         </div>
         <div class="pending-item-actions">
           <button class="sidebar-pending-button" type="button" onclick="event.stopPropagation(); openPendingOrder('${order.id}')">View Receipt</button>
@@ -2405,13 +2405,22 @@ window.togglePendingNote = function(id) {
   const el = document.getElementById(id);
   if (!el) return;
   const full = el.getAttribute("data-full");
+  const short = el.getAttribute("data-short");
+  if (!short) return;
+
   if (full) {
     el.textContent = "Note: " + full;
     el.removeAttribute("data-full");
-  }
-  const btn = el.nextElementSibling;
-  if (btn && btn.classList.contains("sidebar-pending-note-toggle")) {
-    btn.remove();
+    const btn = el.nextElementSibling;
+    if (btn && btn.classList.contains("sidebar-pending-note-toggle")) {
+      btn.textContent = "See less";
+      btn.onclick = function() {
+        el.setAttribute("data-full", full);
+        el.textContent = "Note: " + short;
+        btn.textContent = "See more";
+        btn.onclick = function() { togglePendingNote(id); };
+      };
+    }
   }
 };
 
