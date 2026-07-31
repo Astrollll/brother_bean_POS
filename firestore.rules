@@ -89,5 +89,15 @@ service cloud.firestore {
       allow read: if request.auth != null;
       allow write: if request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "admin";
     }
+
+    match /dailyStats/{docId} {
+      allow read: if request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ["admin", "staff"];
+      allow write: if request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ["admin", "staff"];
+    }
+
+    match /kitchenOrders/{docId} {
+      allow read: if request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ["admin", "staff"];
+      allow write: if request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ["admin", "staff"];
+    }
   }
 }
