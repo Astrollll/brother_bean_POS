@@ -40,7 +40,7 @@ let selectedQty      = 1;
 let activeProductId  = null;
 let cashierName      = "Staff";
 let salesHistory     = [];
-let dailyStats       = { orders: 0, totalSales: 0, discountsApplied: 0, cashReceived: 0 };
+let dailyStats       = { orders: 0, totalSales: 0, discountsApplied: 0, cashReceived: 0, openingFloat: 0, cashIn: 0, cashOut: 0 };
 let isOnline         = navigator.onLine;
 const CART_DENSITY_STORAGE_KEY = "bb-pos-cart-density";
 const UNPAID_ORDER_STORAGE_KEY = "bb-pos-unpaid-order";
@@ -237,7 +237,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     dailyStats = storageData.dailyStats;
 
     if (checkDailyReset()) {
-      dailyStats = { orders: 0, totalSales: 0, discountsApplied: 0, cashReceived: 0 };
+      dailyStats = { orders: 0, totalSales: 0, discountsApplied: 0, cashReceived: 0, openingFloat: 0, cashIn: 0, cashOut: 0 };
       salesHistory = [];
       showToast("Daily stats reset for new day", "info");
       persistPosState();
@@ -280,6 +280,9 @@ document.addEventListener("DOMContentLoaded", async () => {
           if (s.paymentMethod === "cash") return sum + (Number(s.total) || 0);
           return sum;
         }, 0),
+        openingFloat: Number(dailyStats.openingFloat || 0),
+        cashIn: Number(dailyStats.cashIn || 0),
+        cashOut: Number(dailyStats.cashOut || 0),
       };
       persistPosState();
     } catch (err) {
@@ -336,6 +339,9 @@ document.addEventListener("DOMContentLoaded", async () => {
           if (s.paymentMethod === "cash") return sum + (Number(s.total) || 0);
           return sum;
         }, 0),
+        openingFloat: Number(dailyStats.openingFloat || 0),
+        cashIn: Number(dailyStats.cashIn || 0),
+        cashOut: Number(dailyStats.cashOut || 0),
       };
       persistPosState();
       updateStats();
@@ -2018,20 +2024,88 @@ window.printReceipt = function() {
   iframe.onload = () => { iframe.contentWindow.focus(); iframe.contentWindow.print(); };
 };
 
-// ── MISC ──
+// ── DRAWER MATH ──
+function computeDrawerMath(stats) {
+  const openingFloat = Number(stats?.openingFloat || 0);
+  const cashIn = Number(stats?.cashIn || 0);
+  const cashOut = Number(stats?.cashOut || 0);
+  const cashReceived = Number(stats?.cashReceived || 0);
+  const expected = openingFloat + cashReceived + cashIn - cashOut;
+  return { expected };
+}
+
+function renderDrawerModal() {
+  const formatPeso = (n) => `₱${(Number(n) || 0).toFixed(2)}`;
+  const { expected } = computeDrawerMath(dailyStats);
+  const cashEl = document.getElementById("drawerCashValue");
+  const txnEl = document.getElementById("drawerTxnValue");
+  const floatEl = document.getElementById("drawerFloatValue");
+  const expectedEl = document.getElementById("drawerExpectedValue");
+  const ledgerEl = document.getElementById("drawerLedgerNote");
+
+  if (cashEl) cashEl.textContent = formatPeso(dailyStats.cashReceived || 0);
+  if (txnEl) txnEl.textContent = String(dailyStats.orders || 0);
+  if (floatEl) floatEl.textContent = formatPeso(dailyStats.openingFloat || 0);
+  if (expectedEl) expectedEl.textContent = formatPeso(expected);
+  if (ledgerEl) ledgerEl.textContent = `Cash in ${formatPeso(dailyStats.cashIn || 0)} · Cash out ${formatPeso(dailyStats.cashOut || 0)}`;
+}
+
 window.openDrawer = function() {
   const modal = document.getElementById("drawerModal");
   if (!modal) return;
-
-  const cashEl = document.getElementById("drawerCashValue");
-  const txnEl = document.getElementById("drawerTxnValue");
-
-  if (cashEl) cashEl.textContent = `₱${(dailyStats.cashReceived || 0).toFixed(2)}`;
-  if (txnEl) txnEl.textContent = String(dailyStats.orders);
-
+  renderDrawerModal();
   modal.classList.add("active");
   modal.setAttribute("aria-hidden", "false");
 };
+
+window.toggleDrawerFloatEdit = function() {
+  const editRow = document.getElementById("drawerFloatEdit");
+  const btn = document.getElementById("drawerFloatEditBtn");
+  const input = document.getElementById("drawerFloatInput");
+  if (!editRow || !btn) return;
+  const isOpen = editRow.classList.contains("is-open");
+  editRow.classList.toggle("is-open", !isOpen);
+  btn.textContent = isOpen ? "Set / Edit" : "Cancel";
+  if (!isOpen && input) {
+    input.value = dailyStats.openingFloat ? String(dailyStats.openingFloat) : "";
+    input.focus();
+  }
+};
+
+window.saveDrawerOpeningFloat = function() {
+  const input = document.getElementById("drawerFloatInput");
+  const amount = parseFloat(input?.value || "");
+  if (!Number.isFinite(amount) || amount < 0) {
+    showToast("Enter a valid opening float amount.", "warning");
+    return;
+  }
+  dailyStats.openingFloat = amount;
+  persistPosState();
+  renderDrawerModal();
+  window.toggleDrawerFloatEdit();
+  showToast("Opening float set.", "success");
+};
+
+function applyDrawerLedger(kind) {
+  const input = document.getElementById("drawerLedgerAmount");
+  const amount = parseFloat(input?.value || "");
+  if (!Number.isFinite(amount) || amount <= 0) {
+    showToast("Enter a valid amount first.", "warning");
+    return;
+  }
+  if (kind === "in") {
+    dailyStats.cashIn = Number(dailyStats.cashIn || 0) + amount;
+  } else {
+    dailyStats.cashOut = Number(dailyStats.cashOut || 0) + amount;
+  }
+  if (input) input.value = "";
+  persistPosState();
+  renderDrawerModal();
+}
+
+window.drawerCashIn = function() { applyDrawerLedger("in"); };
+window.drawerCashOut = function() { applyDrawerLedger("out"); };
+// ── END DRAWER MATH ──
 
 window.closeDrawerModal = function() {
   const modal = document.getElementById("drawerModal");

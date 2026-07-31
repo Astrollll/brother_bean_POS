@@ -64,7 +64,26 @@ async function persistStatsToFirestore(salesHistory, dailyStats) {
 export async function loadFromStorage() {
   // Try Firestore first for cross-terminal consistency
   const firestore = await loadStatsFromFirestore();
-  if (firestore) return firestore;
+  if (firestore) {
+    // The shared mirror only provides sales-derived stats. The drawer ledger
+    // (opening float, cash in/out) is per-terminal, so it always comes from
+    // THIS device's local storage — one terminal's drawer never leaks into
+    // another's.
+    let localDrawer = {};
+    try {
+      const raw = localStorage.getItem(localStatsKey());
+      if (raw) localDrawer = JSON.parse(raw) || {};
+    } catch {}
+    return {
+      salesHistory: firestore.salesHistory,
+      dailyStats: {
+        ...firestore.dailyStats,
+        openingFloat: Number(localDrawer.openingFloat || 0),
+        cashIn: Number(localDrawer.cashIn || 0),
+        cashOut: Number(localDrawer.cashOut || 0),
+      },
+    };
+  }
 
   // Fall back to local cache
   try {
@@ -73,11 +92,11 @@ export async function loadFromStorage() {
 
     return {
       salesHistory: history ? JSON.parse(history) : [],
-      dailyStats:   stats ? JSON.parse(stats) : { orders: 0, totalSales: 0, discountsApplied: 0, cashReceived: 0 },
+      dailyStats:   stats ? JSON.parse(stats) : { orders: 0, totalSales: 0, discountsApplied: 0, cashReceived: 0, openingFloat: 0, cashIn: 0, cashOut: 0 },
     };
   } catch (e) {
     console.error("Storage load failed:", e);
-    return { salesHistory: [], dailyStats: { orders: 0, totalSales: 0, discountsApplied: 0, cashReceived: 0 } };
+    return { salesHistory: [], dailyStats: { orders: 0, totalSales: 0, discountsApplied: 0, cashReceived: 0, openingFloat: 0, cashIn: 0, cashOut: 0 } };
   }
 }
 
@@ -91,7 +110,7 @@ export async function loadStatsFromFirestore() {
       const data = snap.docs[0].data();
       return {
         salesHistory: Array.isArray(data?.salesHistory) ? data.salesHistory : [],
-        dailyStats: data?.dailyStats || { orders: 0, totalSales: 0, discountsApplied: 0, cashReceived: 0 },
+        dailyStats: data?.dailyStats || { orders: 0, totalSales: 0, discountsApplied: 0, cashReceived: 0, openingFloat: 0, cashIn: 0, cashOut: 0 },
       };
     }
   } catch (error) {

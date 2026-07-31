@@ -5315,16 +5315,90 @@ body[data-cart-density="compact"] .cart-section .checkout-btn {
   color: var(--text-primary);
 }
 
-.bb-drawer-note {
-  margin-top: 12px;
-  text-align: center;
-  font-size: 13px;
-  font-weight: 900;
-  color: #065F46;
-  background: rgba(16, 185, 129, 0.12);
-  border: 1px solid rgba(16, 185, 129, 0.26);
-  border-radius: 999px;
+.bb-drawer-inline {
+  display: none;
+  margin-top: 10px;
+  gap: 8px;
+}
+
+.bb-drawer-inline.is-open {
+  display: flex;
+}
+
+.bb-drawer-input {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid rgba(229, 224, 215, 0.95);
+  background: #fff;
+  border-radius: 10px;
+  padding: 8px 10px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.bb-drawer-input:focus {
+  outline: 2px solid rgba(245, 158, 11, 0.55);
+  outline-offset: 1px;
+}
+
+.bb-drawer-btn {
+  flex-shrink: 0;
+  border: 1px solid rgba(107, 68, 35, 0.35);
+  background: linear-gradient(135deg, #7C4A2A, #6B4423);
+  color: #fff;
+  border-radius: 10px;
   padding: 8px 12px;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.bb-drawer-btn:hover:not(:disabled) {
+  box-shadow: 0 10px 18px rgba(107, 68, 35, 0.28);
+}
+
+.bb-drawer-btn-out {
+  background: linear-gradient(135deg, #B91C1C, #EF4444);
+  border-color: rgba(127, 29, 29, 0.35);
+}
+
+.bb-drawer-link-btn {
+  margin-top: 8px;
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--primary);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.bb-drawer-expected {
+  border-color: rgba(245, 158, 11, 0.45);
+  background: linear-gradient(145deg, rgba(255, 251, 235, 0.95), rgba(254, 243, 199, 0.8));
+}
+
+.bb-drawer-expected-sub {
+  margin-top: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+  color: var(--text-muted);
+}
+
+.bb-drawer-ledger {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.bb-drawer-ledger-note {
+  margin-top: 8px;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-muted);
 }
 
 #drawerModal .bb-modal-footer {
