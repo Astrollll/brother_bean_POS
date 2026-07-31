@@ -42,6 +42,10 @@ let cashierName      = "Staff";
 let salesHistory     = [];
 let dailyStats       = { orders: 0, totalSales: 0, discountsApplied: 0, cashReceived: 0, openingFloat: 0, cashIn: 0, cashOut: 0 };
 let isOnline         = navigator.onLine;
+
+// Persist today's stats (localStorage + Firestore mirror). Declared at module
+// scope so both the init flow and the drawer block can call it.
+const persistPosState = () => saveToStorage(salesHistory, dailyStats);
 const CART_DENSITY_STORAGE_KEY = "bb-pos-cart-density";
 const UNPAID_ORDER_STORAGE_KEY = "bb-pos-unpaid-order";
 const AUTH_OPERATION_TIMEOUT_MS = 6000;
@@ -172,8 +176,6 @@ function withTimeout(promise, timeoutMs, label) {
 // ── INIT ──
 document.addEventListener("DOMContentLoaded", async () => {
   let initialized = false;
-
-  const persistPosState = () => saveToStorage(salesHistory, dailyStats);
 
   getCategories()
     .then((categories) => {
