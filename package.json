@@ -1,6 +1,8 @@
 {
   "scripts": {
-    "smoke:staff": "node scripts/staff-smoke.mjs"
+    "smoke:staff": "node scripts/staff-smoke.mjs",
+    "smoke:orders": "node scripts/orders-smoke.mjs",
+    "smoke": "npm run smoke:staff && npm run smoke:orders"
   },
   "devDependencies": {
     "cors": "^2.8.6",

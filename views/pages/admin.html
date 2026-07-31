@@ -244,71 +244,103 @@
 
             <div class="card compact-card">
               <div class="orders-toolbar">
-                <div class="orders-filters">
-                  <input
-                    id="ordersSearch"
-                    class="ls-input orders-filter-input"
-                    placeholder="Search by order #, item, or date"
-                  />
-                  <select
-                    id="ordersPaymentFilter"
-                    class="ls-input orders-filter-input"
-                  >
-                    <option value="all">All payments</option>
-                    <option value="cash">Cash</option>
-                    <option value="card">Card</option>
-                    <option value="gcash">GCash</option>
-                    <option value="maya">Maya</option>
-                    <option value="paid">Paid (Customers)</option>
-                    <option value="split">Split (Cash + GCash)</option>
-                    <option value="employee">Employee (Free)</option>
-                  </select>
-                  <select
-                    id="ordersSortBy"
-                    class="ls-input orders-filter-input"
-                  >
-                    <option value="latest">Sort: Latest first</option>
-                    <option value="oldest">Sort: Oldest first</option>
-                    <option value="amount_desc">Sort: Amount high-low</option>
-                    <option value="amount_asc">Sort: Amount low-high</option>
-                  </select>
-                  <select
-                    id="ordersPageSize"
-                    class="ls-input orders-filter-input"
-                  >
-                    <option value="10">10 per page</option>
-                    <option value="25">25 per page</option>
-                    <option value="50">50 per page</option>
-                  </select>
-                  <input
-                    id="ordersFromDate"
-                    class="ls-input orders-filter-input"
-                    type="date"
-                  />
-                  <input
-                    id="ordersToDate"
-                    class="ls-input orders-filter-input"
-                    type="date"
-                  />
+                <div class="orders-preset-row" role="group" aria-label="Quick date ranges">
+                  <span class="orders-preset-label">Range:</span>
+                  <button class="orders-preset-chip" type="button" data-preset="today">Today</button>
+                  <button class="orders-preset-chip" type="button" data-preset="yesterday">Yesterday</button>
+                  <button class="orders-preset-chip" type="button" data-preset="7d">Last 7 days</button>
+                  <button class="orders-preset-chip" type="button" data-preset="30d">Last 30 days</button>
+                  <button class="orders-preset-chip" type="button" data-preset="all">All time</button>
                 </div>
-                <div class="orders-toolbar-actions">
-                  <button
-                    id="ordersClearBtn"
-                    class="orders-btn ghost"
-                    type="button"
-                  >
-                    Clear
-                  </button>
-                  <button
-                    id="ordersClearAllBtn"
-                    class="orders-btn clear-all-btn"
-                    type="button"
-                  >
-                    Clear All
-                  </button>
-                  <button id="ordersExportBtn" class="orders-btn" type="button">
-                    Export CSV
-                  </button>
+                <div class="orders-toolbar-main">
+                  <div class="orders-filters">
+                    <div class="orders-filter-field orders-filter-search">
+                      <label for="ordersSearch">Search</label>
+                      <input
+                        id="ordersSearch"
+                        class="ls-input orders-filter-input"
+                        placeholder="Order #, item, or date"
+                      />
+                    </div>
+                    <div class="orders-filter-field">
+                      <label for="ordersPaymentFilter">Payment</label>
+                      <select
+                        id="ordersPaymentFilter"
+                        class="ls-input orders-filter-input"
+                      >
+                        <option value="all">All payments</option>
+                        <option value="cash">Cash</option>
+                        <option value="card">Card</option>
+                        <option value="gcash">GCash</option>
+                        <option value="maya">Maya</option>
+                        <option value="paid">Paid (Customers)</option>
+                        <option value="split">Split (Cash + GCash)</option>
+                        <option value="employee">Employee (Free)</option>
+                      </select>
+                    </div>
+                    <div class="orders-filter-field">
+                      <label for="ordersSortBy">Sort by</label>
+                      <select
+                        id="ordersSortBy"
+                        class="ls-input orders-filter-input"
+                      >
+                        <option value="latest">Latest first</option>
+                        <option value="oldest">Oldest first</option>
+                        <option value="amount_desc">Amount high-low</option>
+                        <option value="amount_asc">Amount low-high</option>
+                        <option value="items_desc">Items high-low</option>
+                        <option value="items_asc">Items low-high</option>
+                        <option value="payment_asc">Payment A-Z</option>
+                        <option value="payment_desc">Payment Z-A</option>
+                      </select>
+                    </div>
+                    <div class="orders-filter-field">
+                      <label for="ordersPageSize">Per page</label>
+                      <select
+                        id="ordersPageSize"
+                        class="ls-input orders-filter-input"
+                      >
+                        <option value="10">10 per page</option>
+                        <option value="25">25 per page</option>
+                        <option value="50">50 per page</option>
+                      </select>
+                    </div>
+                    <div class="orders-filter-field">
+                      <label for="ordersFromDate">From</label>
+                      <input
+                        id="ordersFromDate"
+                        class="ls-input orders-filter-input"
+                        type="date"
+                      />
+                    </div>
+                    <div class="orders-filter-field">
+                      <label for="ordersToDate">To</label>
+                      <input
+                        id="ordersToDate"
+                        class="ls-input orders-filter-input"
+                        type="date"
+                      />
+                    </div>
+                  </div>
+                  <div class="orders-toolbar-actions">
+                    <button
+                      id="ordersClearBtn"
+                      class="orders-btn ghost"
+                      type="button"
+                    >
+                      Clear
+                    </button>
+                    <button
+                      id="ordersClearAllBtn"
+                      class="orders-btn clear-all-btn"
+                      type="button"
+                    >
+                      Clear All
+                    </button>
+                    <button id="ordersExportBtn" class="orders-btn" type="button">
+                      Export CSV
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -342,8 +374,6 @@
               </div>
               <div id="ordersPagination" class="orders-pagination"></div>
             </div>
-
-            <div id="ordersStockDetail" class="orders-stock-detail-container" style="display:none"></div>
           </div>
 
           <!-- ── MENU ── -->

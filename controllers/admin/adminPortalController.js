@@ -93,6 +93,7 @@ const orderFilters = {
   page: 1,
   fromDate: "",
   toDate: "",
+  preset: "",
 };
 
 const accountFilters = {
@@ -557,6 +558,7 @@ function setupSidebarToggle() {
   function closeSidebar() {
     sidebar.classList.remove("is-open");
     overlay.classList.remove("is-visible");
+    document.documentElement.classList.remove("sidebar-open");
   }
 
   toggleBtn.addEventListener("click", () => {
@@ -566,6 +568,7 @@ function setupSidebarToggle() {
     } else {
       sidebar.classList.add("is-open");
       overlay.classList.add("is-visible");
+      document.documentElement.classList.add("sidebar-open");
     }
   });
 
@@ -1186,9 +1189,9 @@ function applyOrderFilters() {
   state.pagedOrders = state.filteredOrders.slice(start, start + pageSize);
 
   renderOrdersTable(state.pagedOrders);
-  renderStockDetail();
   renderOrdersKpis(state.filteredOrders);
   renderOrdersPagination(totalPages);
+  syncOrderPresetChips();
 }
 
 function sortOrders(orders, sortBy) {
@@ -1199,6 +1202,30 @@ function sortOrders(orders, sortBy) {
   }
   if (sortBy === "amount_asc") {
     next.sort((a, b) => Number(a.total || 0) - Number(b.total || 0));
+    return next;
+  }
+  if (sortBy === "items_desc" || sortBy === "items_asc") {
+    const count = (order) =>
+      (Array.isArray(order.items) ? order.items : []).reduce((sum, item) => sum + (Number(item.quantity) || 1), 0);
+    next.sort((a, b) => (sortBy === "items_desc" ? count(b) - count(a) : count(a) - count(b)));
+    return next;
+  }
+  if (sortBy === "payment_asc" || sortBy === "payment_desc") {
+    next.sort((a, b) => {
+      const pa = String(a.paymentMethod || "cash").toUpperCase();
+      const pb = String(b.paymentMethod || "cash").toUpperCase();
+      const cmp = pa.localeCompare(pb);
+      return sortBy === "payment_asc" ? cmp : -cmp;
+    });
+    return next;
+  }
+  if (sortBy === "ref_desc" || sortBy === "ref_asc") {
+    next.sort((a, b) => {
+      const ra = String(a.orderId || a.id || "");
+      const rb = String(b.orderId || b.id || "");
+      const cmp = ra.localeCompare(rb);
+      return sortBy === "ref_desc" ? cmp : -cmp;
+    });
     return next;
   }
 
@@ -1282,105 +1309,260 @@ function getOrderInventorySummary(order) {
   return { summary: derivedSummary, recorded: false };
 }
 
-function buildInventoryPreview(summary) {
-  if (!Array.isArray(summary) || !summary.length) return "";
-  const preview = summary.slice(0, 2).map((entry) => `${entry.name} (${formatInventoryQty(entry.totalDeducted)} ${entry.unit || "unit"})`).join(", ");
-  return summary.length > 2 ? `${preview}...` : preview;
-}
-
 function findOrderByKey(orderKey) {
   const key = String(orderKey || "").trim();
   return state.allOrders.find((order) => String(order.id || order.orderId || "") === key);
 }
 
-function toggleOrderStockDetails(orderKey) {
-  const key = String(orderKey || "").trim();
-  if (!key) return;
-  const next = { ...(state.orderStockExpanded || {}) };
-  next[key] = !next[key];
-  state.orderStockExpanded = next;
+function toDayKey(date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
 }
 
-function renderStockDetail() {
-  const container = document.getElementById("ordersStockDetail");
-  if (!container) return;
+function formatDayLabel(date) {
+  const today = new Date();
+  const todayKey = toDayKey(today);
+  const yesterday = new Date(today);
+  yesterday.setDate(today.getDate() - 1);
+  const yesterdayKey = toDayKey(yesterday);
+  const key = toDayKey(date);
+  if (key === todayKey) return "Today";
+  if (key === yesterdayKey) return "Yesterday";
+  const opts = { weekday: "short", month: "short", day: "numeric" };
+  if (date.getFullYear() !== today.getFullYear()) opts.year = "numeric";
+  return date.toLocaleDateString("en-PH", opts);
+}
 
-  const expandedKey = Object.keys(state.orderStockExpanded || {}).find((k) => state.orderStockExpanded[k]);
-  if (!expandedKey) {
-    container.style.display = "none";
-    container.innerHTML = "";
-    return;
+function setOrderPreset(preset) {
+  orderFilters.preset = preset;
+  const today = new Date();
+  const fmt = (d) => {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
+  };
+  if (preset === "today") {
+    orderFilters.fromDate = fmt(today);
+    orderFilters.toDate = fmt(today);
+  } else if (preset === "yesterday") {
+    const day = new Date(today);
+    day.setDate(today.getDate() - 1);
+    orderFilters.fromDate = fmt(day);
+    orderFilters.toDate = fmt(day);
+  } else if (preset === "7d") {
+    const day = new Date(today);
+    day.setDate(today.getDate() - 6);
+    orderFilters.fromDate = fmt(day);
+    orderFilters.toDate = fmt(today);
+  } else if (preset === "30d") {
+    const day = new Date(today);
+    day.setDate(today.getDate() - 29);
+    orderFilters.fromDate = fmt(day);
+    orderFilters.toDate = fmt(today);
+  } else {
+    orderFilters.fromDate = "";
+    orderFilters.toDate = "";
   }
+  const fromInput = document.getElementById("ordersFromDate");
+  const toInput = document.getElementById("ordersToDate");
+  if (fromInput) fromInput.value = orderFilters.fromDate;
+  if (toInput) toInput.value = orderFilters.toDate;
+  orderFilters.page = 1;
+  applyOrderFilters();
+}
 
-  const order = findOrderByKey(expandedKey);
-  if (!order) {
-    container.style.display = "none";
-    container.innerHTML = "";
-    return;
+function syncOrderPresetChips() {
+  document.querySelectorAll(".orders-preset-chip").forEach((chip) => {
+    const active = chip.dataset.preset === orderFilters.preset;
+    chip.classList.toggle("active", active);
+    if (active) {
+      chip.setAttribute("aria-pressed", "true");
+    } else {
+      chip.removeAttribute("aria-pressed");
+    }
+  });
+}
+
+function buildNoteBlock(note) {
+  const maxNoteLen = 140;
+  const noteEscaped = escapeHtml(note);
+  const truncated = note.length > maxNoteLen;
+  const display = truncated ? escapeHtml(note.slice(0, maxNoteLen)) + "…" : noteEscaped;
+  const shortAttr = display.replace(/"/g, "&quot;");
+  const fullAttr = noteEscaped.replace(/"/g, "&quot;");
+  return `
+    <div class="od-note" data-full="${fullAttr}" data-short="${shortAttr}">${display}</div>
+    ${truncated ? `<button class="od-note-toggle" type="button" data-note-toggle="1">See more</button>` : ""}`;
+}
+
+function toggleDetailNote(btn) {
+  const el = btn.previousElementSibling;
+  if (!el) return;
+  const full = el.getAttribute("data-full") || "";
+  const short = el.getAttribute("data-short") || "";
+  if (!short) return;
+  if (btn.dataset.expanded === "1") {
+    el.textContent = short;
+    btn.textContent = "See more";
+    btn.removeAttribute("data-expanded");
+  } else {
+    el.textContent = full;
+    btn.textContent = "See less";
+    btn.dataset.expanded = "1";
   }
+}
 
-  const { summary: stockSummary, recorded: stockRecorded } = getOrderInventorySummary(order);
-  if (!stockSummary.length) {
-    container.style.display = "none";
-    container.innerHTML = "";
-    return;
-  }
+function nextSortValue(key, current) {
+  const pairs = {
+    ref: ["ref_desc", "ref_asc"],
+    items: ["items_desc", "items_asc"],
+    payment: ["payment_asc", "payment_desc"],
+    time: ["latest", "oldest"],
+    amount: ["amount_desc", "amount_asc"],
+  };
+  const [desc, asc] = pairs[key] || [];
+  return current === desc ? asc : desc;
+}
 
-  const shortId = (order.orderId || order.id || "").slice(-6);
-  const items = (order.items || [])
-    .map((i) => `${i.name}${i.quantity > 1 ? ` x${i.quantity}` : ""}`)
-    .join(", ");
+function buildSortHeader(key, label) {
+  const current = orderFilters.sortBy || "latest";
+  const [descValue, ascValue] = {
+    ref: ["ref_desc", "ref_asc"],
+    items: ["items_desc", "items_asc"],
+    payment: ["payment_asc", "payment_desc"],
+    time: ["latest", "oldest"],
+    amount: ["amount_desc", "amount_asc"],
+  }[key] || [];
+  const active = current === descValue || current === ascValue;
+  const arrow = active ? (current === descValue ? "↓" : "↑") : "";
+  return `<button class="orders-sort-btn ${active ? "active" : ""}" type="button" data-sort="${key}" title="Sort by ${label}">${label}${arrow ? `<span class="orders-sort-arrow" aria-hidden="true">${arrow}</span>` : ""}</button>`;
+}
+
+function buildOrderMainRow(order) {
+  const orderKey = String(order.id || order.orderId || "");
+  const shortId = orderKey.slice(-6) || "—";
+  const items = Array.isArray(order.items) ? order.items : [];
+  const itemCount = items.reduce((sum, item) => sum + (Number(item.quantity) || 1), 0);
+  const itemChips = items.slice(0, 2)
+    .map((item) => `<span class="orders-item-chip">${escapeHtml(item.name || "Item")}</span>`)
+    .join("");
+  const moreLabel = items.length > 2 ? `<span class="orders-item-more">+${items.length - 2} more</span>` : "";
+  const note = String(order.note || "").trim();
+  const noteInline = note
+    ? `<span class="orders-note-inline" title="${escapeHtml(note)}"><i class="ri-chat-1-line" aria-hidden="true"></i> ${escapeHtml(note.length > 60 ? `${note.slice(0, 60)}…` : note)}</span>`
+    : "";
   const date = getOrderDate(order);
   const time = date
-    ? date.toLocaleString("en-PH", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })
+    ? date.toLocaleString("en-PH", { hour: "2-digit", minute: "2-digit" })
     : "-";
   const total = Number(order.total || 0).toFixed(2);
+  const type = String(order.paymentMethod || "cash").toUpperCase();
+  const isEmployee = String(order.orderType || "regular").toLowerCase() === "employee";
+  const status = isEmployee
+    ? `<span class="badge b-blue">Employee</span>`
+    : order.isPwdSenior
+    ? `<span class="badge b-orange">PWD</span>`
+    : `<span class="badge b-green">Done</span>`;
+  const expanded = !!state.orderStockExpanded?.[orderKey];
+  return `
+    <tr class="orders-main-row" data-order-id="${escapeHtml(orderKey)}">
+      <td class="orders-ref-cell">
+        <button class="orders-expand-btn ${expanded ? "active" : ""}" type="button" data-order-action="toggle" data-order-id="${escapeHtml(orderKey)}" aria-expanded="${expanded}" aria-label="${expanded ? "Collapse details" : "Expand details"}" title="${expanded ? "Collapse details" : "Expand details"}"><i class="ri-arrow-down-s-line" aria-hidden="true"></i></button>
+        <span class="orders-ref">#${escapeHtml(shortId)}</span>
+        <span class="orders-count">${itemCount} item${itemCount === 1 ? "" : "s"}</span>
+      </td>
+      <td class="orders-items-cell"><span class="orders-item-chips">${itemChips || `<span class="orders-items-empty">—</span>`}${moreLabel}</span>${noteInline}</td>
+      <td><span class="orders-pay-badge">${escapeHtml(type)}</span></td>
+      <td class="orders-time-cell">${time}</td>
+      <td class="orders-amount-cell">₱${total}</td>
+      <td>${status}</td>
+      <td class="orders-actions-cell">
+        <button class="orders-btn ghost inventory-mini-btn order-view-btn" type="button" data-order-action="view" data-order-id="${escapeHtml(orderKey)}" title="View receipt" aria-label="View receipt"><i class="ri-receipt-line" aria-hidden="true"></i></button>
+        <button class="orders-btn ghost inventory-mini-btn danger order-delete-btn" type="button" data-order-action="delete" data-order-id="${escapeHtml(orderKey)}" title="Delete transaction" aria-label="Delete transaction"><i class="ri-delete-bin-line" aria-hidden="true"></i></button>
+      </td>
+    </tr>`;
+}
 
-  const stockRows = stockSummary.map((entry) => {
-    const remainingText = entry.remainingQty === null || entry.remainingQty === undefined
-      ? "Not recorded"
-      : `${formatInventoryQty(entry.remainingQty)} ${entry.unit || "unit"}`;
+function buildOrderDetailRow(order, expanded) {
+  const items = Array.isArray(order.items) ? order.items : [];
+  const itemRows = items.map((item) => {
+    const qty = Number(item.quantity || 1) || 1;
+    const addonTotal = Array.isArray(item.addons)
+      ? item.addons.reduce((sum, addon) => sum + (Number(addon?.price) || 0), 0)
+      : 0;
+    const discountPct = Number(item.discountPercent) || 0;
+    const originalUnit = (Number(item.price) || 0) + addonTotal;
+    const unit = originalUnit * (1 - discountPct);
+    const lineTotal = unit * qty;
+    const variant = [item.variant, item.temperature && item.temperature !== "N/A" ? item.temperature : null]
+      .filter(Boolean)
+      .join(" · ");
+    const unitLabel = discountPct > 0
+      ? `<span class="od-price-original">${formatMoney(originalUnit)}</span> <span class="od-price-arrow">&rarr;</span> ${formatMoney(unit)} <span class="od-price-disc">(-${Math.round(discountPct * 100)}%)</span>`
+      : formatMoney(unit);
     return `
-      <div class="osd-row">
-        <div class="osd-row-main">
-          <div class="osd-row-name">${escapeHtml(entry.name)}</div>
-          <div class="osd-row-deducted">− ${escapeHtml(formatInventoryQty(entry.totalDeducted))} ${escapeHtml(entry.unit || "unit")}</div>
-        </div>
-        <div class="osd-row-meta">Remaining: ${escapeHtml(remainingText)}</div>
+      <div class="od-item">
+        <div class="od-item-name">${escapeHtml(item.name || "Item")}${variant ? `<span class="od-item-variant">${escapeHtml(variant)}</span>` : ""}</div>
+        <div class="od-item-calc"><span class="od-item-qty">${qty} × ${unitLabel}</span><span class="od-item-total">${formatMoney(lineTotal)}</span></div>
       </div>`;
   }).join("");
 
-  container.style.display = "";
-  container.innerHTML = `
-    <div class="osd-card">
-      <div class="osd-header">
-        <div class="osd-header-left">
-          <i class="ri-stack-line" aria-hidden="true"></i>
-          <span class="osd-title">Stock Used</span>
-          <span class="osd-order-id">#${escapeHtml(shortId)}</span>
-          <span class="osd-audit-badge ${stockRecorded ? "recorded" : "estimated"}">${stockRecorded ? "Recorded Audit" : "Estimated"}</span>
+  const { summary: stockSummary, recorded: stockRecorded } = getOrderInventorySummary(order);
+  const stockRows = stockSummary.length
+    ? stockSummary.map((entry) => {
+        const remainingText = entry.remainingQty === null || entry.remainingQty === undefined
+          ? "Not recorded"
+          : `${formatInventoryQty(entry.remainingQty)} ${entry.unit || "unit"}`;
+        return `
+          <div class="od-stock-row">
+            <span class="od-stock-name">${escapeHtml(entry.name)}</span>
+            <span class="od-stock-deducted">− ${escapeHtml(formatInventoryQty(entry.totalDeducted))} ${escapeHtml(entry.unit || "unit")}</span>
+            <span class="od-stock-remaining">Remaining: ${escapeHtml(remainingText)}</span>
+          </div>`;
+      }).join("")
+    : `<div class="od-empty">No stock usage recorded.</div>`;
+
+  const payment = String(order.paymentMethod || "cash").toUpperCase();
+  const isEmployee = String(order.orderType || "regular").toLowerCase() === "employee";
+  const note = String(order.note || "").trim();
+
+  let paymentBlock = "";
+  if (order.paymentMethod === "split") {
+    paymentBlock = `
+      <div class="od-pay-line"><span>Cash</span><span>${formatMoney(order.cashAmount || 0)}</span></div>
+      <div class="od-pay-line"><span>GCash</span><span>${formatMoney(order.gcashAmount || 0)}</span></div>`;
+  } else if (isEmployee) {
+    paymentBlock = `<div class="od-pay-line"><span>Employee order</span><span>${formatMoney(order.total || 0)}</span></div>`;
+  } else {
+    paymentBlock = `
+      <div class="od-pay-line"><span>Tendered</span><span>${formatMoney(order.amountTendered ?? order.total ?? 0)}</span></div>
+      <div class="od-pay-line"><span>Change</span><span>${formatMoney(order.change ?? 0)}</span></div>`;
+  }
+
+  return `
+    <tr class="orders-detail-row ${expanded ? "" : "orders-detail-hidden"}" aria-hidden="${expanded ? "false" : "true"}">
+      <td colspan="7">
+        <div class="orders-detail-grid">
+          <section class="od-section">
+            <h4 class="od-section-title"><i class="ri-shopping-bag-3-line" aria-hidden="true"></i> Items</h4>
+            <div class="od-item-list">${itemRows || `<div class="od-empty">No item details available.</div>`}</div>
+          </section>
+          <section class="od-section">
+            <h4 class="od-section-title"><i class="ri-stack-line" aria-hidden="true"></i> Stock Used ${stockRecorded ? "" : `<span class="orders-stock-badge">Estimated</span>`}</h4>
+            <div class="od-stock-list">${stockRows}</div>
+          </section>
+          <section class="od-section">
+            <h4 class="od-section-title"><i class="ri-money-dollar-circle-line" aria-hidden="true"></i> Payment</h4>
+            <div class="od-pay-method"><span class="badge b-green">${escapeHtml(payment)}</span></div>
+            <div class="od-pay-lines">${paymentBlock}</div>
+            ${note ? `<h4 class="od-section-title od-note-title"><i class="ri-chat-1-line" aria-hidden="true"></i> Note</h4>${buildNoteBlock(note)}` : ""}
+          </section>
         </div>
-        <button class="orders-btn ghost osd-close-btn" type="button" data-order-action="close-stock" title="Close" aria-label="Close stock details"><i class="ri-close-line" aria-hidden="true"></i></button>
-      </div>
-      <div class="osd-info-bar">
-        <div class="osd-info-item"><span class="osd-info-label">Order</span><span class="osd-info-value">#${escapeHtml(shortId)}</span></div>
-        <div class="osd-info-item"><span class="osd-info-label">Items</span><span class="osd-info-value">${escapeHtml(items || "-")}</span></div>
-        <div class="osd-info-item"><span class="osd-info-label">Total</span><span class="osd-info-value">₱${total}</span></div>
-        <div class="osd-info-item"><span class="osd-info-label">Time</span><span class="osd-info-value">${escapeHtml(time)}</span></div>
-      </div>
-      <div class="osd-section">
-        <div class="osd-section-label">${stockRecorded ? "Recorded deductions" : "Estimated from recipe — no audit record"}</div>
-        <div class="osd-stock-list">${stockRows}</div>
-      </div>
-    </div>`;
-
-  container.scrollIntoView({ behavior: "smooth", block: "nearest" });
-
-  container.querySelector(".osd-close-btn")?.addEventListener("click", () => {
-    state.orderStockExpanded = {};
-    renderOrdersTable(state.pagedOrders);
-    renderStockDetail();
-  });
+      </td>
+    </tr>`;
 }
 
 function buildAdminReceiptHTML(order) {
@@ -1613,6 +1795,24 @@ window.refundOrderReceipt = function() {
   ModalUtils.warning("Refund", "Refund flow is not implemented yet.");
 };
 
+function buildPageButtons(current, totalPages) {
+  const pages = [];
+  const push = (p) => { if (p >= 1 && p <= totalPages && !pages.includes(p)) pages.push(p); };
+  push(1);
+  for (let p = Math.max(2, current - 1); p <= Math.min(totalPages - 1, current + 1); p++) push(p);
+  push(totalPages);
+  pages.sort((a, b) => a - b);
+
+  const out = [];
+  let prev = 0;
+  pages.forEach((p) => {
+    if (p - prev > 1) out.push(`<span class="orders-page-ellipsis" aria-hidden="true">…</span>`);
+    out.push(`<button class="orders-page-btn orders-page-num ${p === current ? "current" : ""}" data-page="${p}" ${p === current ? "disabled aria-current='page'" : ""}>${p}</button>`);
+    prev = p;
+  });
+  return out.join("");
+}
+
 function renderOrdersPagination(totalPages) {
   const pager = document.getElementById("ordersPagination");
   if (!pager) return;
@@ -1623,16 +1823,24 @@ function renderOrdersPagination(totalPages) {
   }
 
   const current = Number(orderFilters.page || 1);
+  const pageSize = Number(orderFilters.pageSize) || 10;
+  const totalItems = state.filteredOrders.length;
+  const start = (current - 1) * pageSize + 1;
+  const end = Math.min(totalItems, start + pageSize - 1);
+
   pager.innerHTML = `
-    <button class="orders-page-btn" data-page="${Math.max(1, current - 1)}" ${current <= 1 ? "disabled" : ""}>Prev</button>
-    <span class="orders-page-meta">Page ${current} of ${totalPages}</span>
-    <button class="orders-page-btn" data-page="${Math.min(totalPages, current + 1)}" ${current >= totalPages ? "disabled" : ""}>Next</button>
+    <div class="orders-page-meta">Showing <strong>${start}–${end}</strong> of <strong>${totalItems}</strong> transaction${totalItems === 1 ? "" : "s"}</div>
+    <div class="orders-page-nav">
+      <button class="orders-page-btn" data-page="${Math.max(1, current - 1)}" ${current <= 1 ? "disabled" : ""}>Prev</button>
+      ${buildPageButtons(current, totalPages)}
+      <button class="orders-page-btn" data-page="${Math.min(totalPages, current + 1)}" ${current >= totalPages ? "disabled" : ""}>Next</button>
+    </div>
   `;
 
-  pager.querySelectorAll(".orders-page-btn").forEach((btn) => {
+  pager.querySelectorAll(".orders-page-btn:not([disabled])").forEach((btn) => {
     btn.addEventListener("click", () => {
       const target = Number(btn.dataset.page || "1");
-      if (target === orderFilters.page) return;
+      if (target === current) return;
       orderFilters.page = target;
       applyOrderFilters();
     });
@@ -1656,89 +1864,92 @@ function renderOrdersTable(orders) {
   if (!wrap) return;
 
   if (!orders.length) {
-    wrap.innerHTML = `<div style="color:var(--muted);font-size:13px;padding:10px 0;">No transactions found for the selected filters.</div>`;
+    wrap.innerHTML = `
+      <div class="orders-empty-state">
+        <i class="ri-inbox-2-line" aria-hidden="true"></i>
+        <div class="orders-empty-title">No transactions found</div>
+        <div class="orders-empty-sub">Try adjusting your search, payment, or date range.</div>
+      </div>`;
     return;
   }
 
-  const rows = orders.map((order) => {
-    const shortId = (order.orderId || order.id || "").slice(-6);
-    const items = (order.items || [])
-      .map((i) => `${i.name}${i.quantity > 1 ? ` x${i.quantity}` : ""}`)
-      .join(", ");
+  const rows = [];
+  let lastDayKey = null;
+  orders.forEach((order) => {
     const date = getOrderDate(order);
-    const time = date
-      ? date.toLocaleString("en-PH", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })
-      : "-";
-    const total = Number(order.total || 0).toFixed(2);
-    const type = (order.paymentMethod || "cash").toUpperCase();
-    const isEmployee = String(order.orderType || "regular").toLowerCase() === "employee";
-    const note = String(order.note || "").trim();
-    const status = isEmployee
-      ? `<span class="badge b-blue">Employee</span>`
-      : order.isPwdSenior
-      ? `<span class="badge b-orange">PWD</span>`
-      : `<span class="badge b-green">Done</span>`;
+    const dayKey = date ? toDayKey(date) : null;
+    if (dayKey && dayKey !== lastDayKey) {
+      rows.push(`<tr class="orders-date-group"><td colspan="7">${escapeHtml(formatDayLabel(date))}</td></tr>`);
+      lastDayKey = dayKey;
+    }
     const orderKey = String(order.id || order.orderId || "");
-    const { summary: stockSummary, recorded: stockRecorded } = getOrderInventorySummary(order);
-    const stockPreview = buildInventoryPreview(stockSummary);
-    const stockExpanded = !!state.orderStockExpanded?.[orderKey];
-    const stockCountLabel = stockSummary.length ? `${stockSummary.length} item(s)` : "—";
-    const stockCell = stockSummary.length
-      ? `<div class="orders-stock-cell">
-          <div class="orders-stock-preview" title="${escapeHtml(stockRecorded ? stockPreview : `${stockPreview} (estimated)`)}">${escapeHtml(stockPreview)}</div>
-          ${stockRecorded ? "" : `<span class="orders-stock-badge">Estimated</span>`}
-          <button class="orders-btn ghost inventory-mini-btn order-stock-btn ${stockExpanded ? "active" : ""}" type="button" data-order-action="toggle-stock" data-order-id="${escapeHtml(orderKey)}" title="${stockExpanded ? "Collapse stock details" : "Expand stock details"}" aria-label="${stockExpanded ? "Collapse stock details" : "Expand stock details"}"><i class="ri-${stockExpanded ? "subtract" : "add"}-circle-line" aria-hidden="true"></i> ${stockExpanded ? "Hide" : "View"}</button>
-        </div>`
-      : `<span class="orders-stock-empty">—</span>`;
+    rows.push(buildOrderMainRow(order));
+    rows.push(buildOrderDetailRow(order, !!state.orderStockExpanded?.[orderKey]));
+  });
 
-    return `
-      <tr>
-      <td>#${shortId}</td>
-      <td>${items || "-"}</td>
-      <td>${type}</td>
-      <td>${time}</td>
-      <td>₱${total}</td>
-      <td>${status}</td>
-      <td>${note ? `<span class="orders-note-text">${escapeHtml(note)}</span>` : "—"}</td>
-      <td>${stockCell}</td>
-      <td>
-        <button class="orders-btn ghost inventory-mini-btn order-view-btn" type="button" data-order-action="view" data-order-id="${escapeHtml(orderKey)}" title="View receipt" aria-label="View receipt"><i class="ri-receipt-line" aria-hidden="true"></i></button>
-        <button class="orders-btn ghost inventory-mini-btn danger order-delete-btn" type="button" data-order-action="delete" data-order-id="${escapeHtml(orderKey)}" title="Delete transaction" aria-label="Delete transaction"><i class="ri-delete-bin-line" aria-hidden="true"></i></button>
-      </td>
-    </tr>`;
-  }).join("");
+  wrap.innerHTML = `
+    <table class="orders-table">
+      <thead>
+        <tr>
+          <th class="orders-th-ref">${buildSortHeader("ref", "Order")}</th>
+          <th>${buildSortHeader("items", "Items")}</th>
+          <th>${buildSortHeader("payment", "Payment")}</th>
+          <th>${buildSortHeader("time", "Time")}</th>
+          <th class="orders-th-amount">${buildSortHeader("amount", "Amount")}</th>
+          <th>Status</th>
+          <th class="orders-th-actions">Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rows.join("")}
+      </tbody>
+    </table>`;
 
-  wrap.innerHTML = `<table>
-    <tr>
-      <th style="width:50px">#</th>
-      <th>Items</th>
-      <th style="width:70px">Type</th>
-      <th style="width:110px">Time</th>
-      <th style="width:80px">Amount</th>
-      <th style="width:60px">Status</th>
-      <th style="width:160px">Note</th>
-      <th style="width:180px">Stock Used</th>
-      <th style="width:70px">Action</th>
-    </tr>
-    ${rows}
-  </table>`;
+  bindOrdersTableEvents(wrap);
+}
+
+function toggleOrderRow(wrap, btn, orderId) {
+  const key = String(orderId || "");
+  const next = !(state.orderStockExpanded?.[key]);
+  state.orderStockExpanded = { ...(state.orderStockExpanded || {}), [key]: next };
+  const mainRow = btn.closest("tr.orders-main-row");
+  const detailRow = mainRow?.nextElementSibling;
+  btn.classList.toggle("active", next);
+  btn.setAttribute("aria-expanded", String(next));
+  btn.setAttribute("aria-label", next ? "Collapse details" : "Expand details");
+  btn.title = next ? "Collapse details" : "Expand details";
+  if (detailRow) {
+    detailRow.classList.toggle("orders-detail-hidden", !next);
+    detailRow.setAttribute("aria-hidden", String(!next));
+  }
+}
+
+function bindOrdersTableEvents(wrap) {
+  wrap.querySelectorAll("button[data-sort]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      orderFilters.sortBy = nextSortValue(btn.dataset.sort, orderFilters.sortBy);
+      const sortInput = document.getElementById("ordersSortBy");
+      if (sortInput) sortInput.value = orderFilters.sortBy;
+      orderFilters.page = 1;
+      applyOrderFilters();
+    });
+  });
 
   wrap.querySelectorAll("button[data-order-action]").forEach((btn) => {
     btn.addEventListener("click", async (event) => {
       event.preventDefault();
       event.stopPropagation();
 
-      const orderId = btn.dataset.orderId;
       const action = btn.dataset.orderAction;
-      const order = findOrderByKey(orderId);
-      if (!order) return;
+      const orderId = btn.dataset.orderId;
 
-      if (action === "toggle-stock") {
-        toggleOrderStockDetails(orderId);
-        renderOrdersTable(state.pagedOrders);
-        renderStockDetail();
+      if (action === "toggle") {
+        toggleOrderRow(wrap, btn, orderId);
         return;
       }
+
+      const order = findOrderByKey(orderId);
+      if (!order) return;
 
       if (action === "view") {
         window.openOrderReceipt && window.openOrderReceipt(orderId);
@@ -1757,6 +1968,14 @@ function renderOrdersTable(orders) {
           await ModalUtils.error("Delete Failed", error?.message || "Unable to delete transaction.");
         }
       }
+    });
+  });
+
+  wrap.querySelectorAll("button[data-note-toggle]").forEach((btn) => {
+    btn.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      toggleDetailNote(btn);
     });
   });
 }
@@ -1832,6 +2051,7 @@ function bindOrdersControls() {
   if (fromInput && !fromInput.dataset.bound) {
     fromInput.dataset.bound = "1";
     fromInput.addEventListener("change", (e) => {
+      orderFilters.preset = "";
       orderFilters.fromDate = e.target.value;
       orderFilters.page = 1;
       applyOrderFilters();
@@ -1841,6 +2061,7 @@ function bindOrdersControls() {
   if (toInput && !toInput.dataset.bound) {
     toInput.dataset.bound = "1";
     toInput.addEventListener("change", (e) => {
+      orderFilters.preset = "";
       orderFilters.toDate = e.target.value;
       orderFilters.page = 1;
       applyOrderFilters();
@@ -1875,6 +2096,7 @@ function bindOrdersControls() {
       orderFilters.page = 1;
       orderFilters.fromDate = "";
       orderFilters.toDate = "";
+      orderFilters.preset = "";
 
       if (searchInput) searchInput.value = "";
       if (paymentInput) paymentInput.value = "all";
@@ -1910,6 +2132,12 @@ function bindOrdersControls() {
     exportBtn.dataset.bound = "1";
     exportBtn.addEventListener("click", exportOrdersCsv);
   }
+
+  document.querySelectorAll(".orders-preset-chip").forEach((chip) => {
+    if (chip.dataset.bound) return;
+    chip.dataset.bound = "1";
+    chip.addEventListener("click", () => setOrderPreset(chip.dataset.preset));
+  });
 }
 
 async function loadInventoryPage() {
