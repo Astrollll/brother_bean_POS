@@ -65,7 +65,7 @@ const ts = (d) => ({ toDate: () => d });
 const daysAgo = (n, hour = 10, min = 0) => { const d = new Date(); d.setDate(d.getDate() - n); d.setHours(hour, min, 0, 0); return d; };
 
 state.allOrders = [
-  { id: "v1", orderId: "v1", items: [{ name: "Spanish Latte", quantity: 2, price: 150 }, { name: "Butter Croissant", quantity: 1, price: 95 }, { name: "Iced Mocha", quantity: 1, price: 135 }], paymentMethod: "gcash", total: 530, orderType: "regular", note: "Extra hot, less sweet, in a big cup please", createdAt: ts(daysAgo(0, 9, 5)) },
+  { id: "v1", orderId: "v1", items: [{ name: "Spanish Latte", quantity: 2, price: 150 }, { name: "Butter Croissant", quantity: 1, price: 95 }, { name: "Iced Mocha", quantity: 1, price: 135 }], paymentMethod: "gcash", total: 530, orderType: "regular", note: "Extra hot, less sweet, in a big cup please", createdAt: ts(daysAgo(0, 9, 5)), inventoryDeductions: [{ inventoryId: "i1", name: "Milk", unit: "ml", deductedQty: 100, remainingQty: 900 }], inventorySkips: [{ name: "Vanilla Syrup", reason: "not found in inventory" }] },
   { id: "v2", orderId: "v2", items: [{ name: "Americano", quantity: 1, price: 110 }], paymentMethod: "cash", total: 110, orderType: "regular", note: "", createdAt: ts(daysAgo(0, 11, 40)) },
   { id: "v3", orderId: "v3", items: [{ name: "Cappuccino", quantity: 1, price: 125, discountPercent: 0.2 }], paymentMethod: "card", total: 100, orderType: "regular", note: "No foam, oat milk", createdAt: ts(daysAgo(1, 8, 15)) },
   { id: "v4", orderId: "v4", items: [{ name: "Espresso", quantity: 2, price: 90 }], paymentMethod: "split", cashAmount: 90, gcashAmount: 90, total: 180, orderType: "regular", note: "".repeat(0), createdAt: ts(daysAgo(1, 14, 20)) },
@@ -195,7 +195,14 @@ async function run() {
       getComputedStyle(document.querySelector(".orders-detail-row:not(.orders-detail-hidden)")).display
     );
     if (expandedDisplay !== "table-row") fail(`visual: expanded detail display ${expandedDisplay}`);
-    console.log("OK expand: hidden->visible, aria=true");
+    const skipNote = await page.evaluate(() => {
+      const note = document.querySelector(".orders-skip-note");
+      return note ? note.textContent : "";
+    });
+    if (!skipNote.includes("Vanilla Syrup") || !skipNote.includes("not found in inventory")) {
+      fail(`visual: skip note not rendered in expanded row: ${skipNote}`);
+    }
+    console.log("OK expand: hidden->visible, aria=true, skip note rendered");
 
     await page.screenshot({ path: join(OUT_DIR, "orders-visual-expanded.png"), fullPage: false });
 

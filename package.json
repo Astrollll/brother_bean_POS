@@ -3,7 +3,8 @@
     "smoke:staff": "node scripts/staff-smoke.mjs",
     "smoke:orders": "node scripts/orders-smoke.mjs",
     "smoke:orders-sync": "node scripts/orders-sync-smoke.mjs",
-    "smoke": "npm run smoke:staff && npm run smoke:orders && npm run smoke:orders-sync"
+    "smoke:inventory-deduct": "node scripts/inventory-deduct-smoke.mjs",
+    "smoke": "npm run smoke:staff && npm run smoke:orders && npm run smoke:orders-sync && npm run smoke:inventory-deduct"
   },
   "devDependencies": {
     "cors": "^2.8.6",

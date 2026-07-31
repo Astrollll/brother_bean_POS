@@ -7,7 +7,7 @@ import { getAdminSettings, saveAdminSettings, getDefaultSettings } from "../../m
 import { getUserRole, getUserProfile, listUsers, setUserRole, setUserProfile, ensureAdminAccessProfile } from "../../models/userModel.js";
 import { getMenuItems, saveMenuItem, deleteMenuItem, clearMenuItems } from "../../models/menuModel.js";
 import { getCategories, saveCategory, deleteCategory, getCategoryIconForName } from "../../models/categoryModel.js";
-import { getTodayOrders, getAllSalesOrders, deleteOrder, clearAllOrders, getPendingOrderCount, getQueuedOrders, syncQueuedOrders } from "../../models/orderModel.js?v=20260710B";
+import { getTodayOrders, getAllSalesOrders, deleteOrder, clearAllOrders, getPendingOrderCount, getQueuedOrders, syncQueuedOrders } from "../../models/orderModel.js?v=20260710C";
 import { getSavedSalesHistory } from "../../models/storageModel.js";
 import { resetDay as archiveResetDay } from "../../models/resetModel.js";
 import { getInventoryItems, saveInventoryItem, deleteInventoryItem, clearInventoryItems, convertQuantityBetweenUnits, normalizeUnit } from "../../models/inventoryModel.js";
@@ -1525,6 +1525,19 @@ function buildOrderDetailRow(order, expanded) {
       }).join("")
     : `<div class="od-empty">No stock usage recorded.</div>`;
 
+  const skipEntries = Array.isArray(order.inventorySkips) ? order.inventorySkips : [];
+  const seenSkips = new Set();
+  const uniqueSkips = [];
+  for (const skip of skipEntries) {
+    const key = `${String(skip?.name || "")}|${String(skip?.reason || "")}`;
+    if (seenSkips.has(key)) continue;
+    seenSkips.add(key);
+    uniqueSkips.push(skip);
+  }
+  const skipNote = uniqueSkips.length
+    ? `<div class="orders-skip-note"><i class="ri-error-warning-line" aria-hidden="true"></i> <strong>${uniqueSkips.length} ingredient${uniqueSkips.length === 1 ? "" : "s"} not deducted:</strong> ${escapeHtml(uniqueSkips.map((s) => `${s.name || "?"} (${s.reason || "unknown"})`).join(", "))}</div>`
+    : "";
+
   const payment = String(order.paymentMethod || "cash").toUpperCase();
   const isEmployee = String(order.orderType || "regular").toLowerCase() === "employee";
   const note = String(order.note || "").trim();
@@ -1553,6 +1566,7 @@ function buildOrderDetailRow(order, expanded) {
           <section class="od-section">
             <h4 class="od-section-title"><i class="ri-stack-line" aria-hidden="true"></i> Stock Used ${stockRecorded ? "" : `<span class="orders-stock-badge">Estimated</span>`}</h4>
             <div class="od-stock-list">${stockRows}</div>
+            ${skipNote}
           </section>
           <section class="od-section">
             <h4 class="od-section-title"><i class="ri-money-dollar-circle-line" aria-hidden="true"></i> Payment</h4>

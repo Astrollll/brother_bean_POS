@@ -1,6 +1,6 @@
 import { db } from "../controllers/firebase.js";
 import {
-  collection, getDocs, doc, setDoc, deleteDoc, getDoc, updateDoc
+  collection, getDocs, doc, setDoc, deleteDoc, getDoc, updateDoc, runTransaction
 } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js";
 
 const INVENTORY_COLLECTION = "inventory";
@@ -188,13 +188,21 @@ function findInventoryFallbackMatch(lookup, inventoryId, ingredientName) {
   return null;
 }
 
-export async function deductInventoryQuantities(recipeItems, multiplier = 1) {
-  if (!recipeItems || !recipeItems.length) return { success: true, deducted: 0, skipped: 0 };
+// Deduct recipe ingredients from inventory.
+// - Uses a Firestore transaction so concurrent terminals cannot lose updates.
+// - When orderRef is provided, the audit trail (and the per-line progress
+//   marker) is written atomically in the same transaction as the inventory
+//   updates, so a crash can never leave stock deducted without a record
+//   (which would cause a double deduction on retry).
+// - resumeIndex marks which cart line this call belongs to; it lets retry
+//   paths continue from the exact line that failed instead of re-deducting
+//   earlier lines.
+export async function deductInventoryQuantities(recipeItems, multiplier = 1, orderRef = null, resumeIndex = 0) {
+  if (!recipeItems || !recipeItems.length) return { success: true, deducted: 0, skipped: 0, skipDetails: [], alerts: [], audit: [] };
 
   const aggregate = new Map();
+  const skipDetails = [];
   let skipped = 0;
-  const alerts = [];
-  const audit = [];
   let inventoryLookupPromise = null;
 
   const getInventoryLookup = async () => {
@@ -210,6 +218,7 @@ export async function deductInventoryQuantities(recipeItems, multiplier = 1) {
     const rawQty = Number(ingredient.quantity || 0) * Number(multiplier || 1);
     if ((!inventoryId && !ingredientName) || !Number.isFinite(rawQty) || rawQty <= 0) {
       skipped += 1;
+      skipDetails.push({ name: ingredientName || inventoryId || "unknown", reason: "invalid quantity" });
       continue;
     }
 
@@ -233,6 +242,7 @@ export async function deductInventoryQuantities(recipeItems, multiplier = 1) {
       const fallback = findInventoryFallbackMatch(lookup, inventoryId, ingredientName);
       if (!fallback) {
         skipped += 1;
+        skipDetails.push({ name: ingredientName || inventoryId || "unknown", reason: "not found in inventory" });
         continue;
       }
       resolvedInventoryId = fallback.id;
@@ -244,54 +254,137 @@ export async function deductInventoryQuantities(recipeItems, multiplier = 1) {
     const converted = convertQuantityBetweenUnits(rawQty, recipeUnit, invUnit);
     if (converted === null || !Number.isFinite(converted)) {
       skipped += 1;
+      skipDetails.push({ name: ingredientName || inventoryId || "unknown", reason: `unit mismatch (${recipeUnit || "?"} -> ${invUnit || "?"})` });
       continue;
     }
 
-    const prev = aggregate.get(resolvedInventoryId) || 0;
-    aggregate.set(resolvedInventoryId, prev + converted);
+    const prev = aggregate.get(resolvedInventoryId);
+    aggregate.set(resolvedInventoryId, {
+      qty: (prev?.qty || 0) + converted,
+      name: String(inv.name || ingredientName || resolvedInventoryId),
+      unit: String(inv.unit || ""),
+    });
   }
 
-  let deducted = 0;
-  for (const [inventoryId, qtyToDeduct] of aggregate.entries()) {
-    const ref = doc(db, INVENTORY_COLLECTION, inventoryId);
-    const snapshot = await getDoc(ref);
-    if (!snapshot.exists()) {
-      skipped += 1;
-      continue;
-    }
-    const data = snapshot.data() || {};
-    const currentQty = Number(data.quantity || 0);
-    const newQty = Math.max(0, currentQty - qtyToDeduct);
-    await updateDoc(ref, { quantity: newQty, updatedAtMs: Date.now() });
+  const aggregatedSkips = dedupeSkipDetails(skipDetails);
 
-    if (currentQty > 0 && newQty <= 0) {
-      alerts.push({
+  const txResult = await runTransaction(db, async (tx) => {
+    const resolved = new Map();
+    let skippedTx = 0;
+    const missingTx = [];
+
+    // Firestore transactions require all reads before any writes, so the
+    // order doc (audit append) is read first, then inventory docs, and all
+    // updates happen after.
+    let orderSnapshot = null;
+    if (orderRef) {
+      orderSnapshot = await tx.get(orderRef);
+      if (orderSnapshot.exists()) {
+        const orderData = orderSnapshot.data() || {};
+        const existingAudit = Array.isArray(orderData.inventoryDeductions) ? orderData.inventoryDeductions : [];
+        const existingProgress = Number(orderData.inventoryDeductionProgress || 0);
+        // In-transaction idempotency guard: if this line (or the whole order,
+        // for legacy pre-progress audits) is already recorded as deducted, a
+        // concurrent sync run won the race. Bail without writing anything —
+        // Firestore retries this transaction after the winner commits, so the
+        // guard is what makes concurrent sync runs deduct exactly once.
+        if (existingAudit.length > 0 && (existingProgress === 0 || existingProgress > Number(resumeIndex))) {
+          return { deducted: 0, skipped: 0, skipDetails: [], alerts: [], audit: [] };
+        }
+      }
+    }
+
+    for (const [inventoryId, entry] of aggregate.entries()) {
+      const ref = doc(db, INVENTORY_COLLECTION, inventoryId);
+      const snapshot = await tx.get(ref);
+      if (!snapshot.exists()) {
+        skippedTx += 1;
+        missingTx.push(entry);
+        continue;
+      }
+      resolved.set(inventoryId, { ref, snapshot, qtyToDeduct: entry.qty, name: entry.name, unit: entry.unit });
+    }
+
+    const alerts = [];
+    const audit = [];
+    let deducted = 0;
+    for (const [inventoryId, { ref, snapshot, qtyToDeduct, name, unit }] of resolved.entries()) {
+      const data = snapshot.data() || {};
+      const currentQty = Number(data.quantity || 0);
+      const newQty = Math.max(0, currentQty - qtyToDeduct);
+      tx.update(ref, { quantity: newQty, updatedAtMs: Date.now() });
+
+      if (currentQty > 0 && newQty <= 0) {
+        alerts.push({
+          inventoryId,
+          name: String(name || data.name || inventoryId),
+          previousQty: currentQty,
+          deductedQty: qtyToDeduct,
+          remainingQty: newQty,
+          unit: String(unit || data.unit || ""),
+        });
+      }
+
+      audit.push({
         inventoryId,
-        name: String(data.name || inventoryId),
+        name: String(name || data.name || inventoryId),
         previousQty: currentQty,
         deductedQty: qtyToDeduct,
         remainingQty: newQty,
-        unit: String(data.unit || ""),
+        unit: String(unit || data.unit || ""),
+        atMs: Date.now(),
+      });
+      deducted += 1;
+    }
+
+    const writeSkips = dedupeSkipDetails([
+      ...aggregatedSkips,
+      ...missingTx.map((entry) => ({ name: String(entry.name || ""), reason: "not found in inventory" })),
+    ]);
+
+    if (orderRef) {
+      let existingAudit = [];
+      let existingAlerts = [];
+      let existingSkips = [];
+      if (orderSnapshot && orderSnapshot.exists()) {
+        const orderData = orderSnapshot.data() || {};
+        existingAudit = Array.isArray(orderData.inventoryDeductions) ? orderData.inventoryDeductions : [];
+        existingAlerts = Array.isArray(orderData.inventoryAlerts) ? orderData.inventoryAlerts : [];
+        existingSkips = Array.isArray(orderData.inventorySkips) ? orderData.inventorySkips : [];
+      }
+      tx.update(orderRef, {
+        inventoryAlerts: [...existingAlerts, ...alerts],
+        inventoryDeductions: [...existingAudit, ...audit],
+        inventorySkips: dedupeSkipDetails([...existingSkips, ...writeSkips]),
+        inventoryDeductionProgress: Number(resumeIndex) + 1,
+        inventoryDeductionFailed: false,
       });
     }
 
-    audit.push({
-      inventoryId,
-      name: String(data.name || inventoryId),
-      previousQty: currentQty,
-      deductedQty: qtyToDeduct,
-      remainingQty: newQty,
-      unit: String(data.unit || ""),
-      atMs: Date.now(),
-    });
-    deducted += 1;
+    return { deducted, skipped: skippedTx, skipDetails: writeSkips, alerts, audit };
+  });
+
+  if (txResult.skipDetails.length > 0) {
+    console.warn("[Inventory] Skipped deductions:", txResult.skipDetails.map((s) => `${s.name} (${s.reason})`).join(", "));
+  }
+  if (txResult.alerts.length > 0) {
+    console.warn("[Inventory] Stock reached zero for:", txResult.alerts.map((item) => `${item.name} (${item.unit})`).join(", "));
   }
 
-  if (alerts.length > 0) {
-    console.warn("[Inventory] Stock reached zero for:", alerts.map((item) => `${item.name} (${item.unit})`).join(", "));
-  }
+  return { success: true, ...txResult, skipped: skipped + txResult.skipped };
+}
 
-  return { success: true, deducted, skipped, alerts, audit };
+function dedupeSkipDetails(entries) {
+  const seen = new Set();
+  const unique = [];
+  for (const entry of entries || []) {
+    if (!entry || typeof entry !== "object") continue;
+    const key = `${String(entry.name || "")}|${String(entry.reason || "")}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push({ name: String(entry.name || ""), reason: String(entry.reason || "") });
+  }
+  return unique;
 }
 
 export async function deleteInventoryItem(id) {

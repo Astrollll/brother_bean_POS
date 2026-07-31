@@ -2361,6 +2361,28 @@ button,
   gap: 6px;
 }
 
+.orders-skip-note {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border: 1px solid rgba(245, 158, 11, 0.4);
+  background: rgba(245, 158, 11, 0.08);
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.orders-skip-note i {
+  color: #b45309;
+  vertical-align: -2px;
+}
+
+.orders-skip-note strong {
+  color: #92400e;
+  font-weight: 700;
+}
+
 .od-stock-row {
   display: grid;
   grid-template-columns: 1fr auto;

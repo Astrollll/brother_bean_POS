@@ -67,26 +67,21 @@ function mergeUniqueOrders(...groups) {
 async function persistInventoryAfterSale(orderRef, orderData) {
   const inventoryAlerts = [];
   const inventoryDeductions = [];
+  const inventorySkips = [];
 
   try {
-    for (const item of orderData.items) {
+    for (let i = 0; i < orderData.items.length; i++) {
+      const item = orderData.items[i];
       if (item.recipe && item.recipe.length > 0) {
-        const result = await deductInventoryQuantities(item.recipe, item.quantity);
-        if (Array.isArray(result?.alerts) && result.alerts.length > 0) {
-          inventoryAlerts.push(...result.alerts);
-        }
-        if (Array.isArray(result?.audit) && result.audit.length > 0) {
-          inventoryDeductions.push(...result.audit);
+        const result = await deductInventoryQuantities(item.recipe, item.quantity, orderRef, i);
+        if (result) {
+          if (Array.isArray(result.alerts)) inventoryAlerts.push(...result.alerts);
+          if (Array.isArray(result.audit)) inventoryDeductions.push(...result.audit);
+          if (Array.isArray(result.skipDetails)) inventorySkips.push(...result.skipDetails);
         }
       }
     }
-
-    if (inventoryAlerts.length || inventoryDeductions.length) {
-      await updateDoc(orderRef, {
-        inventoryAlerts,
-        inventoryDeductions,
-      });
-    }
+    return { alerts: inventoryAlerts, audit: inventoryDeductions, skipDetails: inventorySkips, failed: false };
   } catch (error) {
     console.warn("[Orders] Inventory deduction failed after sale.", error);
     try {
@@ -99,6 +94,7 @@ async function persistInventoryAfterSale(orderRef, orderData) {
         detail: { orderId: orderData.orderId },
       }));
     }
+    return { alerts: inventoryAlerts, audit: inventoryDeductions, skipDetails: inventorySkips, failed: true };
   }
 }
 
@@ -354,14 +350,15 @@ export async function saveOrder(cart, total, subtotal, paymentMethod, isPwdSenio
     };
   }
 
-  void persistInventoryAfterSale(orderRef, orderData);
+  const inventoryResult = await persistInventoryAfterSale(orderRef, orderData);
 
   return {
     ...orderData,
     queued: false,
-    inventoryAlerts: [],
-    inventoryDeductions: [],
-    inventoryDeductionError: null,
+    inventoryAlerts: Array.isArray(inventoryResult?.alerts) ? inventoryResult.alerts : [],
+    inventoryDeductions: Array.isArray(inventoryResult?.audit) ? inventoryResult.audit : [],
+    inventorySkips: Array.isArray(inventoryResult?.skipDetails) ? inventoryResult.skipDetails : [],
+    inventoryDeductionError: inventoryResult?.failed ? true : null,
   };
 }
 
@@ -396,33 +393,59 @@ export async function syncQueuedOrders() {
       const payload = normalizePayloadDates(item.payload);
       const payloadOrderId = String(payload.orderId || item.id || Date.now());
       const orderRef = doc(db, ORDERS_COLLECTION, payloadOrderId);
-      await setDoc(orderRef, payload);
+      const payloadItems = Array.isArray(payload.items) ? payload.items : [];
+      const hasRecipeItems = payloadItems.some((soldItem) => Array.isArray(soldItem?.recipe) && soldItem.recipe.length > 0);
 
+      // Idempotency guard: if a previous sync already recorded deductions on
+      // this order (or partially progressed), resume from where it stopped
+      // instead of re-deducting. setDoc below would overwrite the audit trail,
+      // so the existing doc must be inspected BEFORE it.
+      let existing = {};
       try {
-        const payloadItems = Array.isArray(payload.items) ? payload.items : [];
-        const inventoryAlerts = [];
-        const inventoryDeductions = [];
-        for (const soldItem of payloadItems) {
-          if (Array.isArray(soldItem.recipe) && soldItem.recipe.length > 0) {
-            const result = await deductInventoryQuantities(soldItem.recipe, soldItem.quantity || 1);
-            if (Array.isArray(result?.alerts)) {
-              inventoryAlerts.push(...result.alerts);
-              syncedAlerts += result.alerts.length;
-            }
-            if (Array.isArray(result?.audit) && result.audit.length > 0) {
-              inventoryDeductions.push(...result.audit);
-            }
+        const existingSnap = await getDoc(orderRef);
+        if (existingSnap.exists()) existing = existingSnap.data() || {};
+      } catch {
+        // Treat as fresh; a later retry will re-check once reads succeed.
+      }
+
+      const existingAudit = Array.isArray(existing.inventoryDeductions) ? existing.inventoryDeductions : [];
+      const progress = Number(existing.inventoryDeductionProgress || 0);
+      // progress === 0 with an audit trail means the order was deducted under
+      // the pre-progress code (audit was only written after every item), so
+      // treat it as fully done. Otherwise require progress to cover all lines.
+      const alreadyDone = existingAudit.length > 0 && (progress === 0 || progress >= payloadItems.length);
+
+      if (hasRecipeItems && !alreadyDone && existingAudit.length === 0) {
+        await setDoc(orderRef, payload);
+      } else if (!hasRecipeItems) {
+        await setDoc(orderRef, payload);
+      }
+      // If existingAudit is non-empty but progress is partial, the doc already
+      // holds the audit for earlier lines — do NOT overwrite it; resume below.
+
+      if (hasRecipeItems && !alreadyDone) {
+        let itemFailed = false;
+        for (let i = progress; i < payloadItems.length; i++) {
+          const soldItem = payloadItems[i];
+          if (!Array.isArray(soldItem?.recipe) || soldItem.recipe.length === 0) continue;
+          try {
+            const result = await deductInventoryQuantities(soldItem.recipe, soldItem.quantity || 1, orderRef, i);
+            if (Array.isArray(result?.alerts)) syncedAlerts += result.alerts.length;
+          } catch {
+            itemFailed = true;
+            break;
           }
         }
 
-        if (inventoryAlerts.length || inventoryDeductions.length) {
-          await updateDoc(orderRef, {
-            inventoryAlerts,
-            inventoryDeductions,
-          });
+        if (itemFailed) {
+          deductionFailures += 1;
+          try {
+            await updateDoc(orderRef, { inventoryDeductionFailed: true });
+          } catch {
+            // best-effort; the item stays queued for the next sync attempt
+          }
+          continue; // keep this item in the outbox for retry
         }
-      } catch {
-        deductionFailures += 1;
       }
 
       removeQueuedOrder(item.id);
@@ -465,31 +488,26 @@ export async function retryFailedInventoryDeduction(orderId) {
   if (!data.inventoryDeductionFailed) return false;
 
   const items = Array.isArray(data.items) ? data.items : [];
-  const inventoryAlerts = [];
-  const inventoryDeductions = [];
+  const progress = Number(data.inventoryDeductionProgress || 0);
   let allSucceeded = true;
 
-  for (const item of items) {
+  for (let i = progress; i < items.length; i++) {
+    const item = items[i];
     if (item.recipe && item.recipe.length > 0) {
       try {
-        const result = await deductInventoryQuantities(item.recipe, item.quantity);
-        if (Array.isArray(result?.alerts) && result.alerts.length > 0) {
-          inventoryAlerts.push(...result.alerts);
-        }
-        if (Array.isArray(result?.audit) && result.audit.length > 0) {
-          inventoryDeductions.push(...result.audit);
-        }
+        await deductInventoryQuantities(item.recipe, item.quantity, orderRef, i);
       } catch {
         allSucceeded = false;
+        break;
       }
     }
   }
 
   if (allSucceeded) {
+    // Each line's transaction already appended its alerts/audit/skips to the
+    // order doc atomically, so only the failure flag needs clearing here.
     await updateDoc(orderRef, {
       inventoryDeductionFailed: false,
-      inventoryAlerts,
-      inventoryDeductions,
     });
     return true;
   }

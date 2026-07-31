@@ -54,13 +54,17 @@ async function main() {
     },
   };
 
-  // ── syncQueuedOrders normalization ──
+  // ── syncQueuedOrders normalization + idempotency ──
   const writtenPayloads = [];
   const removedQueueIds = [];
+  const orderUpdated = [];
+  const deductionCalls = [];
   let outbox = [];
+  let existingOrder = null; // data returned by getDoc for the order doc
+  let deductMode = "ok"; // "ok" | "fail"
   const syncFactory = new Function(
     "db", "Timestamp", "ORDERS_COLLECTION", "getOrderOutbox", "removeQueuedOrder",
-    "deductInventoryQuantities", "doc", "setDoc", "updateDoc",
+    "deductInventoryQuantities", "doc", "setDoc", "updateDoc", "getDoc",
     `${syncBlock}
     return { syncQueuedOrders };`,
   );
@@ -68,13 +72,22 @@ async function main() {
     {}, Timestamp, "orders",
     () => outbox,
     (id) => { removedQueueIds.push(id); },
-    () => ({ alerts: [], audit: [] }),
+    (recipe, qty, orderRef, resumeIndex) => {
+      deductionCalls.push({ recipe, qty, resumeIndex });
+      if (deductMode === "fail") throw new Error("deduction failed");
+      return { alerts: [], audit: [{ inventoryId: "inv1", name: "Milk" }], skipDetails: [] };
+    },
     () => ({ __ref: true }),
     (ref, payload) => { writtenPayloads.push(payload); },
-    () => {},
+    (ref, patch) => { orderUpdated.push(patch); },
+    () => {
+      if (!existingOrder) return { exists: () => false, data: () => ({}) };
+      return { exists: () => true, data: () => ({ ...existingOrder }) };
+    },
   );
 
   // Case 1: ISO-string createdAt/paidAt (JSON round-trip through the outbox) -> Timestamps
+  existingOrder = null;
   outbox = [{
     id: "q1",
     payload: {
@@ -83,7 +96,7 @@ async function main() {
       createdAtMs: 1785498753000,
       paidAt: "2026-07-31T09:12:34.000Z",
       total: 120,
-      items: [],
+      items: [{ name: "Latte", quantity: 1, recipe: [{ inventoryId: "inv1", name: "Milk", unit: "ml", quantity: 50 }] }],
     },
   }];
   await syncQueuedOrders();
@@ -92,12 +105,15 @@ async function main() {
   assert.ok(writtenPayloads[0].paidAt && writtenPayloads[0].paidAt.__ts === "date", "sync: string paidAt converted to Timestamp");
   assert.equal(writtenPayloads[0].createdAt.value.toISOString(), "2026-07-31T09:12:33.000Z", "sync: createdAt value preserved");
   assert.equal(removedQueueIds.length, 1, "sync: queued item removed after sync");
+  assert.equal(deductionCalls.length, 1, "sync: deduction attempted once");
+  assert.equal(deductionCalls[0].resumeIndex, 0, "sync: first deduction starts at index 0");
   console.log("OK sync: string createdAt/paidAt -> Timestamp");
 
   // Case 2: missing createdAt, createdAtMs present -> backfilled
   writtenPayloads.length = 0;
   removedQueueIds.length = 0;
   timestampMocks.length = 0;
+  deductionCalls.length = 0;
   outbox = [{
     id: "q2",
     payload: { orderId: "o2", createdAtMs: 1785490000000, total: 50, items: [] },
@@ -105,15 +121,17 @@ async function main() {
   await syncQueuedOrders();
   assert.ok(writtenPayloads[0].createdAt && writtenPayloads[0].createdAt.__ts === "millis", "sync: createdAt backfilled from createdAtMs");
   assert.equal(writtenPayloads[0].createdAt.value, 1785490000000, "sync: backfilled millis preserved");
+  assert.equal(deductionCalls.length, 0, "sync: no recipes -> no deduction");
   console.log("OK sync: createdAt backfilled from createdAtMs");
 
   // Case 3: already a Timestamp -> untouched
   writtenPayloads.length = 0;
   timestampMocks.length = 0;
+  deductionCalls.length = 0;
   const existingTs = { toDate: () => new Date(), __already: true };
   outbox = [{
     id: "q3",
-    payload: { orderId: "o3", createdAt: existingTs, createdAtMs: 1785490000000, items: [] },
+    payload: { orderId: "o3", createdAt: existingTs, createdAtMs: 1785490000000, items: [{ name: "Tea", quantity: 1, recipe: [{ inventoryId: "inv2", name: "Tea leaf" }] }] },
   }];
   await syncQueuedOrders();
   assert.equal(writtenPayloads[0].createdAt, existingTs, "sync: existing Timestamp untouched");
@@ -126,6 +144,88 @@ async function main() {
   assert.equal(result.synced, 0, "sync: empty outbox synced=0");
   assert.equal(writtenPayloads.length, 0, "sync: empty outbox no writes");
   console.log("OK sync: empty outbox handled");
+
+  // Case 5: order already fully deducted -> no setDoc, no deduction, item removed
+  writtenPayloads.length = 0;
+  removedQueueIds.length = 0;
+  deductionCalls.length = 0;
+  existingOrder = {
+    inventoryDeductions: [{ inventoryId: "inv1", name: "Milk" }],
+    inventoryDeductionProgress: 1,
+  };
+  outbox = [{
+    id: "q5",
+    payload: { orderId: "o5", createdAtMs: 1785490000000, items: [{ name: "Latte", quantity: 1, recipe: [{ inventoryId: "inv1", name: "Milk", unit: "ml", quantity: 50 }] }] },
+  }];
+  await syncQueuedOrders();
+  assert.equal(writtenPayloads.length, 0, "sync: fully deducted order is not overwritten");
+  assert.equal(deductionCalls.length, 0, "sync: fully deducted order is not re-deducted");
+  assert.equal(removedQueueIds.length, 1, "sync: leftover queue item removed");
+  console.log("OK sync: fully deducted order skipped (no double deduction)");
+
+  // Case 6: partial progress -> resumes from the stopped line, no setDoc overwrite
+  writtenPayloads.length = 0;
+  removedQueueIds.length = 0;
+  deductionCalls.length = 0;
+  existingOrder = {
+    inventoryDeductions: [{ inventoryId: "inv1", name: "Milk" }],
+    inventoryDeductionProgress: 1,
+  };
+  outbox = [{
+    id: "q6",
+    payload: {
+      orderId: "o6",
+      createdAtMs: 1785490000000,
+      items: [
+        { name: "Latte", quantity: 1, recipe: [{ inventoryId: "inv1", name: "Milk" }] },
+        { name: "Cake", quantity: 1, recipe: [{ inventoryId: "inv2", name: "Flour" }] },
+      ],
+    },
+  }];
+  await syncQueuedOrders();
+  assert.equal(writtenPayloads.length, 0, "sync: partial order is not overwritten");
+  assert.equal(deductionCalls.length, 1, "sync: only the remaining line is deducted");
+  assert.equal(deductionCalls[0].resumeIndex, 1, "sync: resumes at index 1");
+  assert.equal(removedQueueIds.length, 1, "sync: partial order completes and item removed");
+  console.log("OK sync: partial progress resumes without re-deducting earlier lines");
+
+  // Case 7: deduction failure -> order flagged, item KEPT in outbox for retry
+  writtenPayloads.length = 0;
+  removedQueueIds.length = 0;
+  deductionCalls.length = 0;
+  orderUpdated.length = 0;
+  existingOrder = null;
+  deductMode = "fail";
+  outbox = [{
+    id: "q7",
+    payload: { orderId: "o7", createdAtMs: 1785490000000, items: [{ name: "Latte", quantity: 1, recipe: [{ inventoryId: "inv1", name: "Milk" }] }] },
+  }];
+  const failedResult = await syncQueuedOrders();
+  deductMode = "ok";
+  assert.equal(failedResult.deductionFailures, 1, "sync: failure counted");
+  assert.equal(failedResult.synced, 0, "sync: failed item not synced");
+  assert.equal(removedQueueIds.length, 0, "sync: failed item stays queued");
+  assert.equal(orderUpdated.length, 1, "sync: order flagged for retry");
+  assert.equal(orderUpdated[0].inventoryDeductionFailed, true, "sync: failure flag set");
+  console.log("OK sync: failure keeps item queued and flags the order");
+
+  // Case 8: legacy order with audit but no progress field -> treated as fully
+  // deducted (old code wrote audit only after all items), no re-deduction
+  writtenPayloads.length = 0;
+  removedQueueIds.length = 0;
+  deductionCalls.length = 0;
+  existingOrder = {
+    inventoryDeductions: [{ inventoryId: "inv1", name: "Milk" }],
+  };
+  outbox = [{
+    id: "q8",
+    payload: { orderId: "o8", createdAtMs: 1785490000000, items: [{ name: "Latte", quantity: 1, recipe: [{ inventoryId: "inv1", name: "Milk" }] }] },
+  }];
+  await syncQueuedOrders();
+  assert.equal(writtenPayloads.length, 0, "sync: legacy audited order not overwritten");
+  assert.equal(deductionCalls.length, 0, "sync: legacy audited order not re-deducted");
+  assert.equal(removedQueueIds.length, 1, "sync: legacy queue item removed");
+  console.log("OK sync: legacy audited order (no progress) skipped");
 
   // ── repairOrderTimestamps ──
   const updatedDocs = [];

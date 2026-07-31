@@ -234,6 +234,24 @@ async function main() {
   assertContains(detail, "Estimated", "detail row estimated badge");
   assertContains(detail, "No stock usage recorded", "detail row empty stock message");
 
+  const skipDetailOrder = {
+    ...detailOrder,
+    inventorySkips: [
+      { name: "Milk", reason: "unit mismatch (g -> ml)" },
+      { name: "Milk", reason: "unit mismatch (g -> ml)" },
+      { name: "<b>X</b>", reason: "not found in inventory" },
+    ],
+  };
+  detail = api.buildOrderDetailRow(skipDetailOrder, true);
+  assertContains(detail, "orders-skip-note", "detail row skip note rendered");
+  assertContains(detail, "2 ingredients not deducted", "detail row skip count after dedupe");
+  assertContains(detail, "unit mismatch (g -&gt; ml)", "detail row skip reason escaped");
+  assertContains(detail, "&lt;b&gt;X&lt;/b&gt;", "detail row skip name escaped");
+  const skipOccurrences = (detail.match(/unit mismatch \(g -&gt; ml\)/g) || []).length;
+  assert(skipOccurrences === 1, "detail row skip entries deduped in display");
+  detail = api.buildOrderDetailRow({ ...detailOrder, inventorySkips: [] }, true);
+  assert(!detail.includes("orders-skip-note"), "detail row no skip note when empty");
+
   // 6. Note block quote escaping
   const noteBlock = api.buildNoteBlock("He said \"hi\" <b>bold</b>");
   assertContains(noteBlock, "&quot;hi&quot;", "note block escapes quotes");
