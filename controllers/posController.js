@@ -5,7 +5,7 @@ import { getMenuItems, watchMenuItems }  from "../models/menuModel.js";
 import { getCategories } from "../models/categoryModel.js";
 import { getCategoryIconForName } from "../models/categoryModel.js";
 import { isDefaultTemplateMenuItem } from "../models/defaultSeedData.js";
-import { saveOrder, syncQueuedOrders, getPendingOrderCount, getTodayOrders, watchTodayOrders, retryFailedInventoryDeduction } from "../models/orderModel.js";
+import { saveOrder, syncQueuedOrders, getPendingOrderCount, getTodayOrders, watchTodayOrders, retryFailedInventoryDeduction, getQueuedOrders } from "../models/orderModel.js";
 import { watchAuth, getCurrentUser, logout as authLogout } from "./auth/firebaseAuth.js";
 import { getUserProfile, getUserRole } from "../models/userModel.js";
 import { navigateTo } from "./utils/routes.js";
@@ -243,51 +243,48 @@ document.addEventListener("DOMContentLoaded", async () => {
       persistPosState();
     }
 
-    // Seed stats from Firestore so all cashiers see today's shared sales
+    // Seed stats from Firestore so all cashiers see today's shared sales.
+    // Sales-derived stats are ALWAYS recomputed from the merged order list so
+    // a stale value in the shared stats mirror (or a failed Firestore read)
+    // can never leave the drawer showing outdated cash.
+    const now = Date.now();
+    const startOfDay = new Date(new Date(now).getFullYear(), new Date(now).getMonth(), new Date(now).getDate()).getTime();
+    const endOfDay = startOfDay + 86400000;
+
+    // Purge stale entries (previous days) from localStorage data
+    salesHistory = salesHistory.filter(o => {
+      const ts = getSaleTimestampMs(o);
+      return ts >= startOfDay && ts < endOfDay;
+    });
+
+    let todayOrders = [];
     try {
-      const now = Date.now();
-      const startOfDay = new Date(new Date(now).getFullYear(), new Date(now).getMonth(), new Date(now).getDate()).getTime();
-      const endOfDay = startOfDay + 86400000;
-
-      // Purge stale entries (previous days) from localStorage data
-      salesHistory = salesHistory.filter(o => {
-        const ts = getSaleTimestampMs(o);
-        return ts >= startOfDay && ts < endOfDay;
-      });
-
       const firestoreOrders = await getTodayOrders();
-      const todayOrders = (Array.isArray(firestoreOrders) ? firestoreOrders : []).filter(o => {
+      todayOrders = (Array.isArray(firestoreOrders) ? firestoreOrders : []).filter(o => {
         const ts = getSaleTimestampMs(o);
         return ts >= startOfDay && ts < endOfDay;
       });
-      if (todayOrders.length > 0) {
-        const seenOrderIds = new Set(
-          salesHistory.map(s => String(s.orderId || s.id || ""))
-        );
-        for (const order of todayOrders) {
-          const oid = String(order.orderId || order.id || "");
-          if (!oid || seenOrderIds.has(oid)) continue;
-          salesHistory.push(order);
-          seenOrderIds.add(oid);
-        }
-      }
-      dailyStats = {
-        orders: salesHistory.length,
-        totalSales: salesHistory.reduce((sum, s) => sum + (Number(s.total) || 0), 0),
-        discountsApplied: salesHistory.filter(s => s.isPwdSenior || s.discount).length,
-        cashReceived: salesHistory.reduce((sum, s) => {
-          if (s.paymentMethod === "split") return sum + (Number(s.cashAmount) || 0);
-          if (s.paymentMethod === "cash") return sum + (Number(s.total) || 0);
-          return sum;
-        }, 0),
-        openingFloat: Number(dailyStats.openingFloat || 0),
-        cashIn: Number(dailyStats.cashIn || 0),
-        cashOut: Number(dailyStats.cashOut || 0),
-      };
-      persistPosState();
     } catch (err) {
-      console.warn("[POS] Failed to seed stats from Firestore:", err);
+      console.warn("[POS] Failed to fetch today's orders from Firestore:", err);
     }
+    salesHistory = mergeOrderLists(
+      salesHistory,
+      todayOrders,
+      (typeof getQueuedOrders === "function" ? getQueuedOrders() : []).map((q) => q?.payload || q)
+    ).filter(o => {
+      const ts = getSaleTimestampMs(o);
+      return ts >= startOfDay && ts < endOfDay;
+    });
+    dailyStats = {
+      orders: salesHistory.length,
+      totalSales: salesHistory.reduce((sum, s) => sum + (Number(s.total) || 0), 0),
+      discountsApplied: salesHistory.filter(s => s.isPwdSenior || s.discount).length,
+      cashReceived: computeDrawerCashReceived(salesHistory),
+      openingFloat: Number(dailyStats.openingFloat || 0),
+      cashIn: Number(dailyStats.cashIn || 0),
+      cashOut: Number(dailyStats.cashOut || 0),
+    };
+    persistPosState();
 
     menuItems = sanitizePosMenuItems(await getMenuItems());
 
@@ -326,7 +323,11 @@ document.addEventListener("DOMContentLoaded", async () => {
       const startOfDay = new Date(new Date(now).getFullYear(), new Date(now).getMonth(), new Date(now).getDate()).getTime();
       const endOfDay = startOfDay + 86400000;
 
-      salesHistory = todayOrders.filter(o => {
+      salesHistory = mergeOrderLists(
+        salesHistory,
+        todayOrders,
+        (typeof getQueuedOrders === "function" ? getQueuedOrders() : []).map((q) => q?.payload || q)
+      ).filter(o => {
         const ts = getSaleTimestampMs(o);
         return ts >= startOfDay && ts < endOfDay;
       });
@@ -334,11 +335,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         orders: salesHistory.length,
         totalSales: salesHistory.reduce((sum, s) => sum + (Number(s.total) || 0), 0),
         discountsApplied: salesHistory.filter(s => s.isPwdSenior || s.discount).length,
-        cashReceived: salesHistory.reduce((sum, s) => {
-          if (s.paymentMethod === "split") return sum + (Number(s.cashAmount) || 0);
-          if (s.paymentMethod === "cash") return sum + (Number(s.total) || 0);
-          return sum;
-        }, 0),
+        cashReceived: computeDrawerCashReceived(salesHistory),
         openingFloat: Number(dailyStats.openingFloat || 0),
         cashIn: Number(dailyStats.cashIn || 0),
         cashOut: Number(dailyStats.cashOut || 0),
@@ -1711,10 +1708,10 @@ window.completePayment = async function() {
     dailyStats.orders++;
     dailyStats.totalSales += total;
     if (isPwdSenior) dailyStats.discountsApplied++;
-    if (currentPayMethod === "cash") {
+    if (paymentMethod === "cash") {
       dailyStats.cashReceived += total;
-    } else if (currentPayMethod === "split") {
-      dailyStats.cashReceived += parseFloat(enteredAmount) || 0;
+    } else if (paymentMethod === "split") {
+      dailyStats.cashReceived += Number(cashAmount) || 0;
     }
     salesHistory.push(sale);
     saveToStorage(salesHistory, dailyStats);
@@ -2025,6 +2022,44 @@ window.printReceipt = function() {
 };
 
 // ── DRAWER MATH ──
+// Merge order lists (Firestore snapshot, local history, queued outbox) into
+// one de-duplicated list so no sale is counted twice or dropped.
+function mergeOrderLists(...lists) {
+  const merged = [];
+  const seen = new Set();
+  for (const list of lists) {
+    for (const order of Array.isArray(list) ? list : []) {
+      if (!order) continue;
+      const key = String(order?.orderId || order?.id || order?.queueId || "");
+      if (key && seen.has(key)) continue;
+      if (key) seen.add(key);
+      merged.push(order);
+    }
+  }
+  return merged;
+}
+
+// Cash actually received from sales: full cash sales plus the cash portion of
+// split payments. Employee and e-wallet sales are excluded. Queued (offline)
+// orders are included so the drawer stays accurate until they sync.
+function computeDrawerCashReceived(orders) {
+  const now = Date.now();
+  const startOfDay = new Date(new Date(now).getFullYear(), new Date(now).getMonth(), new Date(now).getDate()).getTime();
+  const endOfDay = startOfDay + 86400000;
+  const queued = (typeof getQueuedOrders === "function" ? getQueuedOrders() : [])
+    .map((q) => q?.payload || q)
+    .filter((o) => {
+      const ts = getSaleTimestampMs(o);
+      return ts !== null && ts >= startOfDay && ts < endOfDay;
+    });
+  const all = mergeOrderLists(orders, queued);
+  return all.reduce((sum, s) => {
+    if (s?.paymentMethod === "split") return sum + (Number(s.cashAmount) || 0);
+    if (s?.paymentMethod === "cash") return sum + (Number(s.total) || 0);
+    return sum;
+  }, 0);
+}
+
 function computeDrawerMath(stats) {
   const openingFloat = Number(stats?.openingFloat || 0);
   const cashIn = Number(stats?.cashIn || 0);

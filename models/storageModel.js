@@ -17,6 +17,23 @@ const STORAGE_KEYS = {
 const KITCHEN_COLLECTION = "kitchenOrders";
 const STATS_COLLECTION = "dailyStats";
 
+// Merge order lists de-duplicated by order id (Firestore doc id is the
+// orderId, so queued and synced copies of the same sale collapse to one).
+function mergeOrderLists(...lists) {
+  const merged = [];
+  const seen = new Set();
+  for (const list of lists) {
+    for (const order of Array.isArray(list) ? list : []) {
+      if (!order) continue;
+      const key = String(order?.orderId || order?.id || "");
+      if (key && seen.has(key)) continue;
+      if (key) seen.add(key);
+      merged.push(order);
+    }
+  }
+  return merged;
+}
+
 // ── Daily Stats ──
 
 function todayKey() {
@@ -70,12 +87,20 @@ export async function loadFromStorage() {
     // THIS device's local storage — one terminal's drawer never leaks into
     // another's.
     let localDrawer = {};
+    let localHistory = [];
     try {
       const raw = localStorage.getItem(localStatsKey());
       if (raw) localDrawer = JSON.parse(raw) || {};
     } catch {}
+    try {
+      const raw = localStorage.getItem(localHistoryKey());
+      if (raw) localHistory = JSON.parse(raw) || [];
+    } catch {}
+    // Merge local history into the mirror's instead of letting the mirror
+    // replace it, so orders queued while offline (never mirrored) are not
+    // lost from the drawer on the next load.
     return {
-      salesHistory: firestore.salesHistory,
+      salesHistory: mergeOrderLists(localHistory, firestore.salesHistory),
       dailyStats: {
         ...firestore.dailyStats,
         openingFloat: Number(localDrawer.openingFloat || 0),
