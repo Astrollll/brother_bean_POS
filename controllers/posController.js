@@ -353,15 +353,18 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
 
     // Live-sync daily stats from Firestore so all terminals see shared sales
-    watchTodayOrders((todayOrders) => {
+    watchTodayOrders((todayOrders, metadata) => {
       const now = Date.now();
       const startOfDay = new Date(new Date(now).getFullYear(), new Date(now).getMonth(), new Date(now).getDate()).getTime();
       const endOfDay = startOfDay + 86400000;
 
       const queued = (typeof getQueuedOrders === "function" ? getQueuedOrders() : []).map((q) => q?.payload || q);
-      // A live snapshot means Firestore is authoritative: local copies of
-      // orders deleted on the admin side are dropped (queued ones survive).
-      salesHistory = pruneStaleLocalOrders(salesHistory, todayOrders, queued);
+      // Only a server-confirmed snapshot is authoritative enough to prune:
+      // offline cached snapshots can be stale/partial and would wrongly drop
+      // orders that exist locally but have not been re-received yet.
+      if (!metadata || metadata.fromCache !== true) {
+        salesHistory = pruneStaleLocalOrders(salesHistory, todayOrders, queued);
+      }
       salesHistory = mergeOrderLists(
         salesHistory,
         todayOrders,

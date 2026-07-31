@@ -9,7 +9,9 @@ export function where(field, op, value) { return { field, op, value }; }
 export function limit(n) { return { n }; }
 export function getDocs(q) {
   const slow = /[?&]slowinit=1/.test(location.search) ? 1500 : 0;
-  return new Promise((resolve) => setTimeout(() => {
+  const failOrders = /[?&]initfail=1/.test(location.search) && /\/orders(\/|$)/.test(q?.path || "");
+  return new Promise((resolve, reject) => setTimeout(() => {
+    if (failOrders) return reject(new Error("itest: orders fetch failed (offline)"));
     resolve({ empty: true, docs: [], size: 0 });
   }, slow));
 }
@@ -17,6 +19,10 @@ export function getDoc(ref) {
   return Promise.resolve({ exists: () => false, id: ref.id, data: () => null });
 }
 export function setDoc(ref, data) {
+  if (/[?&]initfail=1/.test(location.search)) {
+    window.__itestSetDocRejects = (window.__itestSetDocRejects || 0) + 1;
+    return Promise.reject(new Error("itest: setDoc failed (offline)"));
+  }
   if (window.__itestWrites) window.__itestWrites.push({ ref: ref.path, data: JSON.parse(JSON.stringify(data)) });
   return Promise.resolve();
 }

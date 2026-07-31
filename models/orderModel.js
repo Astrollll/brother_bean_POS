@@ -133,7 +133,7 @@ export function watchTodayOrders(onChange, onError) {
   return onSnapshot(q, async (snap) => {
     const orders = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     const named = await applyCashierNames(orders);
-    onChange(named);
+    onChange(named, snap.metadata);
   }, onError);
 }
 

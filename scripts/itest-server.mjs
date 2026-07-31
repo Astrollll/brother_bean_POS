@@ -27,6 +27,7 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
 async function run() {
   if (/[?&]slowinit=1/.test(location.search)) return runGuardTest();
+  if (/[?&]initfail=1/.test(location.search)) return runOfflinePruneTest();
   const results = { steps: [], errors: [] };
   const el = (id) => document.getElementById(id);
   const read = (id) => {
@@ -100,7 +101,59 @@ async function run() {
   window.__itestResults = results;
 }
 
-// The Drawer nav button is reachable before the auth/init sequence finishes.
+// Prune behavior with the orders fetch failing (offline-like init):
+// - local stale orders must survive init and CACHED snapshots
+// - a server-confirmed snapshot must prune stale copies but keep queued ones
+// Prune behavior with the orders fetch failing (offline-like init):
+// - local stale orders must survive init and CACHED snapshots
+// - a server-confirmed snapshot must prune stale copies but keep queued ones
+async function runOfflinePruneTest() {
+  const results = { steps: [], mode: "prune", errors: [] };
+  const el = (id) => document.getElementById(id);
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  const read = (id) => {
+    const e = el(id);
+    return e ? { text: e.textContent, value: e.value } : null;
+  };
+  const stats = () => ({ orders: read("todayOrders")?.text, total: read("totalSales")?.text });
+  const step = (name, extra = {}) => results.steps.push([name, { ...stats(), ...extra }]);
+  const seedQueued = () => localStorage.setItem("brotherBean_orderOutbox", JSON.stringify([
+    { id: "q_1", createdAt: Date.now(), payload: { orderId: "queued-order-1", createdAtMs: Date.now(), total: 150, paymentMethod: "cash", status: "paid" } },
+  ]));
+
+  try {
+    const d = new Date();
+    const todayKey = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+    localStorage.setItem("brotherBean_lastResetDate", new Date().toDateString());
+    localStorage.setItem("brotherBean_salesHistory_" + todayKey, JSON.stringify([
+      { orderId: "stale-deleted-order-1", createdAtMs: Date.now(), total: 999, paymentMethod: "cash", status: "paid" },
+    ]));
+    seedQueued();
+  } catch (e) {}
+
+  for (let i = 0; i < 200 && typeof window.askDrawerConfirm !== "function"; i++) await wait(50);
+  for (let i = 0; i < 100 && (window.__itestWrites || []).length === 0; i++) await wait(50);
+  await wait(500);
+  step("init", { rejects: window.__itestSetDocRejects || 0 });
+
+  const fire = (fromCache) => {
+    for (const cb of window.__itestSnapshots || []) cb({ docs: [], metadata: { fromCache } });
+  };
+
+  // Re-seed the queued order (the outbox may have been consumed/mangled by
+  // init flows) so the snapshot handler prunes against a known outbox state.
+  seedQueued();
+  fire(true);
+  await wait(300);
+  step("cachedSnapshot");
+
+  seedQueued();
+  fire(false);
+  await wait(300);
+  step("serverSnapshot");
+
+  window.__itestResults = results;
+}
 // Clicking it must NOT open the modal or persist anything until init has
 // loaded today's stats (the firestore stub is slowed via ?slowinit=1 so the
 // pre-init window is deterministic).
@@ -247,6 +300,38 @@ const server = app.listen(PORT, async () => {
       } else {
         console.log(`FAIL: ${failures.length} guard check(s):`);
         failures.forEach((f) => console.log(`  - ${f}`));
+        failed = true;
+      }
+    }
+
+    // Offline-prune page (orders fetch fails, like starting offline)
+    const prunePage = await browser.newPage();
+    attach(prunePage, "prune");
+    await prunePage.goto(`http://localhost:${PORT}/itest.html?initfail=1`, { waitUntil: "networkidle0", timeout: 60000 });
+    const pruneResults = await waitResults(prunePage);
+    if (!pruneResults) {
+      console.log("FAIL: prune test produced no results");
+      failed = true;
+    } else if (pruneResults.fatal) {
+      console.log(`FAIL (prune): ${pruneResults.fatal}`);
+      failed = true;
+    } else {
+      const pstep = (name) => pruneResults.steps.find((s) => s[0] === name)?.[1];
+      const init = pstep("init");
+      const cached = pstep("cachedSnapshot");
+      const server = pstep("serverSnapshot");
+      const checks = [];
+      const check = (label, cond) => checks.push(cond ? null : label);
+      check("offline-like init keeps local stale + queued orders", init?.orders === "2" && String(init?.total || "").includes("1149"));
+      check("cached snapshot does NOT prune", cached?.orders === "2" && String(cached?.total || "").includes("1149"));
+      check("server snapshot prunes stale but keeps queued", server?.orders === "1" && String(server?.total || "") === "₱150.00" && !String(server?.total || "").includes("999"));
+      const failures = checks.filter(Boolean);
+      if (failures.length === 0) {
+        console.log("PASS: Offline-safe prune checks succeeded.");
+      } else {
+        console.log(`FAIL: ${failures.length} prune check(s):`);
+        failures.forEach((f) => console.log(`  - ${f}`));
+        console.log(`  prune steps: ${JSON.stringify(pruneResults.steps)}`);
         failed = true;
       }
     }
