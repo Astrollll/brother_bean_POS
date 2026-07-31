@@ -46,6 +46,7 @@ let isOnline         = navigator.onLine;
 // Persist today's stats (localStorage + Firestore mirror). Declared at module
 // scope so both the init flow and the drawer block can call it.
 const persistPosState = () => saveToStorage(salesHistory, dailyStats);
+let posReady = false;
 const CART_DENSITY_STORAGE_KEY = "bb-pos-cart-density";
 const UNPAID_ORDER_STORAGE_KEY = "bb-pos-unpaid-order";
 const AUTH_OPERATION_TIMEOUT_MS = 6000;
@@ -237,6 +238,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     const storageData = await loadFromStorage();
     salesHistory = storageData.salesHistory;
     dailyStats = storageData.dailyStats;
+    posReady = true;
 
     if (checkDailyReset()) {
       dailyStats = { orders: 0, totalSales: 0, discountsApplied: 0, cashReceived: 0, gcashReceived: 0, openingFloat: 0, cashIn: 0, cashOut: 0, actualCash: null, cashOnHandAuto: true, ledgerEntries: [] };
@@ -2307,6 +2309,10 @@ function renderDrawerHistory() {
 }
 
 window.openDrawer = function() {
+  if (!posReady) {
+    showToast("Cash drawer is still loading - please wait a moment.", "warning");
+    return;
+  }
   const modal = document.getElementById("drawerModal");
   if (!modal) return;
   renderDrawerModal();

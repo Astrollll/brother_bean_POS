@@ -8,7 +8,10 @@ export function query(q, ...rest) { return q; }
 export function where(field, op, value) { return { field, op, value }; }
 export function limit(n) { return { n }; }
 export function getDocs(q) {
-  return Promise.resolve({ empty: true, docs: [], size: 0 });
+  const slow = /[?&]slowinit=1/.test(location.search) ? 1500 : 0;
+  return new Promise((resolve) => setTimeout(() => {
+    resolve({ empty: true, docs: [], size: 0 });
+  }, slow));
 }
 export function getDoc(ref) {
   return Promise.resolve({ exists: () => false, id: ref.id, data: () => null });

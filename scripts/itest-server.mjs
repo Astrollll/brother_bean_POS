@@ -26,6 +26,7 @@ window.__itestSnapshots = [];
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
 async function run() {
+  if (/[?&]slowinit=1/.test(location.search)) return runGuardTest();
   const results = { steps: [], errors: [] };
   const el = (id) => document.getElementById(id);
   const read = (id) => {
@@ -87,6 +88,43 @@ async function run() {
   window.__itestResults = results;
 }
 
+// The Drawer nav button is reachable before the auth/init sequence finishes.
+// Clicking it must NOT open the modal or persist anything until init has
+// loaded today's stats (the firestore stub is slowed via ?slowinit=1 so the
+// pre-init window is deterministic).
+async function runGuardTest() {
+  const results = { steps: [], mode: "guard", errors: [] };
+  const el = (id) => document.getElementById(id);
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  const openModal = () => {
+    const m = el("drawerModal");
+    return !!m && m.classList.contains("active");
+  };
+
+  for (let i = 0; i < 200 && typeof window.openDrawer !== "function"; i++) await wait(50);
+  const drawerBtn = [...document.querySelectorAll("[onclick]")]
+    .find((b) => (b.getAttribute("onclick") || "").includes("openDrawer"));
+
+  const tClick = Date.now();
+  if (drawerBtn) drawerBtn.click();
+  results.steps.push(["preInitClick", { found: !!drawerBtn, modalOpen: openModal(), wroteBefore: (window.__itestWrites || []).length }]);
+
+  let firstWriteMs = null;
+  for (let i = 0; i < 200; i++) {
+    if ((window.__itestWrites || []).length > 0) { firstWriteMs = Date.now() - tClick; break; }
+    await wait(50);
+  }
+  results.steps.push(["firstWriteDelayMs", firstWriteMs]);
+
+  for (let i = 0; i < 200 && openModal() === false; i++) {
+    window.openDrawer();
+    await wait(100);
+  }
+  results.steps.push(["postInitClick", { modalOpen: openModal() }]);
+
+  window.__itestResults = results;
+}
+
 run().catch((err) => {
   window.__itestResults = { fatal: String(err && err.stack || err) };
 });
@@ -104,23 +142,32 @@ app.use(express.static(ROOT, { index: false }));
 
 const server = app.listen(PORT, async () => {
   const browser = await puppeteer.launch({ headless: "new", args: ["--no-sandbox"] });
-  try {
-    const page = await browser.newPage();
-    page.on("pageerror", (err) => console.log("PAGE ERROR:", err.message));
+  let failed = false;
+  const attach = (page, label) => {
+    page.on("pageerror", (err) => console.log(`[${label}] PAGE ERROR:`, err.message));
     page.on("console", (msg) => {
-      if (msg.type() === "error" || msg.type() === "warn") console.log(`[console.${msg.type()}]`, msg.text().slice(0, 300));
+      if (msg.type() === "error" || msg.type() === "warn") console.log(`[${label}][console.${msg.type()}]`, msg.text().slice(0, 300));
     });
-    await page.goto(`http://localhost:${PORT}/itest.html`, { waitUntil: "networkidle0", timeout: 60000 });
+  };
+  const waitResults = async (page) => {
     for (let i = 0; i < 100 && !await page.evaluate(() => window.__itestResults); i++) {
       await new Promise((r) => setTimeout(r, 100));
     }
-    const results = await page.evaluate(() => window.__itestResults || null);
+    return page.evaluate(() => window.__itestResults || null);
+  };
+
+  try {
+    // Main flow page
+    const page = await browser.newPage();
+    attach(page, "main");
+    await page.goto(`http://localhost:${PORT}/itest.html`, { waitUntil: "networkidle0", timeout: 60000 });
+    const results = await waitResults(page);
     if (!results) {
       console.log("FAIL: itest produced no results");
-      process.exitCode = 1;
+      failed = true;
     } else if (results.fatal) {
       console.log(`FAIL: ${results.fatal}`);
-      process.exitCode = 1;
+      failed = true;
     } else {
       const step = (name) => results.steps.find((s) => s[0] === name)?.[1];
       const checks = [];
@@ -153,11 +200,45 @@ const server = app.listen(PORT, async () => {
       } else {
         console.log(`FAIL: ${failures.length} integration check(s):`);
         failures.forEach((f) => console.log(`  - ${f}`));
-        process.exitCode = 1;
+        failed = true;
+      }
+    }
+
+    // Pre-init guard page (slowed Firestore stub)
+    const guardPage = await browser.newPage();
+    attach(guardPage, "guard");
+    await guardPage.goto(`http://localhost:${PORT}/itest.html?slowinit=1`, { waitUntil: "networkidle0", timeout: 60000 });
+    const guardResults = await waitResults(guardPage);
+    if (!guardResults) {
+      console.log("FAIL: guard test produced no results");
+      failed = true;
+    } else if (guardResults.fatal) {
+      console.log(`FAIL (guard): ${guardResults.fatal}`);
+      failed = true;
+    } else {
+      const gstep = (name) => guardResults.steps.find((s) => s[0] === name)?.[1];
+      const pre = gstep("preInitClick");
+      const delay = gstep("firstWriteDelayMs");
+      const post = gstep("postInitClick");
+      const checks = [];
+      const check = (label, cond) => checks.push(cond ? null : label);
+      check("drawer button exists", pre?.found === true);
+      check("pre-init click blocked (modal stays closed)", pre?.modalOpen === false);
+      check("no writes before init completed", pre?.wroteBefore === 0);
+      check("first persist waited for init", typeof delay === "number" && delay > 1000);
+      check("drawer opens once init completed", post?.modalOpen === true);
+      const failures = checks.filter(Boolean);
+      if (failures.length === 0) {
+        console.log("PASS: Pre-init drawer guard checks succeeded.");
+      } else {
+        console.log(`FAIL: ${failures.length} guard check(s):`);
+        failures.forEach((f) => console.log(`  - ${f}`));
+        failed = true;
       }
     }
   } finally {
     await browser.close();
     server.close();
+    if (failed) process.exitCode = 1;
   }
 });
