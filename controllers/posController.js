@@ -237,7 +237,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     dailyStats = storageData.dailyStats;
 
     if (checkDailyReset()) {
-      dailyStats = { orders: 0, totalSales: 0, discountsApplied: 0, cashReceived: 0, gcashReceived: 0, openingFloat: 0, cashIn: 0, cashOut: 0, actualCash: null, ledgerEntries: [] };
+      dailyStats = { orders: 0, totalSales: 0, discountsApplied: 0, cashReceived: 0, gcashReceived: 0, openingFloat: 0, cashIn: 0, cashOut: 0, actualCash: null, cashOnHandAuto: true, ledgerEntries: [] };
       salesHistory = [];
       showToast("Daily stats reset for new day", "info");
       persistPosState();
@@ -285,6 +285,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       cashIn: Number(dailyStats.cashIn || 0),
       cashOut: Number(dailyStats.cashOut || 0),
       actualCash: dailyStats.actualCash ?? null,
+      cashOnHandAuto: dailyStats.cashOnHandAuto !== false,
       ledgerEntries: Array.isArray(dailyStats.ledgerEntries) ? dailyStats.ledgerEntries : [],
     };
     persistPosState();
@@ -344,6 +345,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         cashIn: Number(dailyStats.cashIn || 0),
         cashOut: Number(dailyStats.cashOut || 0),
         actualCash: dailyStats.actualCash ?? null,
+        cashOnHandAuto: dailyStats.cashOnHandAuto !== false,
         ledgerEntries: Array.isArray(dailyStats.ledgerEntries) ? dailyStats.ledgerEntries : [],
       };
       persistPosState();
@@ -2143,6 +2145,10 @@ function renderDrawerModal() {
     gcashReceived: totals.gcash,
   });
 
+  // The cash on hand follows today's orders automatically unless staff has
+  // recorded a manual count.
+  autoTrackCashOnHand(expected);
+
   setText("drawerCashValue", formatPeso(totals.cash));
   setText("drawerCashTxnValue", String(totals.cashTransactions));
   setText("drawerFloatValue", formatPeso(dailyStats.openingFloat || 0));
@@ -2205,6 +2211,19 @@ function refreshDrawerIfOpen() {
   if (modal && modal.classList.contains("active")) renderDrawerModal();
 }
 
+// Since there is no physical drawer connection, the cash on hand is tracked
+// automatically: it always equals starting cash + today's cash orders + cash
+// in − cash out, live-updated with every order. Staff may still override it
+// with a manual count via "Record count", after which auto-tracking stops.
+function autoTrackCashOnHand(expected) {
+  if (dailyStats.cashOnHandAuto === false) return;
+  const autoValue = Math.round((Number(expected) || 0) * 100) / 100;
+  if (Number(dailyStats.actualCash) !== autoValue) {
+    dailyStats.actualCash = autoValue;
+    persistPosState();
+  }
+}
+
 function renderDrawerVariance(expected) {
   const badge = document.getElementById("drawerVarianceBadge");
   const note = document.getElementById("drawerVarianceNote");
@@ -2215,15 +2234,27 @@ function renderDrawerVariance(expected) {
     ? Number(expected)
     : computeDrawerMath({ ...dailyStats, cashReceived: computeDrawerTotals(salesHistory).cash }).expected;
   const actual = dailyStats.actualCash;
+  // Never overwrite the counted amount while staff is editing it — incidental
+  // re-renders (order sync, stats refresh) must not silently discard typing.
+  const canWriteInput = input && (!input.matches || !input.matches(":focus"));
+  const writeInput = (value) => {
+    if (canWriteInput) input.value = value;
+  };
 
-  // Staff hasn't recorded a count yet: the cash from today's orders is
-  // already added to the drawer, so pre-fill the count with the computed
-  // drawer cash (start cash + cash sales + cash in − cash out).
+  // Auto-tracking active: cash on hand follows the orders automatically.
+  if (dailyStats.cashOnHandAuto !== false) {
+    badge.textContent = "Auto-tracked";
+    badge.className = "bb-drawer-actual-variance is-neutral";
+    if (note) note.textContent = `Cash on hand follows today's orders automatically (${formatPeso(expectedCash)}). Edit and press "Record count" for a manual count.`;
+    writeInput(String(Math.round(expectedCash * 100) / 100));
+    return;
+  }
+
   if (actual === undefined || actual === null || actual === "" || !Number.isFinite(Number(actual))) {
     badge.textContent = "Not recorded";
     badge.className = "bb-drawer-actual-variance is-neutral";
-    if (note) note.textContent = `Cash from today's orders is added automatically (${formatPeso(expectedCash)}). Record the counted cash to confirm.`;
-    if (input) input.value = String(Math.round(expectedCash * 100) / 100);
+    if (note) note.textContent = "No manual count recorded for today.";
+    writeInput("");
     return;
   }
 
@@ -2239,7 +2270,7 @@ function renderDrawerVariance(expected) {
     badge.className = "bb-drawer-actual-variance is-short";
   }
   if (note) note.textContent = `Expected ${formatPeso(expectedCash)} · Counted ${formatPeso(actual)}`;
-  if (input) input.value = String(actual);
+  writeInput(String(actual));
 }
 
 function drawerLedgerEntries() {
@@ -2262,8 +2293,10 @@ function renderDrawerHistory() {
     .map((entry) => {
       const time = new Date(Number(entry.t) || Date.now()).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
       const isIn = entry.kind === "in";
+      const note = entry.note ? `<span class="bb-drawer-history-note">${escapeDrawerText(entry.note)}</span>` : "";
       return `<li class="bb-drawer-history-item ${isIn ? "is-in" : "is-out"}">
         <span class="bb-drawer-history-label">${isIn ? "Cash in" : "Cash out"}</span>
+        ${note}
         <span class="bb-drawer-history-time">${time}</span>
         <span class="bb-drawer-history-amount">${isIn ? "+" : "−"}${formatPeso(entry.amount)}</span>
       </li>`;
@@ -2324,43 +2357,150 @@ window.saveDrawerOpeningFloat = function() {
 
 // Since there is no physical drawer connected to the cashier terminal, the
 // counted cash on hand is entered manually and compared to the expected cash.
-window.recordDrawerActual = function() {
-  const input = document.getElementById("drawerActualInput");
-  const amount = parseFloat(input?.value || "");
-  if (!Number.isFinite(amount) || amount < 0) {
-    showToast("Enter a valid counted amount.", "warning");
-    return;
-  }
-  dailyStats.actualCash = Math.round(amount * 100) / 100;
-  persistPosState();
-  renderDrawerModal();
-  showToast("Cash count recorded.", "success");
-};
+window.recordDrawerActual = function() { askDrawerConfirm("count"); };
+window.drawerCashIn = function() { askDrawerConfirm("in"); };
+window.drawerCashOut = function() { askDrawerConfirm("out"); };
 
-function applyDrawerLedger(kind) {
-  const input = document.getElementById("drawerLedgerAmount");
-  const amount = parseFloat(input?.value || "");
-  if (!Number.isFinite(amount) || amount <= 0) {
-    showToast("Enter a valid amount first.", "warning");
-    return;
+// Draws attention to an input that was used without a valid value (shake +
+// red outline) so the button press never feels like a silent no-op.
+function flagDrawerAttention(el) {
+  if (!el) return;
+  if (el.classList) {
+    el.classList.remove("is-attention");
+    void el.offsetWidth;
+    el.classList.add("is-attention");
+    setTimeout(() => el.classList.remove("is-attention"), 600);
   }
-  const rounded = Math.round(amount * 100) / 100;
-  if (kind === "in") {
-    dailyStats.cashIn = Number(dailyStats.cashIn || 0) + rounded;
-  } else {
-    dailyStats.cashOut = Number(dailyStats.cashOut || 0) + rounded;
-  }
-  const entries = drawerLedgerEntries();
-  entries.push({ t: Date.now(), kind, amount: rounded });
-  if (entries.length > 100) entries.splice(0, entries.length - 100);
-  if (input) input.value = "";
-  persistPosState();
-  renderDrawerModal();
-  showToast(`${kind === "in" ? "Cash in" : "Cash out"} of ₱${rounded.toFixed(2)} recorded.`, "success");
+  if (typeof el.focus === "function") el.focus();
 }
 
-window.drawerCashIn = function() { applyDrawerLedger("in"); };
-window.drawerCashOut = function() { applyDrawerLedger("out"); };
+function escapeDrawerText(value) {
+  return String(value ?? "").replace(/[&<>"']/g, (ch) => (
+    { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]
+  ));
+}
+
+// ── Confirmation popup ──
+// Every drawer mutation (record count, cash in, cash out) goes through a
+// popup: staff sees exactly what will be recorded and taps Record to apply
+// it immediately. Nothing is recorded while the popup is open.
+let drawerPendingConfirm = null;
+
+window.askDrawerConfirm = function(kind) {
+  let amount, note = "";
+  if (kind === "count") {
+    const input = document.getElementById("drawerActualInput");
+    amount = parseFloat(input?.value || "");
+    if (!Number.isFinite(amount) || amount < 0) {
+      flagDrawerAttention(input);
+      showToast("Enter a valid counted amount.", "warning");
+      return;
+    }
+  } else {
+    const input = document.getElementById("drawerLedgerAmount");
+    const noteInput = document.getElementById("drawerLedgerReason");
+    amount = parseFloat(input?.value || "");
+    if (!Number.isFinite(amount) || amount <= 0) {
+      flagDrawerAttention(input);
+      showToast("Enter a valid amount first.", "warning");
+      return;
+    }
+    note = String(noteInput?.value || "").trim().slice(0, 80);
+  }
+
+  const rounded = Math.round(amount * 100) / 100;
+  drawerPendingConfirm = { kind, amount: rounded, note };
+
+  const formatPeso = (n) => `₱${(Number(n) || 0).toFixed(2)}`;
+  const modal = document.getElementById("drawerConfirmModal");
+  const titleEl = document.getElementById("drawerConfirmTitle");
+  const messageEl = document.getElementById("drawerConfirmMessage");
+  const hintEl = document.getElementById("drawerConfirmHint");
+  const okBtn = document.getElementById("drawerConfirmOkBtn");
+  if (!modal || !titleEl || !messageEl || !hintEl || !okBtn) return;
+
+  if (kind === "count") {
+    titleEl.textContent = "Record cash count";
+    messageEl.textContent = `Record counted cash on hand as ${formatPeso(rounded)}?`;
+    const expected = computeDrawerMath({
+      ...dailyStats,
+      cashReceived: computeDrawerTotals(salesHistory).cash,
+    }).expected;
+    hintEl.textContent = dailyStats.cashOnHandAuto !== false
+      ? `Cash on hand is currently auto-tracked at ${formatPeso(expected)}. Recording a manual count switches to manual tracking.`
+      : "";
+  } else {
+    const label = kind === "in" ? "Cash in" : "Cash out";
+    titleEl.textContent = `Record ${label}`;
+    messageEl.textContent = kind === "in"
+      ? `Add ${formatPeso(rounded)} to the cash drawer?`
+      : `Remove ${formatPeso(rounded)} from the cash drawer?`;
+    hintEl.textContent = note ? `Reason: ${note}` : "";
+  }
+  okBtn.classList.toggle("bb-drawer-btn-out", kind === "out");
+  modal.classList.add("active");
+  modal.setAttribute("aria-hidden", "false");
+  okBtn.focus();
+};
+
+window.confirmDrawerAction = function() {
+  const pending = drawerPendingConfirm;
+  if (!pending) return;
+  drawerPendingConfirm = null;
+  closeDrawerConfirmPopup();
+
+  if (pending.kind === "count") {
+    dailyStats.actualCash = pending.amount;
+    dailyStats.cashOnHandAuto = false;
+  } else {
+    if (pending.kind === "in") {
+      dailyStats.cashIn = Number(dailyStats.cashIn || 0) + pending.amount;
+    } else {
+      dailyStats.cashOut = Number(dailyStats.cashOut || 0) + pending.amount;
+    }
+    const entries = drawerLedgerEntries();
+    entries.push({ t: Date.now(), kind: pending.kind, amount: pending.amount, ...(pending.note ? { note: pending.note } : {}) });
+    if (entries.length > 100) entries.splice(0, entries.length - 100);
+    const input = document.getElementById("drawerLedgerAmount");
+    const noteInput = document.getElementById("drawerLedgerReason");
+    if (input) input.value = "";
+    if (noteInput) noteInput.value = "";
+  }
+
+  persistPosState();
+  renderDrawerModal();
+  const label = pending.kind === "in" ? "Cash in" : pending.kind === "out" ? "Cash out" : "Cash count";
+  showToast(`${label} of ₱${pending.amount.toFixed(2)} recorded.`, "success");
+};
+
+window.cancelDrawerConfirm = function() {
+  drawerPendingConfirm = null;
+  closeDrawerConfirmPopup();
+};
+
+function closeDrawerConfirmPopup() {
+  const modal = document.getElementById("drawerConfirmModal");
+  if (!modal) return;
+  modal.classList.remove("active");
+  modal.setAttribute("aria-hidden", "true");
+}
+
+// Escape closes the popup first (before the drawer modal), Enter records.
+document.addEventListener("keydown", (e) => {
+  const popup = document.getElementById("drawerConfirmModal");
+  if (!popup || !popup.classList.contains("active")) return;
+  if (e.key === "Escape") {
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    cancelDrawerConfirm();
+  } else if (e.key === "Enter") {
+    const tag = document.activeElement?.tagName?.toLowerCase();
+    if (tag !== "button") {
+      e.preventDefault();
+      confirmDrawerAction();
+    }
+  }
+}, true);
 // ── END DRAWER MATH ──
 
 window.closeDrawerModal = function() {

@@ -107,6 +107,7 @@ export async function loadFromStorage() {
         cashIn: Number(localDrawer.cashIn || 0),
         cashOut: Number(localDrawer.cashOut || 0),
         actualCash: localDrawer.actualCash ?? null,
+        cashOnHandAuto: localDrawer.cashOnHandAuto !== false,
         ledgerEntries: Array.isArray(localDrawer.ledgerEntries) ? localDrawer.ledgerEntries : [],
       },
     };
@@ -119,11 +120,11 @@ export async function loadFromStorage() {
 
     return {
       salesHistory: history ? JSON.parse(history) : [],
-      dailyStats:   stats ? JSON.parse(stats) : { orders: 0, totalSales: 0, discountsApplied: 0, cashReceived: 0, gcashReceived: 0, openingFloat: 0, cashIn: 0, cashOut: 0, actualCash: null, ledgerEntries: [] },
+      dailyStats:   stats ? JSON.parse(stats) : { orders: 0, totalSales: 0, discountsApplied: 0, cashReceived: 0, gcashReceived: 0, openingFloat: 0, cashIn: 0, cashOut: 0, actualCash: null, cashOnHandAuto: true, ledgerEntries: [] },
     };
   } catch (e) {
     console.error("Storage load failed:", e);
-    return { salesHistory: [], dailyStats: { orders: 0, totalSales: 0, discountsApplied: 0, cashReceived: 0, gcashReceived: 0, openingFloat: 0, cashIn: 0, cashOut: 0, actualCash: null, ledgerEntries: [] } };
+    return { salesHistory: [], dailyStats: { orders: 0, totalSales: 0, discountsApplied: 0, cashReceived: 0, gcashReceived: 0, openingFloat: 0, cashIn: 0, cashOut: 0, actualCash: null, cashOnHandAuto: true, ledgerEntries: [] } };
   }
 }
 
@@ -137,7 +138,7 @@ export async function loadStatsFromFirestore() {
       const data = snap.docs[0].data();
       return {
         salesHistory: Array.isArray(data?.salesHistory) ? data.salesHistory : [],
-        dailyStats: data?.dailyStats || { orders: 0, totalSales: 0, discountsApplied: 0, cashReceived: 0, gcashReceived: 0, openingFloat: 0, cashIn: 0, cashOut: 0, actualCash: null, ledgerEntries: [] },
+        dailyStats: data?.dailyStats || { orders: 0, totalSales: 0, discountsApplied: 0, cashReceived: 0, gcashReceived: 0, openingFloat: 0, cashIn: 0, cashOut: 0, actualCash: null, cashOnHandAuto: true, ledgerEntries: [] },
       };
     }
   } catch (error) {

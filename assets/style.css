@@ -5290,6 +5290,41 @@ body[data-cart-density="compact"] .cart-section .checkout-btn {
   padding: 16px 22px 20px;
 }
 
+#drawerConfirmModal.modal-overlay {
+  z-index: 1100;
+  align-items: center;
+  justify-content: center;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: clamp(14px, 3vh, 28px) clamp(12px, 3vw, 24px);
+}
+
+#drawerConfirmModal .bb-mini-modal {
+  width: min(420px, 100%);
+  max-width: 420px;
+  border-radius: 20px;
+  box-shadow: 0 24px 56px rgba(17, 24, 39, 0.32);
+}
+
+.bb-drawer-confirm-message {
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--text-primary);
+}
+
+.bb-drawer-confirm-hint {
+  margin-top: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.bb-drawer-confirm-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
 .bb-drawer-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -5404,6 +5439,32 @@ body[data-cart-density="compact"] .cart-section .checkout-btn {
   font-size: 12px;
   font-weight: 700;
   color: var(--text-muted);
+}
+
+.bb-drawer-reason {
+  margin-top: 8px;
+  font-weight: 600;
+}
+
+.bb-drawer-btn.is-confirming {
+  background: linear-gradient(135deg, #B91C1C, #DC2626);
+  animation: bb-confirm-pulse 1s ease-in-out infinite;
+}
+
+@keyframes bb-confirm-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.45); }
+  50% { box-shadow: 0 0 0 6px rgba(220, 38, 38, 0); }
+}
+
+.bb-drawer-input.is-attention {
+  border-color: rgba(220, 38, 38, 0.75);
+  animation: bb-attention-shake 0.4s ease-in-out;
+}
+
+@keyframes bb-attention-shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-4px); }
+  75% { transform: translateX(4px); }
 }
 
 .bb-drawer-tabs {
@@ -5570,6 +5631,16 @@ body[data-cart-density="compact"] .cart-section .checkout-btn {
   font-size: 11px;
   font-weight: 700;
   color: var(--text-muted);
+}
+
+.bb-drawer-history-note {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 130px;
 }
 
 .bb-drawer-history-amount {

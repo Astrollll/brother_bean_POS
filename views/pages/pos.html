@@ -824,9 +824,9 @@
                   class="bb-drawer-input"
                   placeholder="Enter counted cash"
                 />
-                <button type="button" class="bb-drawer-btn" onclick="recordDrawerActual()">Record count</button>
+                <button type="button" class="bb-drawer-btn" onclick="askDrawerConfirm('count')">Record count</button>
               </div>
-              <div class="bb-drawer-ledger-note" id="drawerVarianceNote">Cash from today's orders is added automatically. Record the counted cash to confirm.</div>
+              <div class="bb-drawer-ledger-note" id="drawerVarianceNote">Cash on hand follows today's orders automatically. Edit to record a manual count.</div>
             </div>
 
             <div class="bb-drawer-ledger">
@@ -839,9 +839,16 @@
                 class="bb-drawer-input"
                 placeholder="Amount"
               />
-              <button type="button" class="bb-drawer-btn" onclick="drawerCashIn()">+ Cash in</button>
-              <button type="button" class="bb-drawer-btn bb-drawer-btn-out" onclick="drawerCashOut()">&minus; Cash out</button>
+              <button type="button" class="bb-drawer-btn" onclick="askDrawerConfirm('in')">+ Cash in</button>
+              <button type="button" class="bb-drawer-btn bb-drawer-btn-out" id="drawerCashOutBtn" onclick="askDrawerConfirm('out')">&minus; Cash out</button>
             </div>
+            <input
+              type="text"
+              maxlength="80"
+              id="drawerLedgerReason"
+              class="bb-drawer-input bb-drawer-reason"
+              placeholder="Note (optional) — e.g. change top-up, cash pick-up"
+            />
             <div class="bb-drawer-ledger-note" id="drawerLedgerNote">Cash in ₱0.00 &middot; Cash out ₱0.00</div>
             <ul class="bb-drawer-history" id="drawerHistoryList" aria-label="Drawer ledger history"></ul>
             <div class="bb-drawer-orders-head" id="drawerCashOrdersHead">Today's cash orders</div>
@@ -883,6 +890,40 @@
           >
             Close
           </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Drawer Confirm Popup -->
+    <div class="modal-overlay bb-drawer-confirm" id="drawerConfirmModal" aria-hidden="true">
+      <div
+        class="modal bb-modal bb-mini-modal"
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="drawerConfirmTitle"
+        aria-describedby="drawerConfirmMessage"
+      >
+        <div class="bb-modal-header">
+          <div class="bb-modal-title-wrap">
+            <div class="bb-modal-kicker">Cash drawer</div>
+            <div class="bb-modal-title" id="drawerConfirmTitle">Confirm entry</div>
+          </div>
+          <button
+            class="bb-icon-btn"
+            type="button"
+            onclick="cancelDrawerConfirm()"
+            aria-label="Close"
+          >
+            &times;
+          </button>
+        </div>
+        <div class="bb-modal-body">
+          <div class="bb-drawer-confirm-message" id="drawerConfirmMessage"></div>
+          <div class="bb-drawer-confirm-hint" id="drawerConfirmHint"></div>
+        </div>
+        <div class="bb-modal-footer bb-drawer-confirm-actions">
+          <button type="button" class="bb-drawer-btn" onclick="cancelDrawerConfirm()">Cancel</button>
+          <button type="button" class="bb-drawer-btn" id="drawerConfirmOkBtn" onclick="confirmDrawerAction()">Record</button>
         </div>
       </div>
     </div>
