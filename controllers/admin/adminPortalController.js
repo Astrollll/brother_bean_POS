@@ -7,7 +7,7 @@ import { getAdminSettings, saveAdminSettings, getDefaultSettings } from "../../m
 import { getUserRole, getUserProfile, listUsers, setUserRole, setUserProfile, ensureAdminAccessProfile } from "../../models/userModel.js";
 import { getMenuItems, saveMenuItem, deleteMenuItem, clearMenuItems } from "../../models/menuModel.js";
 import { getCategories, saveCategory, deleteCategory, getCategoryIconForName } from "../../models/categoryModel.js";
-import { getTodayOrders, getAllSalesOrders, deleteOrder, clearAllOrders, getPendingOrderCount, getQueuedOrders, syncQueuedOrders } from "../../models/orderModel.js?v=20260710A";
+import { getTodayOrders, getAllSalesOrders, deleteOrder, clearAllOrders, getPendingOrderCount, getQueuedOrders, syncQueuedOrders } from "../../models/orderModel.js?v=20260710B";
 import { getSavedSalesHistory } from "../../models/storageModel.js";
 import { resetDay as archiveResetDay } from "../../models/resetModel.js";
 import { getInventoryItems, saveInventoryItem, deleteInventoryItem, clearInventoryItems, convertQuantityBetweenUnits, normalizeUnit } from "../../models/inventoryModel.js";

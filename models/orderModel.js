@@ -209,6 +209,8 @@ export async function getAllSalesOrders(fromDate = null, toDate = null) {
       return true;
     });
 
+    await repairOrderTimestamps(filtered);
+
     return applyCashierNames(filtered.sort((a, b) => {
       const aMs = a.createdAt?.toDate ? a.createdAt.toDate().getTime() : (a.createdAtMs || 0);
       const bMs = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : (b.createdAtMs || 0);
@@ -218,6 +220,50 @@ export async function getAllSalesOrders(fromDate = null, toDate = null) {
     console.warn("[Orders] collectionGroup sales query failed; falling back to active orders.", error);
     return getAllOrders(fromDate, toDate);
   }
+}
+
+// Repair legacy/queued order docs whose createdAt/paidAt were stored as
+// ISO strings (or are missing) so Timestamp range queries like
+// getTodayOrders() can find them. Active collection orders only.
+export async function repairOrderTimestamps(orders) {
+  if (!Array.isArray(orders)) return { fixed: 0 };
+  const broken = orders.filter((order) => {
+    if (!order || order.archivedFrom) return false;
+    const id = String(order.orderId || order.id || "");
+    if (!id) return false;
+    const createdAt = order.createdAt;
+    const paidAt = order.paidAt;
+    return (
+      typeof createdAt === "string" ||
+      typeof paidAt === "string" ||
+      (!createdAt && Number(order.createdAtMs) > 0)
+    );
+  });
+  if (!broken.length) return { fixed: 0 };
+
+  let fixed = 0;
+  await Promise.all(broken.map(async (order) => {
+    const id = String(order.orderId || order.id || "");
+    const patch = {};
+    for (const key of ["createdAt", "paidAt"]) {
+      const value = order[key];
+      if (typeof value === "string") {
+        const parsed = new Date(value);
+        if (!Number.isNaN(parsed.getTime())) patch[key] = Timestamp.fromDate(parsed);
+      }
+    }
+    if (!patch.createdAt && Number(order.createdAtMs) > 0) {
+      patch.createdAt = Timestamp.fromMillis(Number(order.createdAtMs));
+    }
+    if (!Object.keys(patch).length) return;
+    try {
+      await updateDoc(doc(db, ORDERS_COLLECTION, id), patch);
+      fixed += 1;
+    } catch (error) {
+      console.warn(`[Orders] failed to repair createdAt for ${id}:`, error);
+    }
+  }));
+  return { fixed };
 }
 
 export async function deleteOrder(orderId) {
@@ -319,6 +365,25 @@ export async function saveOrder(cart, total, subtotal, paymentMethod, isPwdSenio
   };
 }
 
+function normalizePayloadDates(payload) {
+  const copy = { ...(payload || {}) };
+  for (const key of ["createdAt", "paidAt"]) {
+    const value = copy[key];
+    if (!value) continue;
+    if (typeof value.toDate === "function") continue; // already a Timestamp
+    if (typeof value === "string") {
+      const parsed = new Date(value);
+      if (!Number.isNaN(parsed.getTime())) copy[key] = Timestamp.fromDate(parsed);
+    } else if (value instanceof Date) {
+      copy[key] = Timestamp.fromDate(value);
+    }
+  }
+  if (!copy.createdAt && Number(copy.createdAtMs) > 0) {
+    copy.createdAt = Timestamp.fromMillis(Number(copy.createdAtMs));
+  }
+  return copy;
+}
+
 export async function syncQueuedOrders() {
   const outbox = getOrderOutbox();
   if (!outbox.length) return { synced: 0, pending: 0 };
@@ -328,12 +393,13 @@ export async function syncQueuedOrders() {
   let deductionFailures = 0;
   for (const item of outbox) {
     try {
-      const payloadOrderId = String(item.payload?.orderId || item.id || Date.now());
+      const payload = normalizePayloadDates(item.payload);
+      const payloadOrderId = String(payload.orderId || item.id || Date.now());
       const orderRef = doc(db, ORDERS_COLLECTION, payloadOrderId);
-      await setDoc(orderRef, item.payload);
+      await setDoc(orderRef, payload);
 
       try {
-        const payloadItems = Array.isArray(item.payload?.items) ? item.payload.items : [];
+        const payloadItems = Array.isArray(payload.items) ? payload.items : [];
         const inventoryAlerts = [];
         const inventoryDeductions = [];
         for (const soldItem of payloadItems) {
