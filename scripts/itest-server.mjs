@@ -34,16 +34,28 @@ async function run() {
     return e ? { text: e.textContent, value: e.value, html: e.innerHTML } : null;
   };
 
+  // Seed a "stale deleted" order BEFORE init reads storage: an order that
+  // exists only in this terminal's localStorage (deleted on the admin side)
+  // must be pruned at init, not counted in the dashboard.
+  try {
+    const d = new Date();
+    const todayKey = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+    localStorage.setItem("brotherBean_lastResetDate", new Date().toDateString());
+    localStorage.setItem("brotherBean_salesHistory_" + todayKey, JSON.stringify([
+      { orderId: "stale-deleted-order-1", createdAtMs: Date.now(), total: 999, paymentMethod: "cash", status: "paid" },
+    ]));
+  } catch (e) {}
+
   for (let i = 0; i < 200 && typeof window.askDrawerConfirm !== "function"; i++) await wait(50);
   if (typeof window.askDrawerConfirm !== "function") {
     results.fatal = "handlers never attached";
     window.__itestResults = results;
     return;
   }
-  await wait(500);
+  for (let i = 0; i < 100 && (window.__itestWrites || []).length === 0; i++) await wait(50);
 
   window.openDrawer();
-  results.steps.push(["initial", read("drawerVarianceBadge")]);
+  results.steps.push(["initial", { badge: read("drawerVarianceBadge"), stats: { orders: read("todayOrders"), total: read("totalSales") } }]);
 
   // Set starting cash via the real UI
   window.toggleDrawerFloatEdit();
@@ -172,6 +184,7 @@ const server = app.listen(PORT, async () => {
       const step = (name) => results.steps.find((s) => s[0] === name)?.[1];
       const checks = [];
       const check = (label, cond) => checks.push(cond ? null : label);
+      const initial = step("initial");
       const popup = step("popupCount");
       const afterCount = step("afterCount");
       const afterIn = step("afterIn");
@@ -179,6 +192,7 @@ const server = app.listen(PORT, async () => {
       const afterCancel = step("afterCancel");
       const lastWrite = step("mirrorWrites")?.slice(-1)[0]?.dailyStats;
       const local = step("localStorageStats");
+      check("stale deleted order pruned at init", String(initial?.stats?.orders?.text) === "0" && !String(initial?.stats?.total?.text).includes("999"));
       check("popup opened for record count", popup?.open === true);
       check("popup message shows amount", String(popup?.msg || "").includes("₱3500.00"));
       check("badge updated immediately after confirm", String(afterCount?.badge?.text || "").startsWith("Overage"));

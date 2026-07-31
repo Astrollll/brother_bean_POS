@@ -47,6 +47,22 @@ let isOnline         = navigator.onLine;
 // scope so both the init flow and the drawer block can call it.
 const persistPosState = () => saveToStorage(salesHistory, dailyStats);
 let posReady = false;
+
+// Admin deletions in Firestore are authoritative. A local order copy is kept
+// only when the order is still in today's Firestore feed or still queued for
+// offline sync; anything else is a stale local copy (deleted elsewhere) and
+// must not inflate the dashboard totals.
+function pruneStaleLocalOrders(orders, authoritative, queued) {
+  const known = new Set();
+  for (const o of [...authoritative, ...queued]) {
+    const key = String(o?.orderId || o?.id || "");
+    if (key) known.add(key);
+  }
+  return orders.filter((o) => {
+    const key = String(o?.orderId || o?.id || "");
+    return !key || known.has(key);
+  });
+}
 const CART_DENSITY_STORAGE_KEY = "bb-pos-cart-density";
 const UNPAID_ORDER_STORAGE_KEY = "bb-pos-unpaid-order";
 const AUTH_OPERATION_TIMEOUT_MS = 6000;
@@ -262,14 +278,25 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
 
     let todayOrders = [];
+    let todayOrdersFetched = false;
     try {
       const firestoreOrders = await getTodayOrders();
       todayOrders = (Array.isArray(firestoreOrders) ? firestoreOrders : []).filter(o => {
         const ts = getSaleTimestampMs(o);
         return ts >= startOfDay && ts < endOfDay;
       });
+      todayOrdersFetched = true;
     } catch (err) {
       console.warn("[POS] Failed to fetch today's orders from Firestore:", err);
+    }
+    // Only prune when Firestore was reachable: offline, cached local orders
+    // are still the best view available and must not be dropped.
+    if (todayOrdersFetched) {
+      salesHistory = pruneStaleLocalOrders(
+        salesHistory,
+        todayOrders,
+        (typeof getQueuedOrders === "function" ? getQueuedOrders() : []).map((q) => q?.payload || q)
+      );
     }
     salesHistory = mergeOrderLists(
       salesHistory,
@@ -331,10 +358,14 @@ document.addEventListener("DOMContentLoaded", async () => {
       const startOfDay = new Date(new Date(now).getFullYear(), new Date(now).getMonth(), new Date(now).getDate()).getTime();
       const endOfDay = startOfDay + 86400000;
 
+      const queued = (typeof getQueuedOrders === "function" ? getQueuedOrders() : []).map((q) => q?.payload || q);
+      // A live snapshot means Firestore is authoritative: local copies of
+      // orders deleted on the admin side are dropped (queued ones survive).
+      salesHistory = pruneStaleLocalOrders(salesHistory, todayOrders, queued);
       salesHistory = mergeOrderLists(
         salesHistory,
         todayOrders,
-        (typeof getQueuedOrders === "function" ? getQueuedOrders() : []).map((q) => q?.payload || q)
+        queued
       ).filter(o => {
         const ts = getSaleTimestampMs(o);
         return ts >= startOfDay && ts < endOfDay;
