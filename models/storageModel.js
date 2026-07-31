@@ -106,6 +106,8 @@ export async function loadFromStorage() {
         openingFloat: Number(localDrawer.openingFloat || 0),
         cashIn: Number(localDrawer.cashIn || 0),
         cashOut: Number(localDrawer.cashOut || 0),
+        actualCash: localDrawer.actualCash ?? null,
+        ledgerEntries: Array.isArray(localDrawer.ledgerEntries) ? localDrawer.ledgerEntries : [],
       },
     };
   }
@@ -117,11 +119,11 @@ export async function loadFromStorage() {
 
     return {
       salesHistory: history ? JSON.parse(history) : [],
-      dailyStats:   stats ? JSON.parse(stats) : { orders: 0, totalSales: 0, discountsApplied: 0, cashReceived: 0, openingFloat: 0, cashIn: 0, cashOut: 0 },
+      dailyStats:   stats ? JSON.parse(stats) : { orders: 0, totalSales: 0, discountsApplied: 0, cashReceived: 0, gcashReceived: 0, openingFloat: 0, cashIn: 0, cashOut: 0, actualCash: null, ledgerEntries: [] },
     };
   } catch (e) {
     console.error("Storage load failed:", e);
-    return { salesHistory: [], dailyStats: { orders: 0, totalSales: 0, discountsApplied: 0, cashReceived: 0, openingFloat: 0, cashIn: 0, cashOut: 0 } };
+    return { salesHistory: [], dailyStats: { orders: 0, totalSales: 0, discountsApplied: 0, cashReceived: 0, gcashReceived: 0, openingFloat: 0, cashIn: 0, cashOut: 0, actualCash: null, ledgerEntries: [] } };
   }
 }
 
@@ -135,7 +137,7 @@ export async function loadStatsFromFirestore() {
       const data = snap.docs[0].data();
       return {
         salesHistory: Array.isArray(data?.salesHistory) ? data.salesHistory : [],
-        dailyStats: data?.dailyStats || { orders: 0, totalSales: 0, discountsApplied: 0, cashReceived: 0, openingFloat: 0, cashIn: 0, cashOut: 0 },
+        dailyStats: data?.dailyStats || { orders: 0, totalSales: 0, discountsApplied: 0, cashReceived: 0, gcashReceived: 0, openingFloat: 0, cashIn: 0, cashOut: 0, actualCash: null, ledgerEntries: [] },
       };
     }
   } catch (error) {

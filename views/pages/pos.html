@@ -753,53 +753,126 @@
         </div>
 
         <div class="bb-modal-body">
-          <div class="bb-drawer-grid">
-            <div class="bb-drawer-card">
-              <div class="bb-drawer-label">Cash from sales</div>
-              <div class="bb-drawer-value" id="drawerCashValue">₱0.00</div>
+          <div class="bb-drawer-tabs" role="tablist" aria-label="Drawer views">
+            <button
+              type="button"
+              role="tab"
+              class="bb-drawer-tab is-active"
+              id="drawerTabCash"
+              aria-selected="true"
+              onclick="drawerSwitchTab('cash')"
+            >Cash</button>
+            <button
+              type="button"
+              role="tab"
+              class="bb-drawer-tab"
+              id="drawerTabGcash"
+              aria-selected="false"
+              onclick="drawerSwitchTab('gcash')"
+            >GCash</button>
+          </div>
+
+          <div class="bb-drawer-pane is-active" id="drawerPaneCash" data-drawer-pane="cash">
+            <div class="bb-drawer-grid">
+              <div class="bb-drawer-card">
+                <div class="bb-drawer-label">Cash sales today</div>
+                <div class="bb-drawer-value" id="drawerCashValue">₱0.00</div>
+                <div class="bb-drawer-expected-sub">from today's orders</div>
+              </div>
+              <div class="bb-drawer-card">
+                <div class="bb-drawer-label">Cash transactions</div>
+                <div class="bb-drawer-value" id="drawerCashTxnValue">0</div>
+                <div class="bb-drawer-expected-sub">from today's orders</div>
+              </div>
+              <div class="bb-drawer-card">
+                <div class="bb-drawer-label">Starting cash</div>
+                <div class="bb-drawer-value" id="drawerFloatValue">₱0.00</div>
+                <div class="bb-drawer-expected-sub">change money in the drawer at day start</div>
+                <div class="bb-drawer-inline" id="drawerFloatEdit">
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    inputmode="decimal"
+                    id="drawerFloatInput"
+                    class="bb-drawer-input"
+                    placeholder="0.00"
+                  />
+                  <button type="button" class="bb-drawer-btn" onclick="saveDrawerOpeningFloat()">Save</button>
+                </div>
+                <button type="button" class="bb-drawer-link-btn" id="drawerFloatEditBtn" onclick="toggleDrawerFloatEdit()">Set / Edit</button>
+              </div>
+              <div class="bb-drawer-card bb-drawer-expected">
+                <div class="bb-drawer-label">Expected cash</div>
+                <div class="bb-drawer-value" id="drawerExpectedValue">₱0.00</div>
+                <div class="bb-drawer-expected-sub">start cash + cash sales + cash in &minus; cash out</div>
+              </div>
             </div>
-            <div class="bb-drawer-card">
-              <div class="bb-drawer-label">Transactions today</div>
-              <div class="bb-drawer-value" id="drawerTxnValue">0</div>
-            </div>
-            <div class="bb-drawer-card">
-              <div class="bb-drawer-label">Opening float</div>
-              <div class="bb-drawer-value" id="drawerFloatValue">₱0.00</div>
-              <div class="bb-drawer-inline" id="drawerFloatEdit">
+
+            <div class="bb-drawer-actual">
+              <div class="bb-drawer-actual-head">
+                <span class="bb-drawer-actual-title">Cash on hand (actual count)</span>
+                <span class="bb-drawer-actual-variance is-neutral" id="drawerVarianceBadge">Not recorded</span>
+              </div>
+              <div class="bb-drawer-actual-row">
                 <input
                   type="number"
                   min="0"
                   step="0.01"
                   inputmode="decimal"
-                  id="drawerFloatInput"
+                  id="drawerActualInput"
                   class="bb-drawer-input"
-                  placeholder="0.00"
+                  placeholder="Enter counted cash"
                 />
-                <button type="button" class="bb-drawer-btn" onclick="saveDrawerOpeningFloat()">Save</button>
+                <button type="button" class="bb-drawer-btn" onclick="recordDrawerActual()">Record count</button>
               </div>
-              <button type="button" class="bb-drawer-link-btn" id="drawerFloatEditBtn" onclick="toggleDrawerFloatEdit()">Set / Edit</button>
+              <div class="bb-drawer-ledger-note" id="drawerVarianceNote">Cash from today's orders is added automatically. Record the counted cash to confirm.</div>
             </div>
-            <div class="bb-drawer-card bb-drawer-expected">
-              <div class="bb-drawer-label">Expected cash</div>
-              <div class="bb-drawer-value" id="drawerExpectedValue">₱0.00</div>
-              <div class="bb-drawer-expected-sub">float + cash sales + cash in &minus; cash out</div>
+
+            <div class="bb-drawer-ledger">
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                inputmode="decimal"
+                id="drawerLedgerAmount"
+                class="bb-drawer-input"
+                placeholder="Amount"
+              />
+              <button type="button" class="bb-drawer-btn" onclick="drawerCashIn()">+ Cash in</button>
+              <button type="button" class="bb-drawer-btn bb-drawer-btn-out" onclick="drawerCashOut()">&minus; Cash out</button>
             </div>
+            <div class="bb-drawer-ledger-note" id="drawerLedgerNote">Cash in ₱0.00 &middot; Cash out ₱0.00</div>
+            <ul class="bb-drawer-history" id="drawerHistoryList" aria-label="Drawer ledger history"></ul>
+            <div class="bb-drawer-orders-head" id="drawerCashOrdersHead">Today's cash orders</div>
+            <ul class="bb-drawer-history bb-drawer-orders-list" id="drawerCashOrdersList" aria-label="Today's cash orders"></ul>
           </div>
 
-          <div class="bb-drawer-ledger">
-            <input
-              type="number"
-              min="0"
-              step="0.01"
-              inputmode="decimal"
-              id="drawerLedgerAmount"
-              class="bb-drawer-input"
-              placeholder="Amount"
-            />
-            <button type="button" class="bb-drawer-btn" onclick="drawerCashIn()">+ Cash in</button>
-            <button type="button" class="bb-drawer-btn bb-drawer-btn-out" onclick="drawerCashOut()">&minus; Cash out</button>
+          <div class="bb-drawer-pane" id="drawerPaneGcash" data-drawer-pane="gcash">
+            <div class="bb-drawer-grid">
+              <div class="bb-drawer-card">
+                <div class="bb-drawer-label">GCash sales today</div>
+                <div class="bb-drawer-value" id="drawerGcashValue">₱0.00</div>
+                <div class="bb-drawer-expected-sub">from today's orders</div>
+              </div>
+              <div class="bb-drawer-card">
+                <div class="bb-drawer-label">GCash transactions</div>
+                <div class="bb-drawer-value" id="drawerGcashTxnValue">0</div>
+                <div class="bb-drawer-expected-sub">from today's orders</div>
+              </div>
+              <div class="bb-drawer-card">
+                <div class="bb-drawer-label">Expected GCash</div>
+                <div class="bb-drawer-value" id="drawerExpectedGcashValue">₱0.00</div>
+                <div class="bb-drawer-expected-sub">GCash sales &minus; GCash refunds</div>
+              </div>
+              <div class="bb-drawer-card bb-drawer-expected">
+                <div class="bb-drawer-label">Total paid sales today</div>
+                <div class="bb-drawer-value" id="drawerTotalSalesValue">₱0.00</div>
+                <div class="bb-drawer-expected-sub">cash + GCash, from today's orders</div>
+              </div>
+            </div>
+            <div class="bb-drawer-ledger-note">GCash totals are read from today's orders &mdash; no manual adjustments needed.</div>
           </div>
-          <div class="bb-drawer-ledger-note" id="drawerLedgerNote">Cash in ₱0.00 &middot; Cash out ₱0.00</div>
         </div>
 
         <div class="bb-modal-footer">

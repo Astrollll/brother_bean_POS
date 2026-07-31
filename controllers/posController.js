@@ -237,7 +237,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     dailyStats = storageData.dailyStats;
 
     if (checkDailyReset()) {
-      dailyStats = { orders: 0, totalSales: 0, discountsApplied: 0, cashReceived: 0, openingFloat: 0, cashIn: 0, cashOut: 0 };
+      dailyStats = { orders: 0, totalSales: 0, discountsApplied: 0, cashReceived: 0, gcashReceived: 0, openingFloat: 0, cashIn: 0, cashOut: 0, actualCash: null, ledgerEntries: [] };
       salesHistory = [];
       showToast("Daily stats reset for new day", "info");
       persistPosState();
@@ -280,9 +280,12 @@ document.addEventListener("DOMContentLoaded", async () => {
       totalSales: salesHistory.reduce((sum, s) => sum + (Number(s.total) || 0), 0),
       discountsApplied: salesHistory.filter(s => s.isPwdSenior || s.discount).length,
       cashReceived: computeDrawerCashReceived(salesHistory),
+      gcashReceived: computeDrawerGcashReceived(salesHistory),
       openingFloat: Number(dailyStats.openingFloat || 0),
       cashIn: Number(dailyStats.cashIn || 0),
       cashOut: Number(dailyStats.cashOut || 0),
+      actualCash: dailyStats.actualCash ?? null,
+      ledgerEntries: Array.isArray(dailyStats.ledgerEntries) ? dailyStats.ledgerEntries : [],
     };
     persistPosState();
 
@@ -336,12 +339,16 @@ document.addEventListener("DOMContentLoaded", async () => {
         totalSales: salesHistory.reduce((sum, s) => sum + (Number(s.total) || 0), 0),
         discountsApplied: salesHistory.filter(s => s.isPwdSenior || s.discount).length,
         cashReceived: computeDrawerCashReceived(salesHistory),
+        gcashReceived: computeDrawerGcashReceived(salesHistory),
         openingFloat: Number(dailyStats.openingFloat || 0),
         cashIn: Number(dailyStats.cashIn || 0),
         cashOut: Number(dailyStats.cashOut || 0),
+        actualCash: dailyStats.actualCash ?? null,
+        ledgerEntries: Array.isArray(dailyStats.ledgerEntries) ? dailyStats.ledgerEntries : [],
       };
       persistPosState();
       updateStats();
+      refreshDrawerIfOpen();
     }, (error) => {
       console.warn("[POS] Order listener failed:", error);
     });
@@ -1712,9 +1719,13 @@ window.completePayment = async function() {
       dailyStats.cashReceived += total;
     } else if (paymentMethod === "split") {
       dailyStats.cashReceived += Number(cashAmount) || 0;
+      dailyStats.gcashReceived += Number(gcashAmount) || 0;
+    } else if (paymentMethod === "gcash") {
+      dailyStats.gcashReceived += total;
     }
     salesHistory.push(sale);
     saveToStorage(salesHistory, dailyStats);
+    refreshDrawerIfOpen();
 
     // Generate receipt
     generateReceipt({ ...sale, items: cart, amountTendered, change: amountTendered - total });
@@ -2039,25 +2050,71 @@ function mergeOrderLists(...lists) {
   return merged;
 }
 
-// Cash actually received from sales: full cash sales plus the cash portion of
-// split payments. Employee and e-wallet sales are excluded. Queued (offline)
-// orders are included so the drawer stays accurate until they sync.
-function computeDrawerCashReceived(orders) {
+function drawerPaymentMethod(order) {
+  return String(order?.paymentMethod || "cash").toLowerCase();
+}
+
+// Today's orders (from all sources) de-duplicated and filtered to the current
+// day. This single list feeds every drawer figure so the drawer always
+// matches the actual orders exactly.
+function getDrawerOrders(orders) {
   const now = Date.now();
   const startOfDay = new Date(new Date(now).getFullYear(), new Date(now).getMonth(), new Date(now).getDate()).getTime();
   const endOfDay = startOfDay + 86400000;
   const queued = (typeof getQueuedOrders === "function" ? getQueuedOrders() : [])
-    .map((q) => q?.payload || q)
-    .filter((o) => {
-      const ts = getSaleTimestampMs(o);
-      return ts !== null && ts >= startOfDay && ts < endOfDay;
-    });
-  const all = mergeOrderLists(orders, queued);
-  return all.reduce((sum, s) => {
-    if (s?.paymentMethod === "split") return sum + (Number(s.cashAmount) || 0);
-    if (s?.paymentMethod === "cash") return sum + (Number(s.total) || 0);
-    return sum;
-  }, 0);
+    .map((q) => q?.payload || q);
+  return mergeOrderLists(orders, queued).filter((order) => {
+    if (!order) return false;
+    const ts = getSaleTimestampMs(order);
+    return ts !== null && ts >= startOfDay && ts < endOfDay;
+  });
+}
+
+// Sales-derived drawer figures, ALWAYS recomputed from the actual order list
+// (plus the queued offline outbox) so the drawer can never show stale values.
+// Employee orders are excluded: they are comped, not paid into the drawer.
+function computeDrawerTotals(orders) {
+  const totals = { cash: 0, gcash: 0, cashTransactions: 0, gcashTransactions: 0, paidSales: 0 };
+
+  for (const order of getDrawerOrders(orders)) {
+    const method = drawerPaymentMethod(order);
+    if (method === "employee") continue;
+    const total = Number(order.total) || 0;
+
+    if (method === "split") {
+      const cash = Number(order.cashAmount) || 0;
+      const gcash = Number(order.gcashAmount) || 0;
+      totals.cash += cash;
+      totals.gcash += gcash;
+      if (cash > 0) totals.cashTransactions += 1;
+      if (gcash > 0) totals.gcashTransactions += 1;
+      totals.paidSales += total;
+    } else if (method === "gcash") {
+      totals.gcash += total;
+      totals.gcashTransactions += 1;
+      totals.paidSales += total;
+    } else {
+      totals.cash += total;
+      totals.cashTransactions += 1;
+      totals.paidSales += total;
+    }
+  }
+
+  totals.cash = Math.round(totals.cash * 100) / 100;
+  totals.gcash = Math.round(totals.gcash * 100) / 100;
+  totals.paidSales = Math.round(totals.paidSales * 100) / 100;
+  return totals;
+}
+
+// Cash actually received from sales: full cash sales plus the cash portion of
+// split payments. Employee and e-wallet sales are excluded. Queued (offline)
+// orders are included so the drawer stays accurate until they sync.
+function computeDrawerCashReceived(orders) {
+  return computeDrawerTotals(orders).cash;
+}
+
+function computeDrawerGcashReceived(orders) {
+  return computeDrawerTotals(orders).gcash;
 }
 
 function computeDrawerMath(stats) {
@@ -2065,24 +2122,153 @@ function computeDrawerMath(stats) {
   const cashIn = Number(stats?.cashIn || 0);
   const cashOut = Number(stats?.cashOut || 0);
   const cashReceived = Number(stats?.cashReceived || 0);
-  const expected = openingFloat + cashReceived + cashIn - cashOut;
-  return { expected };
+  const expected = Math.round((openingFloat + cashReceived + cashIn - cashOut) * 100) / 100;
+  const gcashReceived = Number(stats?.gcashReceived || 0);
+  const expectedGcash = Math.round(gcashReceived * 100) / 100;
+  return { expected, expectedGcash };
 }
 
 function renderDrawerModal() {
   const formatPeso = (n) => `₱${(Number(n) || 0).toFixed(2)}`;
-  const { expected } = computeDrawerMath(dailyStats);
-  const cashEl = document.getElementById("drawerCashValue");
-  const txnEl = document.getElementById("drawerTxnValue");
-  const floatEl = document.getElementById("drawerFloatValue");
-  const expectedEl = document.getElementById("drawerExpectedValue");
-  const ledgerEl = document.getElementById("drawerLedgerNote");
+  const setText = (id, text) => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = text;
+  };
+  const totals = computeDrawerTotals(salesHistory);
+  // Expected cash/GCash is always derived from the freshly recomputed order
+  // totals, so a stale cached cashReceived can never skew the drawer math.
+  const { expected, expectedGcash } = computeDrawerMath({
+    ...dailyStats,
+    cashReceived: totals.cash,
+    gcashReceived: totals.gcash,
+  });
 
-  if (cashEl) cashEl.textContent = formatPeso(dailyStats.cashReceived || 0);
-  if (txnEl) txnEl.textContent = String(dailyStats.orders || 0);
-  if (floatEl) floatEl.textContent = formatPeso(dailyStats.openingFloat || 0);
-  if (expectedEl) expectedEl.textContent = formatPeso(expected);
-  if (ledgerEl) ledgerEl.textContent = `Cash in ${formatPeso(dailyStats.cashIn || 0)} · Cash out ${formatPeso(dailyStats.cashOut || 0)}`;
+  setText("drawerCashValue", formatPeso(totals.cash));
+  setText("drawerCashTxnValue", String(totals.cashTransactions));
+  setText("drawerFloatValue", formatPeso(dailyStats.openingFloat || 0));
+  setText("drawerExpectedValue", formatPeso(expected));
+  setText("drawerGcashValue", formatPeso(totals.gcash));
+  setText("drawerGcashTxnValue", String(totals.gcashTransactions));
+  setText("drawerExpectedGcashValue", formatPeso(expectedGcash));
+  setText("drawerTotalSalesValue", formatPeso(totals.paidSales));
+  setText("drawerLedgerNote", `Cash in ${formatPeso(dailyStats.cashIn || 0)} · Cash out ${formatPeso(dailyStats.cashOut || 0)}`);
+  renderDrawerVariance(expected);
+  renderDrawerHistory();
+  renderDrawerCashOrders();
+}
+
+// Itemized list of today's cash orders (full cash payments plus the cash
+// portion of split payments) so the drawer can be verified order by order.
+// Employee and GCash-only orders are excluded, matching the totals above.
+function renderDrawerCashOrders() {
+  const headEl = document.getElementById("drawerCashOrdersHead");
+  const listEl = document.getElementById("drawerCashOrdersList");
+  if (!listEl) return;
+  const formatPeso = (n) => `₱${(Number(n) || 0).toFixed(2)}`;
+
+  const orders = getDrawerOrders(salesHistory)
+    .map((order) => ({ order, method: drawerPaymentMethod(order) }))
+    .filter(({ order, method }) => {
+      if (method === "employee") return false;
+      if (method === "gcash") return false;
+      if (method === "split") return (Number(order.cashAmount) || 0) > 0;
+      return true;
+    })
+    .sort((a, b) => (getSaleTimestampMs(a.order) || 0) - (getSaleTimestampMs(b.order) || 0));
+
+  const total = Math.round(orders.reduce((sum, { order, method }) =>
+    sum + (method === "split" ? Number(order.cashAmount) || 0 : Number(order.total) || 0), 0) * 100) / 100;
+  if (headEl) headEl.textContent = `Today's cash orders · ${formatPeso(total)}`;
+
+  if (orders.length === 0) {
+    listEl.innerHTML = `<li class="bb-drawer-history-empty">No cash orders yet today.</li>`;
+    return;
+  }
+
+  listEl.innerHTML = orders
+    .map(({ order, method }) => {
+      const ts = getSaleTimestampMs(order);
+      const time = ts ? new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "—";
+      const isSplit = method === "split";
+      const amount = isSplit ? Number(order.cashAmount) || 0 : Number(order.total) || 0;
+      return `<li class="bb-drawer-history-item is-in">
+        <span class="bb-drawer-history-label">${isSplit ? "Split · Cash" : "Cash"}</span>
+        <span class="bb-drawer-history-time">${time}</span>
+        <span class="bb-drawer-history-amount">${formatPeso(amount)}</span>
+      </li>`;
+    })
+    .join("");
+}
+
+function refreshDrawerIfOpen() {
+  const modal = document.getElementById("drawerModal");
+  if (modal && modal.classList.contains("active")) renderDrawerModal();
+}
+
+function renderDrawerVariance(expected) {
+  const badge = document.getElementById("drawerVarianceBadge");
+  const note = document.getElementById("drawerVarianceNote");
+  const input = document.getElementById("drawerActualInput");
+  if (!badge) return;
+  const formatPeso = (n) => `₱${(Number(n) || 0).toFixed(2)}`;
+  const expectedCash = Number.isFinite(Number(expected))
+    ? Number(expected)
+    : computeDrawerMath({ ...dailyStats, cashReceived: computeDrawerTotals(salesHistory).cash }).expected;
+  const actual = dailyStats.actualCash;
+
+  // Staff hasn't recorded a count yet: the cash from today's orders is
+  // already added to the drawer, so pre-fill the count with the computed
+  // drawer cash (start cash + cash sales + cash in − cash out).
+  if (actual === undefined || actual === null || actual === "" || !Number.isFinite(Number(actual))) {
+    badge.textContent = "Not recorded";
+    badge.className = "bb-drawer-actual-variance is-neutral";
+    if (note) note.textContent = `Cash from today's orders is added automatically (${formatPeso(expectedCash)}). Record the counted cash to confirm.`;
+    if (input) input.value = String(Math.round(expectedCash * 100) / 100);
+    return;
+  }
+
+  const variance = Math.round((Number(actual) - expectedCash) * 100) / 100;
+  if (variance === 0) {
+    badge.textContent = "Balanced";
+    badge.className = "bb-drawer-actual-variance is-balanced";
+  } else if (variance > 0) {
+    badge.textContent = `Overage ${formatPeso(variance)}`;
+    badge.className = "bb-drawer-actual-variance is-over";
+  } else {
+    badge.textContent = `Shortage ${formatPeso(Math.abs(variance))}`;
+    badge.className = "bb-drawer-actual-variance is-short";
+  }
+  if (note) note.textContent = `Expected ${formatPeso(expectedCash)} · Counted ${formatPeso(actual)}`;
+  if (input) input.value = String(actual);
+}
+
+function drawerLedgerEntries() {
+  if (!Array.isArray(dailyStats.ledgerEntries)) dailyStats.ledgerEntries = [];
+  return dailyStats.ledgerEntries;
+}
+
+function renderDrawerHistory() {
+  const listEl = document.getElementById("drawerHistoryList");
+  if (!listEl) return;
+  const entries = drawerLedgerEntries();
+  if (entries.length === 0) {
+    listEl.innerHTML = `<li class="bb-drawer-history-empty">No cash in / cash out entries today.</li>`;
+    return;
+  }
+  const formatPeso = (n) => `₱${(Number(n) || 0).toFixed(2)}`;
+  listEl.innerHTML = entries
+    .slice()
+    .reverse()
+    .map((entry) => {
+      const time = new Date(Number(entry.t) || Date.now()).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+      const isIn = entry.kind === "in";
+      return `<li class="bb-drawer-history-item ${isIn ? "is-in" : "is-out"}">
+        <span class="bb-drawer-history-label">${isIn ? "Cash in" : "Cash out"}</span>
+        <span class="bb-drawer-history-time">${time}</span>
+        <span class="bb-drawer-history-amount">${isIn ? "+" : "−"}${formatPeso(entry.amount)}</span>
+      </li>`;
+    })
+    .join("");
 }
 
 window.openDrawer = function() {
@@ -2091,6 +2277,21 @@ window.openDrawer = function() {
   renderDrawerModal();
   modal.classList.add("active");
   modal.setAttribute("aria-hidden", "false");
+};
+
+window.drawerSwitchTab = function(tab) {
+  const pane = tab === "gcash" ? "gcash" : "cash";
+  if (document.querySelectorAll) {
+    document.querySelectorAll("[data-drawer-pane]").forEach((el) => {
+      el.classList.toggle("is-active", el.getAttribute("data-drawer-pane") === pane);
+    });
+  }
+  const cashTab = document.getElementById("drawerTabCash");
+  const gcashTab = document.getElementById("drawerTabGcash");
+  if (cashTab) cashTab.classList.toggle("is-active", pane === "cash");
+  if (cashTab) cashTab.setAttribute("aria-selected", String(pane === "cash"));
+  if (gcashTab) gcashTab.classList.toggle("is-active", pane === "gcash");
+  if (gcashTab) gcashTab.setAttribute("aria-selected", String(pane === "gcash"));
 };
 
 window.toggleDrawerFloatEdit = function() {
@@ -2111,14 +2312,29 @@ window.saveDrawerOpeningFloat = function() {
   const input = document.getElementById("drawerFloatInput");
   const amount = parseFloat(input?.value || "");
   if (!Number.isFinite(amount) || amount < 0) {
-    showToast("Enter a valid opening float amount.", "warning");
+    showToast("Enter a valid starting cash amount.", "warning");
     return;
   }
-  dailyStats.openingFloat = amount;
+  dailyStats.openingFloat = Math.round(amount * 100) / 100;
   persistPosState();
   renderDrawerModal();
   window.toggleDrawerFloatEdit();
-  showToast("Opening float set.", "success");
+  showToast("Starting cash set.", "success");
+};
+
+// Since there is no physical drawer connected to the cashier terminal, the
+// counted cash on hand is entered manually and compared to the expected cash.
+window.recordDrawerActual = function() {
+  const input = document.getElementById("drawerActualInput");
+  const amount = parseFloat(input?.value || "");
+  if (!Number.isFinite(amount) || amount < 0) {
+    showToast("Enter a valid counted amount.", "warning");
+    return;
+  }
+  dailyStats.actualCash = Math.round(amount * 100) / 100;
+  persistPosState();
+  renderDrawerModal();
+  showToast("Cash count recorded.", "success");
 };
 
 function applyDrawerLedger(kind) {
@@ -2128,14 +2344,19 @@ function applyDrawerLedger(kind) {
     showToast("Enter a valid amount first.", "warning");
     return;
   }
+  const rounded = Math.round(amount * 100) / 100;
   if (kind === "in") {
-    dailyStats.cashIn = Number(dailyStats.cashIn || 0) + amount;
+    dailyStats.cashIn = Number(dailyStats.cashIn || 0) + rounded;
   } else {
-    dailyStats.cashOut = Number(dailyStats.cashOut || 0) + amount;
+    dailyStats.cashOut = Number(dailyStats.cashOut || 0) + rounded;
   }
+  const entries = drawerLedgerEntries();
+  entries.push({ t: Date.now(), kind, amount: rounded });
+  if (entries.length > 100) entries.splice(0, entries.length - 100);
   if (input) input.value = "";
   persistPosState();
   renderDrawerModal();
+  showToast(`${kind === "in" ? "Cash in" : "Cash out"} of ₱${rounded.toFixed(2)} recorded.`, "success");
 }
 
 window.drawerCashIn = function() { applyDrawerLedger("in"); };
