@@ -306,19 +306,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       const ts = getSaleTimestampMs(o);
       return ts >= startOfDay && ts < endOfDay;
     });
-    dailyStats = {
-      orders: salesHistory.length,
-      totalSales: salesHistory.reduce((sum, s) => sum + (Number(s.total) || 0), 0),
-      discountsApplied: salesHistory.filter(s => s.isPwdSenior || s.discount).length,
-      cashReceived: computeDrawerCashReceived(salesHistory),
-      gcashReceived: computeDrawerGcashReceived(salesHistory),
-      openingFloat: Number(dailyStats.openingFloat || 0),
-      cashIn: Number(dailyStats.cashIn || 0),
-      cashOut: Number(dailyStats.cashOut || 0),
-      actualCash: dailyStats.actualCash ?? null,
-      cashOnHandAuto: dailyStats.cashOnHandAuto !== false,
-      ledgerEntries: Array.isArray(dailyStats.ledgerEntries) ? dailyStats.ledgerEntries : [],
-    };
+    dailyStats = recomputeDailyStats(salesHistory, dailyStats);
     persistPosState();
 
     menuItems = sanitizePosMenuItems(await getMenuItems());
@@ -373,19 +361,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         const ts = getSaleTimestampMs(o);
         return ts >= startOfDay && ts < endOfDay;
       });
-      dailyStats = {
-        orders: salesHistory.length,
-        totalSales: salesHistory.reduce((sum, s) => sum + (Number(s.total) || 0), 0),
-        discountsApplied: salesHistory.filter(s => s.isPwdSenior || s.discount).length,
-        cashReceived: computeDrawerCashReceived(salesHistory),
-        gcashReceived: computeDrawerGcashReceived(salesHistory),
-        openingFloat: Number(dailyStats.openingFloat || 0),
-        cashIn: Number(dailyStats.cashIn || 0),
-        cashOut: Number(dailyStats.cashOut || 0),
-        actualCash: dailyStats.actualCash ?? null,
-        cashOnHandAuto: dailyStats.cashOnHandAuto !== false,
-        ledgerEntries: Array.isArray(dailyStats.ledgerEntries) ? dailyStats.ledgerEntries : [],
-      };
+      dailyStats = recomputeDailyStats(salesHistory, dailyStats);
       persistPosState();
       updateStats();
       refreshDrawerIfOpen();
@@ -1751,19 +1727,12 @@ window.completePayment = async function() {
       // non-fatal
     }
 
-    // Update local stats
-    dailyStats.orders++;
-    dailyStats.totalSales += total;
-    if (isPwdSenior) dailyStats.discountsApplied++;
-    if (paymentMethod === "cash") {
-      dailyStats.cashReceived += total;
-    } else if (paymentMethod === "split") {
-      dailyStats.cashReceived += Number(cashAmount) || 0;
-      dailyStats.gcashReceived += Number(gcashAmount) || 0;
-    } else if (paymentMethod === "gcash") {
-      dailyStats.gcashReceived += total;
-    }
-    salesHistory.push(sale);
+    // Update local stats. The live order listener may have already folded this
+    // sale into salesHistory from the Firestore snapshot (its own write
+    // triggers the listener), so merge de-duped instead of blindly pushing and
+    // incrementing — otherwise the order is counted twice until refresh.
+    salesHistory = mergeOrderLists(salesHistory, [sale]);
+    dailyStats = recomputeDailyStats(salesHistory, dailyStats);
     saveToStorage(salesHistory, dailyStats);
     refreshDrawerIfOpen();
 
@@ -2088,6 +2057,25 @@ function mergeOrderLists(...lists) {
     }
   }
   return merged;
+}
+
+// Rebuild daily stats from the authoritative, de-duplicated order list. The
+// drawer-only fields (opening float, cash in/out, manual count) are per-terminal
+// state and are carried over from the previous stats untouched.
+function recomputeDailyStats(orders, prev = dailyStats) {
+  return {
+    orders: orders.length,
+    totalSales: orders.reduce((sum, s) => sum + (Number(s.total) || 0), 0),
+    discountsApplied: orders.filter(s => s.isPwdSenior || s.discount).length,
+    cashReceived: computeDrawerCashReceived(orders),
+    gcashReceived: computeDrawerGcashReceived(orders),
+    openingFloat: Number(prev.openingFloat || 0),
+    cashIn: Number(prev.cashIn || 0),
+    cashOut: Number(prev.cashOut || 0),
+    actualCash: prev.actualCash ?? null,
+    cashOnHandAuto: prev.cashOnHandAuto !== false,
+    ledgerEntries: Array.isArray(prev.ledgerEntries) ? prev.ledgerEntries : [],
+  };
 }
 
 function drawerPaymentMethod(order) {

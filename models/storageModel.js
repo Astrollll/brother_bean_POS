@@ -17,6 +17,31 @@ const STORAGE_KEYS = {
 const KITCHEN_COLLECTION = "kitchenOrders";
 const STATS_COLLECTION = "dailyStats";
 
+// Cap the kitchen-order write: if connectivity drops suddenly the Firestore
+// SDK can hang retrying, which would otherwise block completePayment behind
+// the receipt. The local cache fallback below is authoritative enough.
+const KITCHEN_WRITE_TIMEOUT_MS = readTimeoutParam("bbKitchenWriteTimeoutMs", 4000);
+
+function readTimeoutParam(name, fallback) {
+  try {
+    if (typeof location !== "undefined") {
+      const value = Number(new URLSearchParams(location.search).get(name));
+      if (Number.isFinite(value) && value > 0) return value;
+    }
+  } catch {}
+  return fallback;
+}
+
+function withWriteTimeout(promise, label, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`${label}_timeout`)), timeoutMs);
+    Promise.resolve(promise).then(
+      (value) => { clearTimeout(timer); resolve(value); },
+      (error) => { clearTimeout(timer); reject(error); }
+    );
+  });
+}
+
 // Merge order lists de-duplicated by order id (Firestore doc id is the
 // orderId, so queued and synced copies of the same sale collapse to one).
 function mergeOrderLists(...lists) {
@@ -239,9 +264,10 @@ export async function saveKitchenOrder(orderData) {
 
   const kitchenOrder = { id: orderId, createdAt, payload: orderData };
 
-  // Write to Firestore first
+  // Write to Firestore first (bounded so a dropped connection can't hang
+  // the caller behind the receipt flow)
   try {
-    await setDoc(doc(db, KITCHEN_COLLECTION, orderId), kitchenOrder);
+    await withWriteTimeout(setDoc(doc(db, KITCHEN_COLLECTION, orderId), kitchenOrder), "kitchen_write", KITCHEN_WRITE_TIMEOUT_MS);
   } catch (error) {
     console.warn("[Storage] Firestore kitchen write failed.", error);
   }

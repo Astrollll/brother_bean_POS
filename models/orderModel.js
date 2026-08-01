@@ -8,6 +8,32 @@ import { deductInventoryQuantities } from "./inventoryModel.js";
 const ORDERS_COLLECTION = "orders";
 const RESETS_COLLECTION = "resets";
 
+// When connectivity drops suddenly the browser may keep reporting online, so a
+// Firestore write can hang retrying for a long time instead of failing. Cap it:
+// a write that does not settle in time is treated as offline and queued.
+const ORDER_WRITE_TIMEOUT_MS = readTimeoutParam("bbOrderWriteTimeoutMs", 6000);
+const INVENTORY_DEDUCTION_TIMEOUT_MS = readTimeoutParam("bbInventoryDeductionTimeoutMs", 15000);
+
+function readTimeoutParam(name, fallback) {
+  try {
+    if (typeof location !== "undefined") {
+      const value = Number(new URLSearchParams(location.search).get(name));
+      if (Number.isFinite(value) && value > 0) return value;
+    }
+  } catch {}
+  return fallback;
+}
+
+function withWriteTimeout(promise, label, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`${label}_timeout`)), timeoutMs);
+    Promise.resolve(promise).then(
+      (value) => { clearTimeout(timer); resolve(value); },
+      (error) => { clearTimeout(timer); reject(error); }
+    );
+  });
+}
+
 // Cache for resolved user profiles (uid -> fullName)
 const _profileCache = new Map();
 
@@ -338,7 +364,7 @@ export async function saveOrder(cart, total, subtotal, paymentMethod, isPwdSenio
   }
 
   try {
-    await setDoc(orderRef, orderData);
+    await withWriteTimeout(setDoc(orderRef, orderData), "order_write", ORDER_WRITE_TIMEOUT_MS);
   } catch (e) {
     queueOrder(orderData);
     return {
@@ -350,7 +376,23 @@ export async function saveOrder(cart, total, subtotal, paymentMethod, isPwdSenio
     };
   }
 
-  const inventoryResult = await persistInventoryAfterSale(orderRef, orderData);
+  let inventoryResult;
+  try {
+    inventoryResult = await withWriteTimeout(persistInventoryAfterSale(orderRef, orderData), "inventory_deduction", INVENTORY_DEDUCTION_TIMEOUT_MS);
+  } catch (e) {
+    // The order saved, but the connection dropped mid-deduction and the
+    // transaction hung. Flag it for the existing retry mechanism instead of
+    // blocking the completed sale.
+    inventoryResult = { alerts: [], audit: [], skipDetails: [], failed: true };
+    try {
+      await updateDoc(orderRef, { inventoryDeductionFailed: true });
+    } catch {}
+    if (typeof window !== "undefined" && window.dispatchEvent) {
+      window.dispatchEvent(new CustomEvent("bb:inventory:deduction-failed", {
+        detail: { orderId: orderData.orderId },
+      }));
+    }
+  }
 
   return {
     ...orderData,

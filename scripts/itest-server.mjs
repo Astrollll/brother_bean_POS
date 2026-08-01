@@ -28,6 +28,8 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 async function run() {
   if (/[?&]slowinit=1/.test(location.search)) return runGuardTest();
   if (/[?&]initfail=1/.test(location.search)) return runOfflinePruneTest();
+  if (/[?&]placeorder=1/.test(location.search)) return runOrderDedupeTest();
+  if (/[?&]offlinesave=1/.test(location.search)) return runOfflineSaveTest();
   const results = { steps: [], errors: [] };
   const el = (id) => document.getElementById(id);
   const read = (id) => {
@@ -151,6 +153,81 @@ async function runOfflinePruneTest() {
   fire(false);
   await wait(300);
   step("serverSnapshot");
+
+  window.__itestResults = results;
+}
+// Place an order whose own Firestore write immediately triggers the today-orders
+// listener (the stub delivers the snapshot during setDoc). completePayment must
+// NOT push a second copy of the same sale on top of the snapshot-merged one, so
+// the order count stays exactly 1 without needing a page refresh.
+async function runOrderDedupeTest() {
+  const results = { steps: [], mode: "placedupe", errors: [] };
+  const el = (id) => document.getElementById(id);
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  const read = (id) => {
+    const e = el(id);
+    return e ? { text: e.textContent, value: e.value } : null;
+  };
+  const step = (name, extra = {}) => results.steps.push([name, extra]);
+
+  for (let i = 0; i < 200 && typeof window.completePayment !== "function"; i++) await wait(50);
+  for (let i = 0; i < 200 && !el("productsGrid")?.querySelector(".product-card"); i++) await wait(50);
+  step("menu", { cards: el("productsGrid")?.querySelectorAll(".product-card").length || 0 });
+
+  window.openMenuItemModal("p1");
+  window.confirmMenuItem();
+  window.openPaymentModal();
+  step("cart", { subtotal: read("subtotal")?.text, total: read("total")?.text });
+
+  await window.completePayment();
+  await wait(500);
+  step("placed", { orders: read("todayOrders")?.text, total: read("totalSales")?.text });
+
+  const mirror = (window.__itestWrites || [])
+    .filter((w) => w.ref.includes("/dailyStats/"))
+    .map((w) => Array.isArray(w.data?.salesHistory) ? w.data.salesHistory : []);
+  const lastMirror = mirror[mirror.length - 1] || [];
+  const counts = {};
+  for (const o of lastMirror) {
+    const id = String(o?.orderId || o?.id || "");
+    if (id) counts[id] = (counts[id] || 0) + 1;
+  }
+  const maxDupe = Math.max(0, ...Object.values(counts));
+  step("mirror", { copies: lastMirror.length, maxPerOrder: maxDupe });
+
+  window.__itestResults = results;
+}
+// Sudden network drop: navigator.onLine is still true but every Firestore write
+// hangs (the stub never settles setDoc). The bounded-write timeouts must queue
+// the order locally so the sale is recorded (receipt + stats) instead of
+// spinning forever on "Working...".
+async function runOfflineSaveTest() {
+  const results = { steps: [], mode: "offlinesave", errors: [] };
+  const el = (id) => document.getElementById(id);
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  const read = (id) => {
+    const e = el(id);
+    return e ? { text: e.textContent, value: e.value } : null;
+  };
+  const step = (name, extra = {}) => results.steps.push([name, extra]);
+
+  for (let i = 0; i < 200 && typeof window.completePayment !== "function"; i++) await wait(50);
+  for (let i = 0; i < 200 && !el("productsGrid")?.querySelector(".product-card"); i++) await wait(50);
+  step("menu", { cards: el("productsGrid")?.querySelectorAll(".product-card").length || 0 });
+
+  window.openMenuItemModal("p1");
+  window.confirmMenuItem();
+  window.openPaymentModal();
+
+  const t0 = Date.now();
+  await window.completePayment();
+  const elapsedMs = Date.now() - t0;
+  await wait(300);
+  step("placed", { elapsedMs, orders: read("todayOrders")?.text, total: read("totalSales")?.text });
+
+  let outbox = [];
+  try { outbox = JSON.parse(localStorage.getItem("brotherBean_orderOutbox") || "[]"); } catch {}
+  step("outbox", { count: outbox.length, hasOrderId: !!(outbox[0]?.payload?.orderId), status: outbox[0]?.payload?.status });
 
   window.__itestResults = results;
 }
@@ -332,6 +409,75 @@ const server = app.listen(PORT, async () => {
         console.log(`FAIL: ${failures.length} prune check(s):`);
         failures.forEach((f) => console.log(`  - ${f}`));
         console.log(`  prune steps: ${JSON.stringify(pruneResults.steps)}`);
+        failed = true;
+      }
+    }
+    // Order-placement page: the order's own write fires the today-orders
+    // listener before completePayment resumes, so the sale must be merged
+    // (de-duped) rather than blindly pushed to avoid double-counting.
+    const placePage = await browser.newPage();
+    attach(placePage, "placeorder");
+    await placePage.goto(`http://localhost:${PORT}/itest.html?placeorder=1`, { waitUntil: "networkidle0", timeout: 60000 });
+    const placeResults = await waitResults(placePage);
+    if (!placeResults) {
+      console.log("FAIL: order-dedupe test produced no results");
+      failed = true;
+    } else if (placeResults.fatal) {
+      console.log(`FAIL (placeorder): ${placeResults.fatal}`);
+      failed = true;
+    } else {
+      const pstep = (name) => placeResults.steps.find((s) => s[0] === name)?.[1];
+      const menu = pstep("menu");
+      const cart = pstep("cart");
+      const placed = pstep("placed");
+      const mirror = pstep("mirror");
+      const checks = [];
+      const check = (label, cond) => checks.push(cond ? null : label);
+      check("seeded menu item rendered", menu?.cards === 1);
+      check("cart total captured before payment", String(cart?.total || "") === "₱100.00" && String(cart?.subtotal || "") === "₱100.00");
+      check("order counted exactly once after placement", placed?.orders === "1");
+      check("sales total counted exactly once", String(placed?.total || "") === "₱100.00");
+      check("mirror holds exactly one copy of the order", mirror?.copies === 1 && mirror?.maxPerOrder === 1);
+      const failures = checks.filter(Boolean);
+      if (failures.length === 0) {
+        console.log("PASS: Order placement de-duplication checks succeeded.");
+      } else {
+        console.log(`FAIL: ${failures.length} order-dedupe check(s):`);
+        failures.forEach((f) => console.log(`  - ${f}`));
+        console.log(`  placeorder steps: ${JSON.stringify(placeResults.steps)}`);
+        failed = true;
+      }
+    }
+    // Sudden-offline page: Firestore writes hang, so the bounded-write timeouts
+    // must queue the order locally and still complete the sale UI.
+    const offlinePage = await browser.newPage();
+    attach(offlinePage, "offlinesave");
+    await offlinePage.goto(`http://localhost:${PORT}/itest.html?offlinesave=1&bbOrderWriteTimeoutMs=300&bbInventoryDeductionTimeoutMs=300&bbKitchenWriteTimeoutMs=300`, { waitUntil: "networkidle0", timeout: 60000 });
+    const offlineResults = await waitResults(offlinePage);
+    if (!offlineResults) {
+      console.log("FAIL: offline-save test produced no results");
+      failed = true;
+    } else if (offlineResults.fatal) {
+      console.log(`FAIL (offlinesave): ${offlineResults.fatal}`);
+      failed = true;
+    } else {
+      const ostep = (name) => offlineResults.steps.find((s) => s[0] === name)?.[1];
+      const menu = ostep("menu");
+      const placed = ostep("placed");
+      const outbox = ostep("outbox");
+      const checks = [];
+      const check = (label, cond) => checks.push(cond ? null : label);
+      check("seeded menu item rendered", menu?.cards === 1);
+      check("payment completed without hanging on the drop", typeof placed?.elapsedMs === "number" && placed.elapsedMs < 3000);
+      check("order counted exactly once while queued", placed?.orders === "1" && String(placed?.total || "") === "₱100.00");
+      check("order queued to the local outbox", outbox?.count === 1 && outbox?.hasOrderId === true && outbox?.status === "paid");
+      const failures = checks.filter(Boolean);
+      if (failures.length === 0) {
+        console.log("PASS: Sudden-offline order queueing checks succeeded.");
+      } else {
+        console.log(`FAIL: ${failures.length} offline-save check(s):`);
+        failures.forEach((f) => console.log(`  - ${f}`));
+        console.log(`  offlinesave steps: ${JSON.stringify(offlineResults.steps)}`);
         failed = true;
       }
     }

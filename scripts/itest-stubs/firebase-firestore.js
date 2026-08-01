@@ -10,8 +10,24 @@ export function limit(n) { return { n }; }
 export function getDocs(q) {
   const slow = /[?&]slowinit=1/.test(location.search) ? 1500 : 0;
   const failOrders = /[?&]initfail=1/.test(location.search) && /\/orders(\/|$)/.test(q?.path || "");
+  const seedMenu = /[?&](placeorder|offlinesave)=1/.test(location.search) && /\/menu(\/|$)/.test(q?.path || "");
   return new Promise((resolve, reject) => setTimeout(() => {
     if (failOrders) return reject(new Error("itest: orders fetch failed (offline)"));
+    if (seedMenu) {
+      const item = {
+        id: "p1",
+        name: "Test Americano",
+        price: 100,
+        category: "coffee",
+        hasVariant: false,
+        hasTemp: false,
+        addons: [],
+        recipe: [],
+        bestseller: false,
+        popular: false,
+      };
+      return resolve({ empty: false, docs: [{ id: "p1", data: () => JSON.parse(JSON.stringify(item)) }], size: 1 });
+    }
     resolve({ empty: true, docs: [], size: 0 });
   }, slow));
 }
@@ -24,6 +40,21 @@ export function setDoc(ref, data) {
     return Promise.reject(new Error("itest: setDoc failed (offline)"));
   }
   if (window.__itestWrites) window.__itestWrites.push({ ref: ref.path, data: JSON.parse(JSON.stringify(data)) });
+  // In placeorder mode, writing an order to /orders/{id} immediately delivers
+  // the today-orders snapshot (like Firestore's own-write listener): by the
+  // time completePayment resumes, the order is already in the local list.
+  if (/[?&]placeorder=1/.test(location.search) && /^\/orders\/[^/]+$/.test(ref.path || "")) {
+    const dataCopy = JSON.parse(JSON.stringify(data || {}));
+    for (const cb of window.__itestSnapshots || []) {
+      try { cb({ docs: [{ id: ref.id, data: () => dataCopy }], metadata: { fromCache: false } }); } catch {}
+    }
+  }
+  // In offlinesave mode every write hangs forever — Firestore behaves this way
+  // when the connection dies without the browser flipping navigator.onLine.
+  // The bounded-write timeouts in the models must queue the order locally.
+  if (/[?&]offlinesave=1/.test(location.search)) {
+    return new Promise(() => {});
+  }
   return Promise.resolve();
 }
 export function updateDoc() { return Promise.resolve(); }
