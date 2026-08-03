@@ -236,10 +236,11 @@ async function run() {
     console.log(`OK sort: ${sortResult.before.trim()} -> ${sortResult.after.trim()}, top=${sortResult.topRow}`);
 
     // 5. Search filter through the real pipeline
-    const searchResult = await page.evaluate(() => {
+    const searchResult = await page.evaluate(async () => {
       window.__orderFilters.search = "matcha";
       window.__orderFilters.page = 1;
       window.__applyOrderFilters();
+      await new Promise((r) => setTimeout(r, 750));
       return {
         rows: (document.getElementById("ordersTableWrap").innerHTML.match(/orders-main-row/g) || []).length,
         kpi: document.getElementById("ordersCountKpi").textContent,

@@ -22,7 +22,11 @@
       href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="/assets/adminstyle.css?v=20260717B" />
+    <link
+      href="https://cdn.jsdelivr.net/npm/air-datepicker@3.6.0/air-datepicker.css"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/assets/adminstyle.css?v=20260803G" />
   </head>
   <body>
     <div
@@ -242,28 +246,48 @@
               </div>
             </div>
 
-            <div class="card compact-card">
+            <div class="card compact-card orders-shell-card">
               <div class="orders-toolbar">
-                <div class="orders-preset-row" role="group" aria-label="Quick date ranges">
-                  <span class="orders-preset-label">Range:</span>
-                  <button class="orders-preset-chip" type="button" data-preset="today">Today</button>
-                  <button class="orders-preset-chip" type="button" data-preset="yesterday">Yesterday</button>
-                  <button class="orders-preset-chip" type="button" data-preset="7d">Last 7 days</button>
-                  <button class="orders-preset-chip" type="button" data-preset="30d">Last 30 days</button>
-                  <button class="orders-preset-chip" type="button" data-preset="all">All time</button>
+                <div class="orders-toolbar-head">
+                  <div class="orders-preset-row" role="group" aria-label="Quick date ranges">
+                    <span class="orders-preset-label">Range</span>
+                    <div class="orders-preset-track">
+                      <button class="orders-preset-chip" type="button" data-preset="today">Today</button>
+                      <button class="orders-preset-chip" type="button" data-preset="yesterday">Yesterday</button>
+                      <button class="orders-preset-chip" type="button" data-preset="7d">Last 7 days</button>
+                      <button class="orders-preset-chip" type="button" data-preset="30d">Last 30 days</button>
+                      <button class="orders-preset-chip" type="button" data-preset="all">All time</button>
+                    </div>
+                  </div>
+                  <div class="orders-toolbar-actions">
+                    <button id="ordersClearBtn" class="orders-btn ghost" type="button">
+                      <i class="ri-refresh-line" aria-hidden="true"></i> Reset
+                    </button>
+                    <button id="ordersClearAllBtn" class="orders-btn clear-all-btn" type="button" title="Permanently delete every transaction">
+                      <i class="ri-delete-bin-line" aria-hidden="true"></i> Clear All
+                    </button>
+                    <button id="ordersExportBtn" class="orders-btn" type="button">
+                      <i class="ri-download-2-line" aria-hidden="true"></i> Export CSV
+                    </button>
+                  </div>
                 </div>
-                <div class="orders-toolbar-main">
-                  <div class="orders-filters">
-                    <div class="orders-filter-field orders-filter-search">
-                      <label for="ordersSearch">Search</label>
+
+                <div class="orders-filters">
+                  <div class="orders-filter-field orders-filter-search">
+                    <label for="ordersSearch">Search</label>
+                    <div class="orders-field-control">
+                      <i class="ri-search-line orders-field-icon" aria-hidden="true"></i>
                       <input
                         id="ordersSearch"
                         class="ls-input orders-filter-input"
                         placeholder="Order #, item, or date"
+                        autocomplete="off"
                       />
                     </div>
-                    <div class="orders-filter-field">
-                      <label for="ordersPaymentFilter">Payment</label>
+                  </div>
+                  <div class="orders-filter-field">
+                    <label for="ordersPaymentFilter">Payment</label>
+                    <div class="orders-field-control">
                       <select
                         id="ordersPaymentFilter"
                         class="ls-input orders-filter-input"
@@ -277,9 +301,12 @@
                         <option value="split">Split (Cash + GCash)</option>
                         <option value="employee">Employee (Free)</option>
                       </select>
+                      <i class="ri-arrow-down-s-line orders-field-caret" aria-hidden="true"></i>
                     </div>
-                    <div class="orders-filter-field">
-                      <label for="ordersSortBy">Sort by</label>
+                  </div>
+                  <div class="orders-filter-field">
+                    <label for="ordersSortBy">Sort by</label>
+                    <div class="orders-field-control">
                       <select
                         id="ordersSortBy"
                         class="ls-input orders-filter-input"
@@ -293,9 +320,12 @@
                         <option value="payment_asc">Payment A-Z</option>
                         <option value="payment_desc">Payment Z-A</option>
                       </select>
+                      <i class="ri-arrow-down-s-line orders-field-caret" aria-hidden="true"></i>
                     </div>
-                    <div class="orders-filter-field">
-                      <label for="ordersPageSize">Per page</label>
+                  </div>
+                  <div class="orders-filter-field">
+                    <label for="ordersPageSize">Per page</label>
+                    <div class="orders-field-control">
                       <select
                         id="ordersPageSize"
                         class="ls-input orders-filter-input"
@@ -304,53 +334,53 @@
                         <option value="25">25 per page</option>
                         <option value="50">50 per page</option>
                       </select>
+                      <i class="ri-arrow-down-s-line orders-field-caret" aria-hidden="true"></i>
                     </div>
-                    <div class="orders-filter-field">
-                      <label for="ordersFromDate">From</label>
+                  </div>
+                  <div class="orders-filter-field">
+                    <label for="ordersFromDate">From</label>
+                    <div class="orders-field-control">
+                      <i class="ri-calendar-line orders-field-icon" aria-hidden="true"></i>
                       <input
                         id="ordersFromDate"
                         class="ls-input orders-filter-input"
-                        type="date"
-                      />
-                    </div>
-                    <div class="orders-filter-field">
-                      <label for="ordersToDate">To</label>
-                      <input
-                        id="ordersToDate"
-                        class="ls-input orders-filter-input"
-                        type="date"
+                        type="text"
+                        readonly
+                        autocomplete="off"
+                        placeholder="yyyy-MM-dd"
+                        aria-label="Filter orders from date"
                       />
                     </div>
                   </div>
-                  <div class="orders-toolbar-actions">
-                    <button
-                      id="ordersClearBtn"
-                      class="orders-btn ghost"
-                      type="button"
-                    >
-                      Clear
-                    </button>
-                    <button
-                      id="ordersClearAllBtn"
-                      class="orders-btn clear-all-btn"
-                      type="button"
-                    >
-                      Clear All
-                    </button>
-                    <button id="ordersExportBtn" class="orders-btn" type="button">
-                      Export CSV
-                    </button>
+                  <div class="orders-filter-field">
+                    <label for="ordersToDate">To</label>
+                    <div class="orders-field-control">
+                      <i class="ri-calendar-line orders-field-icon" aria-hidden="true"></i>
+                      <input
+                        id="ordersToDate"
+                        class="ls-input orders-filter-input"
+                        type="text"
+                        readonly
+                        autocomplete="off"
+                        placeholder="yyyy-MM-dd"
+                        aria-label="Filter orders to date"
+                      />
+                    </div>
                   </div>
                 </div>
               </div>
 
               <div class="orders-kpi-row">
                 <div class="orders-kpi-card">
-                  <div class="orders-kpi-label">Filtered Transactions</div>
+                  <div class="orders-kpi-label">
+                    <i class="ri-receipt-2-line" aria-hidden="true"></i> Filtered Transactions
+                  </div>
                   <div class="orders-kpi-value" id="ordersCountKpi">0</div>
                 </div>
                 <div class="orders-kpi-card">
-                  <div class="orders-kpi-label">Filtered Sales</div>
+                  <div class="orders-kpi-label">
+                    <i class="ri-coins-line" aria-hidden="true"></i> Filtered Sales
+                  </div>
                   <div class="orders-kpi-value" id="ordersTotalKpi">₱0.00</div>
                 </div>
               </div>
@@ -1252,9 +1282,10 @@
       })();
     </script>
     <script src="/controllers/utils/modalUtils.js?v=20260408L"></script>
+    <script src="https://cdn.jsdelivr.net/npm/air-datepicker@3.6.0/air-datepicker.js"></script>
     <script
       type="module"
-      src="/controllers/admin/adminPortalController.js?v=20260710B"
+      src="/controllers/admin/adminPortalController.js?v=20260803J"
     ></script>
   </body>
 </html>

@@ -13,7 +13,7 @@ import { resetDay as archiveResetDay } from "../../models/resetModel.js";
 import { getInventoryItems, saveInventoryItem, deleteInventoryItem, clearInventoryItems, convertQuantityBetweenUnits, normalizeUnit } from "../../models/inventoryModel.js";
 import { inventorySeedItems } from "../../models/defaultSeedData.js";
 import { getAllStaff as getStaff, getSchedule, getOnDutyNowFromSchedule, addStaff, removeStaff, removeStaffByName, removeStaffByAccountUid, updateStaffAccountLink, updateStaffNameByUid, saveSchedule } from "../../models/staffModel.js";
-import { renderSalesAnalyticsDashboard, renderAdminDashboard } from "../../views/dashboardView.js?v=20260710A";
+import { renderSalesAnalyticsDashboard, renderAdminDashboard, AIR_DATEPICKER_EN_LOCALE, airDatepickerSmartPosition, trackAirDatepickerReposition } from "../../views/dashboardView.js?v=20260803K";
 import { renderAdminMenu } from "../../views/menuView.js";
 import { renderStaffList, renderScheduleEditor, readScheduleFromDOM } from "../../views/staffView.js";
 import { navigateTo } from "../utils/routes.js";
@@ -95,6 +95,8 @@ const orderFilters = {
   toDate: "",
   preset: "",
 };
+
+const ordersDatePickers = { from: null, to: null };
 
 const accountFilters = {
   search: "",
@@ -1366,12 +1368,106 @@ function setOrderPreset(preset) {
     orderFilters.fromDate = "";
     orderFilters.toDate = "";
   }
+  syncOrderDateInputs();
+  orderFilters.page = 1;
+  applyOrderFilters();
+}
+
+function syncOrderDateInputs() {
   const fromInput = document.getElementById("ordersFromDate");
   const toInput = document.getElementById("ordersToDate");
   if (fromInput) fromInput.value = orderFilters.fromDate;
   if (toInput) toInput.value = orderFilters.toDate;
+
+  if (ordersDatePickers.from) {
+    if (orderFilters.fromDate) {
+      ordersDatePickers.from.selectDate(new Date(`${orderFilters.fromDate}T00:00:00`), { silent: true });
+    } else {
+      ordersDatePickers.from.clear({ silent: true });
+    }
+  }
+  if (ordersDatePickers.to) {
+    if (orderFilters.toDate) {
+      ordersDatePickers.to.selectDate(new Date(`${orderFilters.toDate}T00:00:00`), { silent: true });
+    } else {
+      ordersDatePickers.to.clear({ silent: true });
+    }
+  }
+}
+
+function commitOrderDateFilter(key) {
+  orderFilters.preset = "";
   orderFilters.page = 1;
+
+  const from = orderFilters.fromDate ? new Date(`${orderFilters.fromDate}T00:00:00`) : null;
+  const to = orderFilters.toDate ? new Date(`${orderFilters.toDate}T23:59:59`) : null;
+  if (from && to && from > to) {
+    if (key === "fromDate") {
+      orderFilters.toDate = toDayKey(from);
+    } else {
+      orderFilters.fromDate = toDayKey(to);
+    }
+  }
+
+  syncOrderDateInputs();
   applyOrderFilters();
+}
+
+function handleOrderDateSelect(key) {
+  return ({ date, datepicker }) => {
+    const selected = Array.isArray(datepicker.selectedDates)
+      ? datepicker.selectedDates[0]
+      : date || null;
+    orderFilters[key] = selected ? toDayKey(selected) : "";
+    commitOrderDateFilter(key);
+  };
+}
+
+function initOrdersDatePickers() {
+  const fromInput = document.getElementById("ordersFromDate");
+  const toInput = document.getElementById("ordersToDate");
+
+  if (!window.AirDatepicker) {
+    if (fromInput) fromInput.readOnly = false;
+    if (toInput) toInput.readOnly = false;
+    return;
+  }
+
+  if (fromInput && !ordersDatePickers.from) {
+    let fromPicker = new window.AirDatepicker(fromInput, {
+      locale: AIR_DATEPICKER_EN_LOCALE,
+      dateFormat: "yyyy-MM-dd",
+      autoClose: true,
+      keyboardNav: true,
+      toggleSelected: true,
+      maxDate: new Date(),
+      position: airDatepickerSmartPosition,
+      onShow: () => {
+        if (fromPicker) fromPicker.update({ maxDate: new Date() });
+      },
+      onSelect: handleOrderDateSelect("fromDate"),
+    });
+    ordersDatePickers.from = fromPicker;
+    trackAirDatepickerReposition(ordersDatePickers.from);
+  }
+
+  if (toInput && !ordersDatePickers.to) {
+    let toPicker = new window.AirDatepicker(toInput, {
+      locale: AIR_DATEPICKER_EN_LOCALE,
+      dateFormat: "yyyy-MM-dd",
+      autoClose: true,
+      keyboardNav: true,
+      toggleSelected: true,
+      maxDate: new Date(),
+      position: airDatepickerSmartPosition,
+      onShow: () => {
+        if (toPicker) toPicker.update({ maxDate: new Date() });
+      },
+      onSelect: handleOrderDateSelect("toDate"),
+    });
+    ordersDatePickers.to = toPicker;
+    trackAirDatepickerReposition(ordersDatePickers.to);
+  }
 }
 
 function syncOrderPresetChips() {
@@ -1868,9 +1964,41 @@ function renderOrdersKpis(orders) {
 
   const totalSales = orders.reduce((sum, order) => sum + Number(order.total || 0), 0);
 
-  if (countEl) countEl.textContent = String(orders.length);
-  if (totalEl) totalEl.textContent = `₱${totalSales.toFixed(2)}`;
   if (subEl) subEl.textContent = `${orders.length} transaction(s) shown`;
+
+  animateOrdersKpiValue(countEl, orders.length, (v) => String(Math.round(v)));
+  animateOrdersKpiValue(totalEl, totalSales, (v) => `₱${v.toFixed(2)}`);
+}
+
+function animateOrdersKpiValue(el, target, formatter, duration = 650) {
+  if (!el || typeof el.dataset === "undefined") return;
+  const from = Number(el.dataset.kpiValue || 0) || 0;
+  el.dataset.kpiValue = String(target);
+
+  const paint = (value) => {
+    el.textContent = formatter(value);
+  };
+
+  const reduceMotion =
+    typeof window.matchMedia === "function" &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  if (reduceMotion || typeof window.requestAnimationFrame !== "function") {
+    paint(target);
+    return;
+  }
+
+  const start = performance.now();
+  const tick = (now) => {
+    const progress = Math.min((now - start) / duration, 1);
+    const eased = 1 - Math.pow(1 - progress, 3);
+    const value = from + (target - from) * eased;
+    el.textContent = formatter(value);
+    if (progress < 1) {
+      window.requestAnimationFrame(tick);
+    }
+  };
+  window.requestAnimationFrame(tick);
 }
 
 function renderOrdersTable(orders) {
@@ -2064,22 +2192,22 @@ function bindOrdersControls() {
 
   if (fromInput && !fromInput.dataset.bound) {
     fromInput.dataset.bound = "1";
-    fromInput.addEventListener("change", (e) => {
-      orderFilters.preset = "";
-      orderFilters.fromDate = e.target.value;
-      orderFilters.page = 1;
-      applyOrderFilters();
-    });
+    if (!window.AirDatepicker) {
+      fromInput.addEventListener("change", (e) => {
+        orderFilters.fromDate = e.target.value;
+        commitOrderDateFilter("fromDate");
+      });
+    }
   }
 
   if (toInput && !toInput.dataset.bound) {
     toInput.dataset.bound = "1";
-    toInput.addEventListener("change", (e) => {
-      orderFilters.preset = "";
-      orderFilters.toDate = e.target.value;
-      orderFilters.page = 1;
-      applyOrderFilters();
-    });
+    if (!window.AirDatepicker) {
+      toInput.addEventListener("change", (e) => {
+        orderFilters.toDate = e.target.value;
+        commitOrderDateFilter("toDate");
+      });
+    }
   }
 
   if (sortInput && !sortInput.dataset.bound) {
@@ -2116,8 +2244,7 @@ function bindOrdersControls() {
       if (paymentInput) paymentInput.value = "all";
       if (sortInput) sortInput.value = "latest";
       if (pageSizeInput) pageSizeInput.value = "10";
-      if (fromInput) fromInput.value = "";
-      if (toInput) toInput.value = "";
+      syncOrderDateInputs();
 
       applyOrderFilters();
     });
@@ -2152,6 +2279,8 @@ function bindOrdersControls() {
     chip.dataset.bound = "1";
     chip.addEventListener("click", () => setOrderPreset(chip.dataset.preset));
   });
+
+  initOrdersDatePickers();
 }
 
 async function loadInventoryPage() {

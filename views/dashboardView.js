@@ -316,7 +316,7 @@ function buildPeriodBuckets(period, range = null) {
     const limit = new Date(end.getFullYear(), end.getMonth(), 1);
 
     while (cursor <= limit) {
-      labels.push(`${MONTH_NAMES[cursor.getMonth()]} ${String(cursor.getFullYear()).slice(-2)}`);
+      labels.push(`${MONTH_NAMES[cursor.getMonth()]} ${cursor.getFullYear()}`);
       cursor.setMonth(cursor.getMonth() + 1, 1);
     }
 
@@ -326,7 +326,7 @@ function buildPeriodBuckets(period, range = null) {
     return WEEKDAY_NAMES.slice(1).concat(WEEKDAY_NAMES[0]);
   }
   if (period === "month") {
-    return ["W1", "W2", "W3", "W4"];
+    return ["Week 1", "Week 2", "Week 3", "Week 4"];
   }
   if (period === "custom" && range) {
     const labels = [];
@@ -339,7 +339,7 @@ function buildPeriodBuckets(period, range = null) {
     return labels.length ? labels : ["No data"];
   }
   const labels = [];
-  for (let hour = 7; hour <= 20; hour += 1) {
+  for (let hour = 0; hour < 24; hour += 1) {
     const nextHour = hour + 1;
     const formatHour = (value) => {
       const suffix = value >= 12 ? "p" : "a";
@@ -370,7 +370,7 @@ function getBucketIndex(orderDate, period, range = null) {
     return Math.max(0, index);
   }
   const hour = orderDate.getHours();
-  return Math.max(0, Math.min(13, hour - 7));
+  return hour;
 }
 
 function buildTrendSeries(orders, period, range = null) {
@@ -388,9 +388,31 @@ function buildTrendSeries(orders, period, range = null) {
   return { labels, values };
 }
 
+function buildCountSeries(orders, period, range = null) {
+  const labels = buildPeriodBuckets(period, range);
+  const values = labels.map(() => 0);
+
+  for (const order of orders) {
+    const date = getOrderDate(order);
+    const index = getBucketIndex(date, period, range);
+    if (index >= 0 && index < values.length) {
+      values[index] += 1;
+    }
+  }
+
+  return { labels, values };
+}
+
+function peakUnit(period) {
+  if (period === "today" || period === "specific") return "hour";
+  if (period === "week" || period === "custom") return "day";
+  if (period === "month") return "week";
+  return "month";
+}
+
 function buildComparisonDelta(current, previous) {
   if (!previous && !current) return "0%";
-  if (!previous) return "+100%";
+  if (!previous) return "New";
   const delta = ((current - previous) / previous) * 100;
   const rounded = Math.round(delta);
   return `${rounded >= 0 ? "+" : ""}${rounded}%`;
@@ -481,7 +503,14 @@ function computePeakBucket(series, period, range = null) {
   });
 
   const labels = buildPeriodBuckets(period, range);
-  const label = labels[index] || "—";
+  let label = labels[index] || "—";
+  if (period === "all") {
+    const base = range?.start instanceof Date ? range.start : new Date();
+    const monthDate = new Date(base.getFullYear(), base.getMonth() + index, 1);
+    if (!Number.isNaN(monthDate.getTime())) {
+      label = `${MONTH_NAMES[monthDate.getMonth()]} ${monthDate.getFullYear()}`;
+    }
+  }
   return { label, value: maxValue };
 }
 
@@ -792,9 +821,9 @@ function buildAnalyticsTemplate() {
         </div>
 
         <div class="sales-header-actions">
-          <div class="sales-sync-status" aria-label="Cloud sync status">
+          <div class="sales-sync-status" id="saSyncStatus" aria-label="Cloud sync status">
             <span class="sales-sync-dot"></span>
-            <span>Cloud synced</span>
+            <span id="saSyncStatusText">Cloud synced</span>
           </div>
           <div class="sales-period-tabs" role="tablist" aria-label="Period selector">
             <button class="sales-period-tab" type="button" data-period="all" aria-pressed="true">All</button>
@@ -810,14 +839,12 @@ function buildAnalyticsTemplate() {
             <button class="sales-category-tab" type="button" data-cat="food" aria-pressed="false">Foods</button>
           </div>
           <div class="sales-custom-date-range" id="saCustomDateRange" style="display:none;">
-            <input type="date" id="saDateFrom" class="sales-date-input" aria-label="Start date" />
+            <input type="text" id="saDateFrom" class="sales-date-input" readonly autocomplete="off" placeholder="yyyy-MM-dd" aria-label="Start date" />
             <span class="sales-date-separator">→</span>
-            <input type="date" id="saDateTo" class="sales-date-input" aria-label="End date" />
-            <button class="sales-date-apply-btn" type="button" id="saDateApply">Apply</button>
+            <input type="text" id="saDateTo" class="sales-date-input" readonly autocomplete="off" placeholder="yyyy-MM-dd" aria-label="End date" />
           </div>
           <div class="sales-specific-date" id="saSpecificDate" style="display:none;">
-            <input type="date" id="saSpecificDateInput" class="sales-date-input" aria-label="Pick a date" />
-            <button class="sales-date-apply-btn" type="button" id="saSpecificDateApply">Show</button>
+            <input type="text" id="saSpecificDateInput" class="sales-date-input" readonly autocomplete="off" placeholder="yyyy-MM-dd" aria-label="Pick a date" />
           </div>
         </div>
       </div>
@@ -840,7 +867,7 @@ function buildAnalyticsTemplate() {
             <div class="sales-stat-delta" id="saAvgTicketDelta"></div>
           </div>
           <div class="sales-stat" data-stat="peakHour">
-            <div class="sales-stat-label"><i class="ti ti-clock"></i><span>Peak hour</span></div>
+            <div class="sales-stat-label"><i class="ti ti-clock"></i><span id="saPeakHourLabel">Peak hour</span></div>
             <div class="sales-stat-value" id="saPeakHourValue">—</div>
             <div class="sales-stat-delta" id="saPeakHourDelta"></div>
           </div>
@@ -1092,19 +1119,9 @@ function buildAnalyticsPeriodData(period, orders, menuItems, pendingSyncCount = 
   const currentDiscounts = sumDiscounts(currentOrders);
   const trend = buildTrendSeries(currentOrders, period, range);
   const previousTrend = buildTrendSeries(previousOrders, period, previousRange);
-  const peakBucket = computePeakBucket(trend, period, range);
+  const peakBucket = computePeakBucket(buildCountSeries(currentOrders, period, range), period, range);
   const topSellers = computeTopItems(currentOrders, menuItems, showAll ? Infinity : 5, categoryFilter);
   const categories = computeCategoryBreakdown(currentOrders, menuItems, categoryFilter);
-
-  const peakLabel = period === "today"
-    ? `${peakBucket.label}`
-    : period === "week"
-      ? `Peak day: ${peakBucket.label}`
-      : period === "month"
-        ? `Peak week: ${peakBucket.label}`
-        : period === "custom" || period === "specific"
-          ? `Peak: ${peakBucket.label}`
-          : `Peak month: ${peakBucket.label}`;
 
   const periodLabel = period === "custom"
     ? "Custom"
@@ -1137,7 +1154,7 @@ function buildAnalyticsPeriodData(period, orders, menuItems, pendingSyncCount = 
       },
       orders: {
         value: currentCount,
-        deltaText: `${currentCount >= previousCount ? "+" : ""}${currentCount - previousCount}`,
+        deltaText: `${currentCount >= previousCount ? "+" : ""}${currentCount - previousCount} orders`,
         deltaType: currentCount >= previousCount ? "up" : "down",
       },
       avgTicket: {
@@ -1146,8 +1163,9 @@ function buildAnalyticsPeriodData(period, orders, menuItems, pendingSyncCount = 
         deltaType: currentAvg >= previousAvg ? "up" : "down",
       },
       peakHour: {
+        label: `Peak ${peakUnit(period)}`,
         value: peakBucket.label || "—",
-        deltaText: `${Math.round(peakBucket.value || 0)} orders in peak bucket`,
+        deltaText: `${Math.round(peakBucket.value || 0)} orders in peak ${peakUnit(period)}`,
         deltaType: "neutral",
       },
       discounts: {
@@ -1187,6 +1205,7 @@ function renderAnalyticsSidebar(periodData) {
   setText("saRevenueValue", formatPeso(stats.revenue.value));
   setText("saOrdersValue", String(stats.orders.value));
   setText("saAvgTicketValue", formatPeso(stats.avgTicket.value));
+  setText("saPeakHourLabel", stats.peakHour.label || "Peak hour");
   setText("saPeakHourValue", stats.peakHour.value);
   setText("saDiscountsValue", formatPeso(stats.discounts.value));
   setText("saSyncValue", String(stats.sync.value));
@@ -1215,7 +1234,30 @@ function renderAnalyticsFooter(periodData) {
   const footer = document.getElementById("saFooterNote");
   if (footer) {
     const filterNote = periodData.categoryFilter !== "all" ? ` • ${periodData.filterLabel} only` : "";
-    footer.textContent = `Showing ${periodData.periodLabel.toLowerCase()} sales data${filterNote} • ${periodData.footerLabel}`;
+    if (periodData.period === "custom") {
+      const fromEl = document.getElementById("saDateFrom");
+      const toEl = document.getElementById("saDateTo");
+      if (!fromEl?.value || !toEl?.value) {
+        footer.textContent = "Set both dates to apply the custom range.";
+      } else {
+        footer.textContent = `Showing custom sales data${filterNote} • ${periodData.footerLabel}`;
+      }
+    } else {
+      footer.textContent = `Showing ${periodData.periodLabel.toLowerCase()} sales data${filterNote} • ${periodData.footerLabel}`;
+    }
+  }
+
+  const syncStatus = document.getElementById("saSyncStatus");
+  const syncText = document.getElementById("saSyncStatusText");
+  if (syncStatus && syncText) {
+    const pending = toNumber(periodData.stats?.sync?.value || 0);
+    if (pending > 0) {
+      syncText.textContent = `${pending} pending sync${pending === 1 ? "" : "s"}`;
+      syncStatus.classList.add("has-pending");
+    } else {
+      syncText.textContent = "Cloud synced";
+      syncStatus.classList.remove("has-pending");
+    }
   }
 }
 
@@ -1255,35 +1297,186 @@ function setAnalyticsPeriod(period) {
   renderAnalyticsFooter(periodData);
 }
 
+export const AIR_DATEPICKER_EN_LOCALE = {
+  days: ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"],
+  daysShort: ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"],
+  daysMin: ["Su","Mo","Tu","We","Th","Fr","Sa"],
+  months: ["January","February","March","April","May","June","July","August","September","October","November","December"],
+  monthsShort: ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"],
+  today: "Today",
+  clear: "Clear",
+  dateFormat: "MM/dd/yyyy",
+  timeFormat: "hh:mm aa",
+  firstDay: 0,
+};
+
+export function airDatepickerSmartPosition({ $datepicker, $target, $pointer }) {
+  const offset = 6;
+  const targetRect = $target.getBoundingClientRect();
+  const pickerRect = $datepicker.getBoundingClientRect();
+  const scrollX = window.scrollX || 0;
+  const scrollY = window.scrollY || 0;
+  const viewportW = window.innerWidth || document.documentElement.clientWidth;
+  const viewportH = window.innerHeight || document.documentElement.clientHeight;
+
+  let left = targetRect.left + scrollX;
+  let top = targetRect.bottom + scrollY + offset;
+  let placedAbove = false;
+
+  if (
+    targetRect.bottom + offset + pickerRect.height > viewportH &&
+    targetRect.top - offset - pickerRect.height >= 0
+  ) {
+    top = targetRect.top + scrollY - pickerRect.height - offset;
+    placedAbove = true;
+  }
+
+  left = Math.min(
+    Math.max(left, scrollX + offset),
+    scrollX + viewportW - pickerRect.width - offset
+  );
+
+  $datepicker.style.left = `${Math.round(left)}px`;
+  $datepicker.style.top = `${Math.round(top)}px`;
+
+  $datepicker.classList.remove("-top-left-", "-bottom-left-");
+  $datepicker.classList.add(placedAbove ? "-top-left-" : "-bottom-left-");
+
+  if ($pointer) {
+    const calendarLeft = left - scrollX;
+    const targetCenterX = targetRect.left + targetRect.width / 2;
+    const pointerOffset = Math.min(
+      Math.max(targetCenterX - calendarLeft, 4),
+      pickerRect.width - 4
+    );
+    $pointer.style.left = `${Math.round(pointerOffset)}px`;
+    $pointer.style.right = "auto";
+  }
+}
+
+const bbResizeTrackedDatepickers = new Set();
+let bbDatepickerResizeBound = false;
+
+export function trackAirDatepickerReposition(datepicker) {
+  if (!datepicker) return;
+  bbResizeTrackedDatepickers.add(datepicker);
+  if (bbDatepickerResizeBound) return;
+  bbDatepickerResizeBound = true;
+  window.addEventListener("resize", () => {
+    bbResizeTrackedDatepickers.forEach((dp) => {
+      if (dp.visible) dp.setPosition();
+    });
+  });
+}
+
+function maybeApplyCustomRange() {
+  const fromEl = document.getElementById("saDateFrom");
+  const toEl = document.getElementById("saDateTo");
+  const fromVal = fromEl?.value || "";
+  const toVal = toEl?.value || "";
+  if (!fromVal || !toVal) {
+    if (viewState.analyticsPeriod === "custom") {
+      setAnalyticsPeriod("custom");
+    }
+    return;
+  }
+  viewState.customDateRange = { start: fromVal, end: toVal };
+  setAnalyticsPeriod("custom");
+}
+
+function initAnalyticsDatePickers() {
+  const fromEl = document.getElementById("saDateFrom");
+  const toEl = document.getElementById("saDateTo");
+  const specificEl = document.getElementById("saSpecificDateInput");
+
+  if (!window.AirDatepicker) {
+    [fromEl, toEl, specificEl].forEach((el) => {
+      if (el) el.readOnly = false;
+    });
+    if (fromEl && !fromEl.dataset.bound) {
+      fromEl.dataset.bound = "1";
+      fromEl.addEventListener("change", maybeApplyCustomRange);
+    }
+    if (toEl && !toEl.dataset.bound) {
+      toEl.dataset.bound = "1";
+      toEl.addEventListener("change", maybeApplyCustomRange);
+    }
+    if (specificEl && !specificEl.dataset.bound) {
+      specificEl.dataset.bound = "1";
+      specificEl.addEventListener("change", () => {
+        const val = specificEl.value;
+        if (!val) return;
+        viewState.specificDate = val;
+        setAnalyticsPeriod("specific");
+      });
+    }
+    return;
+  }
+
+  if (fromEl && !fromEl.__bbAirDatepicker) {
+    let fromPicker = new window.AirDatepicker(fromEl, {
+      locale: AIR_DATEPICKER_EN_LOCALE,
+      dateFormat: "yyyy-MM-dd",
+      autoClose: true,
+      keyboardNav: true,
+      toggleSelected: true,
+      maxDate: new Date(),
+      position: airDatepickerSmartPosition,
+      onShow: () => {
+        if (fromPicker) fromPicker.update({ maxDate: new Date() });
+      },
+      onSelect: () => maybeApplyCustomRange(),
+    });
+    fromEl.__bbAirDatepicker = fromPicker;
+    trackAirDatepickerReposition(fromEl.__bbAirDatepicker);
+  }
+
+  if (toEl && !toEl.__bbAirDatepicker) {
+    let toPicker = new window.AirDatepicker(toEl, {
+      locale: AIR_DATEPICKER_EN_LOCALE,
+      dateFormat: "yyyy-MM-dd",
+      autoClose: true,
+      keyboardNav: true,
+      toggleSelected: true,
+      maxDate: new Date(),
+      position: airDatepickerSmartPosition,
+      onShow: () => {
+        if (toPicker) toPicker.update({ maxDate: new Date() });
+      },
+      onSelect: () => maybeApplyCustomRange(),
+    });
+    toEl.__bbAirDatepicker = toPicker;
+    trackAirDatepickerReposition(toEl.__bbAirDatepicker);
+  }
+
+  if (specificEl && !specificEl.__bbAirDatepicker) {
+    let specificPicker = new window.AirDatepicker(specificEl, {
+      locale: AIR_DATEPICKER_EN_LOCALE,
+      dateFormat: "yyyy-MM-dd",
+      autoClose: true,
+      keyboardNav: true,
+      toggleSelected: true,
+      maxDate: new Date(),
+      position: airDatepickerSmartPosition,
+      onShow: () => {
+        if (specificPicker) specificPicker.update({ maxDate: new Date() });
+      },
+      onSelect: () => {
+        const val = specificEl.value;
+        if (!val) return;
+        viewState.specificDate = val;
+        setAnalyticsPeriod("specific");
+      },
+    });
+    specificEl.__bbAirDatepicker = specificPicker;
+    trackAirDatepickerReposition(specificEl.__bbAirDatepicker);
+  }
+}
+
 function bindAnalyticsEvents() {
   document.querySelectorAll(".sales-period-tab").forEach((button) => {
     button.addEventListener("click", () => setAnalyticsPeriod(button.dataset.period));
   });
-
-  const applyBtn = document.getElementById("saDateApply");
-  const dateFrom = document.getElementById("saDateFrom");
-  const dateTo = document.getElementById("saDateTo");
-
-  if (applyBtn && dateFrom && dateTo) {
-    applyBtn.addEventListener("click", () => {
-      const fromVal = dateFrom.value;
-      const toVal = dateTo.value;
-      if (!fromVal || !toVal) return;
-      viewState.customDateRange = { start: fromVal, end: toVal };
-      setAnalyticsPeriod("custom");
-    });
-  }
-
-  const specificApplyBtn = document.getElementById("saSpecificDateApply");
-  const specificDateInput = document.getElementById("saSpecificDateInput");
-  if (specificApplyBtn && specificDateInput) {
-    specificApplyBtn.addEventListener("click", () => {
-      const val = specificDateInput.value;
-      if (!val) return;
-      viewState.specificDate = val;
-      setAnalyticsPeriod("specific");
-    });
-  }
 
   const fullReportBtn = document.getElementById("saFullReportBtn");
   if (fullReportBtn) {
@@ -1313,6 +1506,8 @@ function bindAnalyticsEvents() {
   document.querySelectorAll(".sales-category-tab").forEach((button) => {
     button.addEventListener("click", () => setCategoryFilter(button.dataset.cat));
   });
+
+  initAnalyticsDatePickers();
 }
 
 function handleOrderSavedEvent(e) {
@@ -1393,7 +1588,7 @@ function openFullReport() {
   <div class="kpi-card"><div class="kpi-label">Total Revenue</div><div class="kpi-value">${formatPeso(periodData.stats.revenue.value)}</div></div>
   <div class="kpi-card"><div class="kpi-label">Orders</div><div class="kpi-value">${periodData.stats.orders.value}</div></div>
   <div class="kpi-card"><div class="kpi-label">Avg. Ticket</div><div class="kpi-value">${formatPeso(periodData.stats.avgTicket.value)}</div></div>
-  <div class="kpi-card"><div class="kpi-label">Peak Hour</div><div class="kpi-value">${escapeHtml(String(periodData.stats.peakHour.value))}</div></div>
+  <div class="kpi-card"><div class="kpi-label">${escapeHtml(periodData.stats.peakHour.label || "Peak Hour")}</div><div class="kpi-value">${escapeHtml(String(periodData.stats.peakHour.value))}</div></div>
   <div class="kpi-card"><div class="kpi-label">Discounts Given</div><div class="kpi-value">${formatPeso(periodData.stats.discounts.value)}</div></div>
   <div class="kpi-card"><div class="kpi-label">Pending Sync</div><div class="kpi-value">${periodData.stats.sync.value}</div></div>
 </div>
