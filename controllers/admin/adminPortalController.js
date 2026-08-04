@@ -1150,6 +1150,13 @@ function getOrderDate(order) {
   return null;
 }
 
+function orderHasDiscount(order) {
+  if (Number(order.discountAmount || 0) > 0) return true;
+  if (order.isPwdSenior) return true;
+  if ((order.items || []).some((item) => Number(item.discountPercent || 0) > 0)) return true;
+  return false;
+}
+
 function applyOrderFilters() {
   const search = (orderFilters.search || "").trim().toLowerCase();
   const payment = (orderFilters.payment || "all").toLowerCase();
@@ -1167,6 +1174,10 @@ function applyOrderFilters() {
       if (orderType === "employee") return false;
     } else if (payment === "employee") {
       if (orderType !== "employee") return false;
+    } else if (payment === "discounted") {
+      if (orderType === "employee" || !orderHasDiscount(order)) return false;
+    } else if (payment === "no_discount") {
+      if (orderType === "employee" || orderHasDiscount(order)) return false;
     } else if (payment !== "all" && normalizedPayment !== payment) {
       return false;
     }

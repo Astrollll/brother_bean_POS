@@ -26,7 +26,7 @@
       href="https://cdn.jsdelivr.net/npm/air-datepicker@3.6.0/air-datepicker.css"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="/assets/adminstyle.css?v=20260803G" />
+    <link rel="stylesheet" href="/assets/adminstyle.css?v=20260804B" />
   </head>
   <body>
     <div
@@ -300,6 +300,8 @@
                         <option value="paid">Paid (Customers)</option>
                         <option value="split">Split (Cash + GCash)</option>
                         <option value="employee">Employee (Free)</option>
+                        <option value="discounted">With discount</option>
+                        <option value="no_discount">Without discount</option>
                       </select>
                       <i class="ri-arrow-down-s-line orders-field-caret" aria-hidden="true"></i>
                     </div>
@@ -373,13 +375,13 @@
               <div class="orders-kpi-row">
                 <div class="orders-kpi-card">
                   <div class="orders-kpi-label">
-                    <i class="ri-receipt-2-line" aria-hidden="true"></i> Filtered Transactions
+                    Filtered Transactions
                   </div>
                   <div class="orders-kpi-value" id="ordersCountKpi">0</div>
                 </div>
                 <div class="orders-kpi-card">
                   <div class="orders-kpi-label">
-                    <i class="ri-coins-line" aria-hidden="true"></i> Filtered Sales
+                    Filtered Sales
                   </div>
                   <div class="orders-kpi-value" id="ordersTotalKpi">₱0.00</div>
                 </div>
@@ -1285,7 +1287,7 @@
     <script src="https://cdn.jsdelivr.net/npm/air-datepicker@3.6.0/air-datepicker.js"></script>
     <script
       type="module"
-      src="/controllers/admin/adminPortalController.js?v=20260803J"
+      src="/controllers/admin/adminPortalController.js?v=20260804A"
     ></script>
   </body>
 </html>
