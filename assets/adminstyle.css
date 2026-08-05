@@ -1946,6 +1946,27 @@ button,
   box-shadow: 0 14px 40px rgba(74, 47, 25, 0.18);
 }
 
+/* Air Datepicker open/close animation (custom-positioned pickers) */
+.air-datepicker.-custom-position- {
+  opacity: 0;
+  transform: translateY(8px) scale(0.98);
+  transition:
+    opacity 0.22s ease-out,
+    transform 0.22s ease-out;
+}
+
+.air-datepicker.-custom-position-.-active- {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .air-datepicker.-custom-position- {
+    transform: none;
+    transition: none;
+  }
+}
+
 .air-datepicker-cell.-selected-,
 .air-datepicker-cell.-selected-.-focus-,
 .air-datepicker-cell.-selected-:hover {
