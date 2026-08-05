@@ -157,12 +157,14 @@ function removeLocalCategory(id) {
 }
 
 function mergeCategories(remoteCategories, localCache) {
+  const deletedIds = new Set((localCache.deletedIds || []).map((id) => String(id)));
   const byId = new Map();
   const byName = new Map();
 
   for (const category of [...remoteCategories, ...(localCache.upserts || [])]) {
     if (!category?.id) continue;
     const id = String(category.id);
+    if (deletedIds.has(id)) continue;
     const nameKey = normalizeCategoryKey(category.name || "");
 
     // Deduplicate by normalized name — keep the version with more data
@@ -237,4 +239,29 @@ export async function deleteCategory(id) {
   }
   // Always update local cache to prevent deleted category from reappearing via merge
   removeLocalCategory(id);
+}
+
+// Replay locally-cached category upserts/deletes to Firestore (back online / admin load).
+export async function syncCategoryLocalChanges() {
+  const cache = readLocalCache();
+  let failed = false;
+  for (const category of cache.upserts || []) {
+    try {
+      await setDoc(doc(db, CATEGORIES_COLLECTION, String(category.id)), category);
+    } catch (error) {
+      console.warn("[Category] Upsert sync failed; will retry.", error);
+      failed = true;
+    }
+  }
+  for (const id of cache.deletedIds || []) {
+    try {
+      await deleteDoc(doc(db, CATEGORIES_COLLECTION, String(id)));
+    } catch (error) {
+      console.warn("[Category] Delete sync failed; will retry.", error);
+      failed = true;
+    }
+  }
+  const total = (cache.upserts || []).length + (cache.deletedIds || []).length;
+  if (!failed) writeLocalCache({ upserts: [], deletedIds: [] });
+  return { synced: failed ? 0 : total, pending: failed ? total : 0 };
 }

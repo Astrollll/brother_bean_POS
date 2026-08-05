@@ -253,7 +253,10 @@ document.addEventListener("DOMContentLoaded", async () => {
     initialized = true;
 
     // Load from storage first
-    const storageData = await loadFromStorage();
+    const storageData = await loadFromStorage().catch(() => ({
+      salesHistory: [],
+      dailyStats: { orders: 0, totalSales: 0, discountsApplied: 0, cashReceived: 0, gcashReceived: 0, openingFloat: 0, cashIn: 0, cashOut: 0, actualCash: null, cashOnHandAuto: true, ledgerEntries: [] },
+    }));
     salesHistory = storageData.salesHistory;
     dailyStats = storageData.dailyStats;
     posReady = true;
@@ -311,10 +314,13 @@ document.addEventListener("DOMContentLoaded", async () => {
     dailyStats = recomputeDailyStats(salesHistory, dailyStats);
     persistPosState();
 
-    menuItems = sanitizePosMenuItems(await getMenuItems());
+    menuItems = sanitizePosMenuItems(await getMenuItems().catch(() => []));
 
     // Load unpaid orders from Firestore so they survive cache clears
-    await loadUnpaidOrdersFromFirestore();
+    await loadUnpaidOrdersFromFirestore().catch((error) => {
+      console.warn("[POS] Failed to load unpaid orders from Firestore; using local fallback.", error);
+      return loadUnpaidOrders();
+    });
     updateUnpaidOrderSidebar();
 
     // Clear any stale cart data from previous sessions
@@ -1730,27 +1736,6 @@ window.completePayment = async function() {
 
     // Add to kitchen pending queue so the order appears in the sidebar
     await saveKitchenOrder(sale);
-
-    // Notify other parts of the app (analytics/dashboard) about the new order
-    try {
-      if (typeof window !== "undefined" && window.dispatchEvent) {
-        const ev = new CustomEvent("bb:order:saved", { detail: sale });
-        window.dispatchEvent(ev);
-      }
-    } catch (err) {
-      console.warn("[POS] failed to dispatch order saved event", err);
-    }
-    // store in a global buffer so other components can pick it up even if they weren't listening yet
-    try {
-      if (typeof window !== "undefined") {
-        window.__bbOrderEventBuffer = window.__bbOrderEventBuffer || [];
-        window.__bbOrderEventBuffer.unshift(sale);
-        // keep buffer bounded
-        if (window.__bbOrderEventBuffer.length > 200) window.__bbOrderEventBuffer.length = 200;
-      }
-    } catch (err) {
-      // non-fatal
-    }
 
     // Update local stats. The live order listener may have already folded this
     // sale into salesHistory from the Firestore snapshot (its own write

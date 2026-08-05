@@ -75,7 +75,8 @@ function loadBlock() {
       "renderOrdersKpis",
     ];
     const factory = new Function(
-      "document", "window", "state", "orderFilters", "ModalUtils",
+      "document", "window", "state", "orderFilters", "ordersDatePickers",
+      "ModalUtils",
       "escapeHtml", "formatMoney", "deleteOrder", "loadOrdersPage", "getAllSalesOrders",
       `${block}\nreturn { ${exports.join(", ")} };`,
     );
@@ -108,6 +109,7 @@ function buildHarness() {
     elements,
     state,
     orderFilters,
+    ordersDatePickers: { from: null, to: null },
     windowStub: {},
     ModalUtils: { confirm: async () => 1, success: async () => {}, error: async () => {} },
     formatMoney: (n) => `₱${(Number(n) || 0).toFixed(2)}`,
@@ -122,6 +124,7 @@ async function main() {
   const harness = buildHarness();
   const api = factory(
     harness.documentStub, harness.windowStub, harness.state, harness.orderFilters,
+    harness.ordersDatePickers,
     harness.ModalUtils, escapeHtml, harness.formatMoney,
     harness.deleteOrder, harness.loadOrdersPage, harness.getAllSalesOrders,
   );

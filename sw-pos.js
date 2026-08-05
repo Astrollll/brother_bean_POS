@@ -1,4 +1,4 @@
-const CACHE_NAME = "brother-bean-pos-v8";
+const CACHE_NAME = "brother-bean-pos-v9";
 const APP_SHELL_FILES = [
   "/pos",
   "/views/pages/pos.html",
@@ -10,11 +10,14 @@ const APP_SHELL_FILES = [
   "/controllers/firebase.js",
   "/config/app.config.js",
   "/controllers/auth/firebaseAuth.js",
+  "/controllers/utils/routes.js",
   "/models/menuModel.js",
   "/models/orderModel.js",
   "/models/inventoryModel.js",
   "/models/storageModel.js",
   "/models/userModel.js",
+  "/models/categoryModel.js",
+  "/models/defaultSeedData.js",
   "/assets/icons/brother-bean-logo.jpg",
   "/pos.webmanifest"
 ];

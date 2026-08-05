@@ -9,7 +9,8 @@ const RESETS_COLLECTION = "resets";
 
 // Archive today's orders to resets/{date}/orders and delete from orders
 export async function resetDay() {
-  const todayKey = new Date().toISOString().split("T")[0];
+  const now = new Date();
+  const todayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
   const { start, end } = todayRange();
 
   const q = query(

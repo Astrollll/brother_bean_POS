@@ -39,6 +39,9 @@ export function setDoc(ref, data) {
     window.__itestSetDocRejects = (window.__itestSetDocRejects || 0) + 1;
     return Promise.reject(new Error("itest: setDoc failed (offline)"));
   }
+  if (window.__itestForceSetDocFail === true) {
+    return Promise.reject(new Error("itest: forced setDoc failure"));
+  }
   if (window.__itestWrites) window.__itestWrites.push({ ref: ref.path, data: JSON.parse(JSON.stringify(data)) });
   // In placeorder mode, writing an order to /orders/{id} immediately delivers
   // the today-orders snapshot (like Firestore's own-write listener): by the
@@ -58,7 +61,13 @@ export function setDoc(ref, data) {
   return Promise.resolve();
 }
 export function updateDoc() { return Promise.resolve(); }
-export function deleteDoc() { return Promise.resolve(); }
+export function deleteDoc(ref) {
+  if (window.__itestForceDeleteDocFail === true) {
+    return Promise.reject(new Error("itest: forced deleteDoc failure"));
+  }
+  if (window.__itestWrites) window.__itestWrites.push({ ref: ref.path, deleted: true });
+  return Promise.resolve();
+}
 export function onSnapshot(q, cb, errCb) {
   if (window.__itestSnapshots) window.__itestSnapshots.push(cb);
   return () => {};

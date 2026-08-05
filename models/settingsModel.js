@@ -41,6 +41,7 @@ function mergeSettings(base, incoming) {
 }
 
 const LOCAL_STORAGE_KEY = "bb_admin_settings_v1";
+const PENDING_SETTINGS_KEY = "bb_admin_settings_pending_v1";
 
 function loadFromLocalStorage() {
   try {
@@ -58,17 +59,49 @@ function saveToLocalStorage(settings) {
   } catch (_) {}
 }
 
+function readPendingSettings() {
+  try {
+    const raw = localStorage.getItem(PENDING_SETTINGS_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+function writePendingSettings(settings) {
+  try {
+    localStorage.setItem(PENDING_SETTINGS_KEY, JSON.stringify(settings));
+  } catch (_) {}
+}
+
+function clearPendingSettings() {
+  try {
+    localStorage.removeItem(PENDING_SETTINGS_KEY);
+  } catch (_) {}
+}
+
 export async function getAdminSettings() {
+  let firestoreSettings = null;
   try {
     const snap = await getDoc(doc(db, SETTINGS_DOC_PATH));
     if (snap.exists()) {
-      const data = snap.data();
-      const merged = mergeSettings(DEFAULT_SETTINGS, data);
-      saveToLocalStorage(merged);
-      return merged;
+      firestoreSettings = mergeSettings(DEFAULT_SETTINGS, snap.data());
     }
   } catch (error) {
     console.warn("[Settings] Firestore read failed, using local fallback:", error);
+  }
+
+  const pending = readPendingSettings();
+  if (pending) {
+    const base = firestoreSettings || loadFromLocalStorage() || {};
+    const merged = mergeSettings(base, pending);
+    saveToLocalStorage(merged);
+    return merged;
+  }
+
+  if (firestoreSettings) {
+    saveToLocalStorage(firestoreSettings);
+    return firestoreSettings;
   }
 
   const local = loadFromLocalStorage();
@@ -77,16 +110,36 @@ export async function getAdminSettings() {
 }
 
 export async function saveAdminSettings(settings) {
+  const merged = mergeSettings(DEFAULT_SETTINGS, settings);
   try {
     await setDoc(
       doc(db, SETTINGS_DOC_PATH),
-      { ...settings, updatedAt: serverTimestamp() },
+      { ...merged, updatedAt: serverTimestamp() },
       { merge: true }
     );
+    clearPendingSettings();
   } catch (error) {
-    console.warn("[Settings] Firestore write failed, saved locally only:", error);
+    console.warn("[Settings] Firestore write failed; queued for retry.", error);
+    writePendingSettings(merged);
   }
-  saveToLocalStorage(settings);
+  saveToLocalStorage(merged);
+}
+
+export async function syncPendingAdminSettings() {
+  const pending = readPendingSettings();
+  if (!pending) return { synced: 0, pending: 0 };
+  try {
+    await setDoc(
+      doc(db, SETTINGS_DOC_PATH),
+      { ...pending, updatedAt: serverTimestamp() },
+      { merge: true }
+    );
+    clearPendingSettings();
+    return { synced: 1, pending: 0 };
+  } catch (error) {
+    console.warn("[Settings] Pending settings sync failed; will retry.", error);
+    return { synced: 0, pending: 1 };
+  }
 }
 
 export function getDefaultSettings() {

@@ -3,17 +3,17 @@ import { db } from "../firebase.js";
 import {
   doc, setDoc, getDoc, collection, getDocs, serverTimestamp
 } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js";
-import { getAdminSettings, saveAdminSettings, getDefaultSettings } from "../../models/settingsModel.js";
+import { getAdminSettings, saveAdminSettings, getDefaultSettings, syncPendingAdminSettings } from "../../models/settingsModel.js";
 import { getUserRole, getUserProfile, listUsers, setUserRole, setUserProfile, ensureAdminAccessProfile } from "../../models/userModel.js";
-import { getMenuItems, saveMenuItem, deleteMenuItem, clearMenuItems } from "../../models/menuModel.js";
-import { getCategories, saveCategory, deleteCategory, getCategoryIconForName } from "../../models/categoryModel.js";
-import { getTodayOrders, getAllSalesOrders, deleteOrder, clearAllOrders, getPendingOrderCount, getQueuedOrders, syncQueuedOrders } from "../../models/orderModel.js?v=20260710C";
+import { getMenuItems, saveMenuItem, deleteMenuItem, clearMenuItems, syncPendingMenuOps } from "../../models/menuModel.js";
+import { getCategories, saveCategory, deleteCategory, getCategoryIconForName, syncCategoryLocalChanges } from "../../models/categoryModel.js";
+import { getTodayOrders, getAllSalesOrders, deleteOrder, clearAllOrders, getPendingOrderCount, getQueuedOrders, syncQueuedOrders } from "../../models/orderModel.js";
 import { getSavedSalesHistory, getDailyStatsByDate, getDrawerLogsByDate } from "../../models/storageModel.js";
 import { resetDay as archiveResetDay } from "../../models/resetModel.js";
 import { getInventoryItems, saveInventoryItem, deleteInventoryItem, clearInventoryItems, convertQuantityBetweenUnits, normalizeUnit } from "../../models/inventoryModel.js";
 import { inventorySeedItems } from "../../models/defaultSeedData.js";
 import { getAllStaff as getStaff, getSchedule, getOnDutyNowFromSchedule, addStaff, removeStaff, removeStaffByName, removeStaffByAccountUid, updateStaffAccountLink, updateStaffNameByUid, saveSchedule } from "../../models/staffModel.js";
-import { renderSalesAnalyticsDashboard, renderAdminDashboard, AIR_DATEPICKER_EN_LOCALE, airDatepickerSmartPosition, trackAirDatepickerReposition } from "../../views/dashboardView.js?v=20260805A";
+import { renderSalesAnalyticsDashboard, renderAdminDashboard, AIR_DATEPICKER_EN_LOCALE, airDatepickerSmartPosition, trackAirDatepickerReposition } from "../../views/dashboardView.js?v=20260805B";
 import { renderAdminMenu } from "../../views/menuView.js";
 import { renderStaffList, renderScheduleEditor, readScheduleFromDOM } from "../../views/staffView.js";
 import { navigateTo } from "../utils/routes.js";
@@ -145,7 +145,25 @@ function showApp() {
   const app = document.getElementById("app");
   if (loading) loading.style.display = "none";
   if (app) app.style.display = "flex";
+  syncOfflineEdits();
 }
+
+async function syncOfflineEdits() {
+  try {
+    await Promise.allSettled([
+      syncPendingAdminSettings(),
+      syncPendingMenuOps(),
+      syncCategoryLocalChanges(),
+      syncQueuedOrders(),
+    ]);
+  } catch (error) {
+    console.warn("[Admin] Offline edit sync failed; will retry on next load.", error);
+  }
+}
+
+window.addEventListener("online", () => {
+  syncOfflineEdits();
+});
 
 function setAuthLoadingState(message = "Loading dashboard...", keepAppVisible = false) {
   const loading = document.getElementById("auth-loading");
@@ -4230,7 +4248,7 @@ async function loadSettingsPage() {
     try {
       const keys = Object.keys(localStorage);
       keys
-        .filter((key) => key.startsWith("bb_") || key.startsWith("brother-bean"))
+        .filter((key) => key.startsWith("bb_") || key.startsWith("bb-") || key.startsWith("brotherBean_") || key.startsWith("brother-bean"))
         .forEach((key) => localStorage.removeItem(key));
       sessionStorage.clear();
 

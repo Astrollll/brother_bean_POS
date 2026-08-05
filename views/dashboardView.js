@@ -1,3 +1,6 @@
+import { getSavedSalesHistory } from "../models/storageModel.js";
+import { getOnDutyNowFromSchedule } from "../models/staffModel.js";
+
 const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const WEEKDAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -143,15 +146,7 @@ function sortOrdersNewestFirst(orders) {
 }
 
 function readStoredSalesHistory() {
-  try {
-    if (typeof window === "undefined" || !window.localStorage) return [];
-    const raw = window.localStorage.getItem("brotherBean_salesHistory");
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
+  return getSavedSalesHistory();
 }
 
 function mergeUniqueOrders(baseOrders = [], fallbackOrders = []) {
@@ -741,9 +736,7 @@ export function renderAdminDashboard({ orders = [], menuItems = [], staff = [], 
 
   const sortedOrders = sortOrdersNewestFirst(orders);
   const topItems = computeTopItems(sortedOrders, menuItems);
-  const onDutyInfo = typeof window.getOnDutyNowFromSchedule === "function"
-    ? window.getOnDutyNowFromSchedule(staff, schedule, new Date())
-    : { onDuty: [], total: Array.isArray(staff) ? staff.length : 0 };
+  const onDutyInfo = getOnDutyNowFromSchedule(staff, schedule, new Date());
 
   const totalSales = sumRevenue(sortedOrders);
   const totalOrders = sortedOrders.length;
@@ -1550,27 +1543,6 @@ function bindAnalyticsEvents() {
   initAnalyticsDatePickers();
 }
 
-function handleOrderSavedEvent(e) {
-  try {
-    const sale = e?.detail;
-    if (!sale) return;
-    // Ensure analytics data store exists
-    if (!viewState.analyticsData) viewState.analyticsData = { orders: [], menuItems: [], pendingSyncCount: 0 };
-    // Append the new sale so it's included in current analytics
-    viewState.analyticsData.orders = viewState.analyticsData.orders || [];
-    // Avoid duplicates: check by orderId if present
-    const exists = viewState.analyticsData.orders.some((o) => String(o?.orderId || o?.id || "") === String(sale?.orderId || sale?.id || ""));
-    if (!exists) {
-      // Normalize dates: if createdAt is a string, keep it — getOrderDate will handle it
-      viewState.analyticsData.orders.unshift(sale);
-      // Recompute current period view
-      setAnalyticsPeriod(viewState.analyticsPeriod || "today");
-    }
-  } catch (err) {
-    console.warn("[Analytics] order saved handler failed", err);
-  }
-}
-
 function openFullReport() {
   const period = viewState.analyticsPeriod || "today";
   const orders = viewState.analyticsData?.orders || [];
@@ -1671,11 +1643,8 @@ export function renderSalesAnalyticsDashboard(data = {}) {
   if (!dashboardRoot) return;
 
   const storedSalesHistory = readStoredSalesHistory();
-  const bufferedOrders = typeof window !== "undefined" && Array.isArray(window.__bbOrderEventBuffer)
-    ? window.__bbOrderEventBuffer
-    : [];
   const providedOrders = Array.isArray(data.allOrders) ? data.allOrders : Array.isArray(data.orders) ? data.orders : [];
-  const fallbackOrders = mergeUniqueOrders(bufferedOrders, storedSalesHistory);
+  const fallbackOrders = storedSalesHistory;
 
   viewState.analyticsData = {
     orders: mergeUniqueOrders(providedOrders, fallbackOrders),
@@ -1691,32 +1660,6 @@ export function renderSalesAnalyticsDashboard(data = {}) {
   if (!viewState.analyticsInitialized) {
     dashboardRoot.innerHTML = buildAnalyticsTemplate();
     bindAnalyticsEvents();
-    // Listen for new orders saved in POS so analytics updates live
-    try {
-      if (typeof window !== "undefined" && window.addEventListener) {
-        window.addEventListener("bb:order:saved", handleOrderSavedEvent);
-      }
-    } catch (err) {
-      console.warn("[Analytics] failed to bind order saved listener", err);
-    }
-    // If any orders were saved before analytics initialized, merge them
-    try {
-      const buf = (typeof window !== "undefined" && Array.isArray(window.__bbOrderEventBuffer)) ? window.__bbOrderEventBuffer.slice() : [];
-      if (buf.length) {
-        viewState.analyticsData.orders = viewState.analyticsData.orders || [];
-        let added = 0;
-        for (const sale of buf) {
-          const exists = viewState.analyticsData.orders.some((o) => String(o?.orderId || o?.id || "") === String(sale?.orderId || sale?.id || ""));
-          if (!exists) {
-            viewState.analyticsData.orders.unshift(sale);
-            added += 1;
-          }
-        }
-        console.debug(`[Analytics] merged ${added} buffered order(s) into analytics`);
-      }
-    } catch (err) {
-      console.warn("[Analytics] failed to merge buffered orders", err);
-    }
     viewState.analyticsInitialized = true;
   }
 
