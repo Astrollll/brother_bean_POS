@@ -1949,7 +1949,7 @@ button,
 /* Air Datepicker open/close animation (custom-positioned pickers) */
 .air-datepicker.-custom-position- {
   opacity: 0;
-  transform: translateY(8px) scale(0.98);
+  transform: translateY(8px);
   transition:
     opacity 0.22s ease-out,
     transform 0.22s ease-out;
@@ -1957,7 +1957,7 @@ button,
 
 .air-datepicker.-custom-position-.-active- {
   opacity: 1;
-  transform: translateY(0) scale(1);
+  transform: translateY(0);
   transition:
     opacity 0.22s ease-out,
     transform 0.22s ease-out;
