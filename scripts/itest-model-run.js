@@ -113,6 +113,23 @@ async function run() {
   clearKeys();
   try {
     setFail(true);
+    await menuModel.saveMenuItem({ id: "m1", name: "Latte", price: 120 });
+    await menuModel.deleteMenuItem("m1");
+    setFail(false);
+    await menuModel.saveMenuItem({ id: "m1", name: "Latte", price: 140 });
+    const opsAfter = readJSON("bb_menu_pending_ops_v1");
+    const localCache = readJSON("bb_menu_local_cache");
+    step("menuStaleOps", {
+      pendingCleared: Array.isArray(opsAfter) && opsAfter.length === 0,
+      localCacheKeepsItem: Array.isArray(localCache) && localCache.length === 1 && String(localCache[0].id) === "m1" && localCache[0].price === 140,
+    });
+  } catch (err) {
+    step("menuStaleOps", { error: String(err && err.message || err) });
+  }
+
+  clearKeys();
+  try {
+    setFail(true);
     const cat = await categoryModel.saveCategory({ name: "Snacks" });
     await categoryModel.deleteCategory("cat-del");
     const cacheQueued = readJSON("bb_categories_local_cache");

@@ -99,6 +99,7 @@ export async function saveMenuItem(item) {
   try {
     await setDoc(ref, item);
     removePendingOp((op) => op.op === "save" && String(op.item?.id) === String(item.id));
+    removePendingOp((op) => op.op === "delete" && String(op.id) === String(item.id));
   } catch (error) {
     console.warn("[Menu] Firestore write failed; queued for retry.", error);
     queuePendingOp({ op: "save", item });
@@ -115,6 +116,7 @@ export async function deleteMenuItem(id) {
   try {
     await deleteDoc(doc(db, MENU_COLLECTION, String(id)));
     removePendingOp((op) => op.op === "delete" && String(op.id) === String(id));
+    removePendingOp((op) => op.op === "save" && String(op.item?.id) === String(id));
   } catch (error) {
     console.warn("[Menu] Firestore delete failed; queued for retry.", error);
     queuePendingOp({ op: "delete", id: String(id) });

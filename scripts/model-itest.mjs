@@ -149,6 +149,9 @@ const server = app.listen(PORT, async () => {
       const dedupe = sstep("menuDedupe");
       check("menu: repeated offline save de-dupes to one op", dedupe?.singleSaveOp === true);
 
+      const stale = sstep("menuStaleOps");
+      check("menu: online re-save clears stale queued delete", stale?.pendingCleared === true && stale?.localCacheKeepsItem === true);
+
       const category = sstep("category");
       check("category: offline upsert queued", category?.upsertQueued === true);
       check("category: merge shows local upsert", category?.mergeShowsUpsert === true);
