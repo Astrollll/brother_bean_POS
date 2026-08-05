@@ -3,24 +3,31 @@
 
 import { db } from "../controllers/firebase.js";
 import {
-  collection, getDocs, doc, setDoc, deleteDoc, query, where
+  collection, getDocs, getDoc, doc, setDoc, deleteDoc, query, where
 } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js";
 
 const STORAGE_KEYS = {
-  salesHistory:  "brotherBean_salesHistory",
-  dailyStats:    "brotherBean_dailyStats",
-  lastResetDate: "brotherBean_lastResetDate",
-  orderOutbox:   "brotherBean_orderOutbox",
-  kitchenOrders: "brotherBean_kitchenOrders"
+  salesHistory:    "brotherBean_salesHistory",
+  dailyStats:      "brotherBean_dailyStats",
+  lastResetDate:   "brotherBean_lastResetDate",
+  orderOutbox:     "brotherBean_orderOutbox",
+  kitchenOrders:   "brotherBean_kitchenOrders",
+  drawerLogOutbox: "brotherBean_drawerLogOutbox",
+  terminalId:      "brotherBean_terminalId"
 };
 
 const KITCHEN_COLLECTION = "kitchenOrders";
 const STATS_COLLECTION = "dailyStats";
+const DRAWER_LOG_COLLECTION = "drawerLogs";
 
 // Cap the kitchen-order write: if connectivity drops suddenly the Firestore
 // SDK can hang retrying, which would otherwise block completePayment behind
 // the receipt. The local cache fallback below is authoritative enough.
 const KITCHEN_WRITE_TIMEOUT_MS = readTimeoutParam("bbKitchenWriteTimeoutMs", 4000);
+
+// Cap the drawer-log write for the same reason — recording a cash in/out must
+// never hang the cashier behind the drawer popup.
+const DRAWER_WRITE_TIMEOUT_MS = readTimeoutParam("bbDrawerWriteTimeoutMs", 4000);
 
 function readTimeoutParam(name, fallback) {
   try {
@@ -172,6 +179,21 @@ export async function loadStatsFromFirestore() {
   return null;
 }
 
+// Read a specific day's shared stats doc (id = "YYYY-MM-DD") from Firestore.
+// Returns { date, dailyStats, updatedAtMs } or null when the day has no record.
+export async function getDailyStatsByDate(dateKey) {
+  try {
+    const id = dateKey || todayKey();
+    const snap = await getDoc(doc(db, STATS_COLLECTION, id));
+    if (snap.exists()) {
+      return { date: id, ...snap.data() };
+    }
+  } catch (error) {
+    console.warn("[Storage] Firestore daily stats read failed.", error);
+  }
+  return null;
+}
+
 export function checkDailyReset() {
   const lastReset = localStorage.getItem(STORAGE_KEYS.lastResetDate);
   const today = new Date().toDateString();
@@ -302,6 +324,135 @@ export function getSavedSalesHistory() {
     return raw ? JSON.parse(raw) : [];
   } catch (err) {
     console.warn('[Storage] failed to read saved sales history', err);
+    return [];
+  }
+}
+
+// ── Drawer Log (append-only, per-entry Firestore docs) ──
+// Each cash in / cash out / starting-cash event is written as its OWN doc in
+// the drawerLogs collection (doc id = the entry id). Two consequences:
+//   1. Terminals never overwrite each other — the admin Logs page aggregates
+//      every terminal's entries instead of reading a shared last-writer-wins
+//      doc.
+//   2. Offline entries go to a localStorage outbox and are retried later, so
+//      nothing is lost when the POS records a drawer event offline.
+// A stable per-device terminal id distinguishes which POS made each entry.
+
+let cachedTerminalId = "";
+
+export function getTerminalId() {
+  if (cachedTerminalId) return cachedTerminalId;
+  try {
+    let id = localStorage.getItem(STORAGE_KEYS.terminalId);
+    if (!id) {
+      id = (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function")
+        ? crypto.randomUUID()
+        : `term_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+      localStorage.setItem(STORAGE_KEYS.terminalId, id);
+    }
+    cachedTerminalId = id;
+    return id;
+  } catch {
+    return "terminal";
+  }
+}
+
+export function getDrawerLogOutbox() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.drawerLogOutbox);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function queueDrawerLogEntry(payload) {
+  const outbox = getDrawerLogOutbox();
+  const key = String(payload?.id || "");
+  if (key && outbox.some((o) => String(o.id) === key)) return outbox.length;
+  outbox.push({ id: key || `d_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`, createdAt: Date.now(), payload });
+  try {
+    localStorage.setItem(STORAGE_KEYS.drawerLogOutbox, JSON.stringify(outbox));
+  } catch {}
+  return outbox.length;
+}
+
+export function removeDrawerLogEntry(queueId) {
+  const outbox = getDrawerLogOutbox().filter((o) => String(o.id) !== String(queueId));
+  try {
+    localStorage.setItem(STORAGE_KEYS.drawerLogOutbox, JSON.stringify(outbox));
+  } catch {}
+  return outbox.length;
+}
+
+// Write one drawer-log entry to Firestore. On failure it is queued locally
+// (idempotent retry — the doc id is the entry id). Returns true when synced.
+export async function recordDrawerLogEntry(entry) {
+  if (!entry || typeof entry !== "object") return false;
+  const id = String(entry.id || `d_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`);
+  const payload = {
+    id,
+    terminalId: String(entry.terminalId || getTerminalId()),
+    date: entry.date || todayKey(),
+    kind: entry.kind === "out" ? "out" : entry.kind === "float" ? "float" : "in",
+    amount: Math.round((Number(entry.amount) || 0) * 100) / 100,
+    note: entry.note ? String(entry.note).slice(0, 80) : "",
+    t: Number(entry.t) || Date.now(),
+    createdAt: Number(entry.createdAt) || Date.now(),
+  };
+
+  try {
+    await withWriteTimeout(
+      setDoc(doc(db, DRAWER_LOG_COLLECTION, id), payload),
+      "drawer_log_write",
+      DRAWER_WRITE_TIMEOUT_MS
+    );
+    return true;
+  } catch (error) {
+    console.warn("[Storage] Drawer log write failed; queued for retry.", error);
+    queueDrawerLogEntry(payload);
+    return false;
+  }
+}
+
+// Flush pending drawer-log entries to Firestore (called on POS load and when
+// the terminal comes back online).
+export async function syncDrawerLogOutbox() {
+  const outbox = getDrawerLogOutbox();
+  let synced = 0;
+  for (const item of outbox) {
+    const payload = item?.payload || {};
+    const id = String(payload.id || item.id || "");
+    if (!id) continue;
+    try {
+      await withWriteTimeout(
+        setDoc(doc(db, DRAWER_LOG_COLLECTION, id), payload),
+        "drawer_log_sync",
+        DRAWER_WRITE_TIMEOUT_MS
+      );
+      removeDrawerLogEntry(item.id);
+      synced += 1;
+    } catch {
+      // Keep unsynced entry in the queue and try again next time.
+    }
+  }
+  return { synced, pending: getDrawerLogOutbox().length };
+}
+
+// Read every drawer-log entry for a day. Sorted by time client-side (avoids a
+// composite Firestore index). Returns [] on failure so the admin page can fall
+// back to the legacy dailyStats doc.
+export async function getDrawerLogsByDate(dateKey) {
+  try {
+    const id = dateKey || todayKey();
+    const snap = await getDocs(
+      query(collection(db, DRAWER_LOG_COLLECTION), where("date", "==", id))
+    );
+    return snap.docs
+      .map((d) => d.data())
+      .sort((a, b) => (Number(a.t) || 0) - (Number(b.t) || 0));
+  } catch (error) {
+    console.warn("[Storage] Firestore drawer log read failed.", error);
     return [];
   }
 }

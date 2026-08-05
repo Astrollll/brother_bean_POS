@@ -1,4 +1,4 @@
-const CACHE_NAME = "brother-bean-pos-v7";
+const CACHE_NAME = "brother-bean-pos-v8";
 const APP_SHELL_FILES = [
   "/pos",
   "/views/pages/pos.html",

@@ -8,7 +8,7 @@ import { getUserRole, getUserProfile, listUsers, setUserRole, setUserProfile, en
 import { getMenuItems, saveMenuItem, deleteMenuItem, clearMenuItems } from "../../models/menuModel.js";
 import { getCategories, saveCategory, deleteCategory, getCategoryIconForName } from "../../models/categoryModel.js";
 import { getTodayOrders, getAllSalesOrders, deleteOrder, clearAllOrders, getPendingOrderCount, getQueuedOrders, syncQueuedOrders } from "../../models/orderModel.js?v=20260710C";
-import { getSavedSalesHistory } from "../../models/storageModel.js";
+import { getSavedSalesHistory, getDailyStatsByDate, getDrawerLogsByDate } from "../../models/storageModel.js";
 import { resetDay as archiveResetDay } from "../../models/resetModel.js";
 import { getInventoryItems, saveInventoryItem, deleteInventoryItem, clearInventoryItems, convertQuantityBetweenUnits, normalizeUnit } from "../../models/inventoryModel.js";
 import { inventorySeedItems } from "../../models/defaultSeedData.js";
@@ -97,6 +97,9 @@ const orderFilters = {
 };
 
 const ordersDatePickers = { from: null, to: null };
+
+const logsState = { date: "" };
+let logsDatePicker = null;
 
 const accountFilters = {
   search: "",
@@ -2294,6 +2297,219 @@ function bindOrdersControls() {
   initOrdersDatePickers();
 }
 
+function logsFormatPeso(value) {
+  return `₱${(Number(value) || 0).toFixed(2)}`;
+}
+
+function setLogsKpi(id, value) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = value;
+}
+
+function renderLogsEmptyState(title, sub) {
+  const wrap = document.getElementById("logsTableWrap");
+  if (!wrap) return;
+  wrap.innerHTML = `
+    <div class="orders-empty-state">
+      <i class="ri-inbox-2-line" aria-hidden="true"></i>
+      <div class="orders-empty-title">${escapeHtml(title)}</div>
+      <div class="orders-empty-sub">${escapeHtml(sub)}</div>
+    </div>`;
+}
+
+function logsSumKind(entries, kind) {
+  return (entries || []).reduce((sum, e) => {
+    return e?.kind === kind ? sum + (Number(e.amount) || 0) : sum;
+  }, 0);
+}
+
+// Per-terminal starting cash = the LATEST "float" entry per terminal (a re-set
+// is an edit, not another drawer). Falls back to the legacy dailyStats float.
+function logsStartingCash(entries, legacyStats) {
+  const floats = (entries || []).filter((e) => e?.kind === "float");
+  if (floats.length) {
+    const latest = new Map();
+    for (const f of floats) {
+      const tid = String(f.terminalId || "unknown");
+      const prev = latest.get(tid);
+      if (!prev || (Number(f.t) || 0) > (Number(prev.t) || 0)) latest.set(tid, f);
+    }
+    let total = 0;
+    for (const f of latest.values()) total += Number(f.amount) || 0;
+    return total;
+  }
+  return legacyStats ? Number(legacyStats.openingFloat || 0) : 0;
+}
+
+// Merge per-entry drawer logs with the legacy dailyStats ledger. New entries
+// carry an id and are deduplicated; pre-feature legacy entries have no id, so
+// they are always kept. The result is sorted by time (oldest first).
+function logsMergeEntries(drawerLogs, legacyLedger) {
+  const seen = new Set((drawerLogs || []).map((e) => String(e?.id || "")).filter(Boolean));
+  const extra = (legacyLedger || [])
+    .filter((e) => !(e?.id && seen.has(String(e.id))))
+    .map((e) => ({ ...e, terminalId: "" }));
+  return [...(drawerLogs || []), ...extra].sort((a, b) => (Number(a.t) || 0) - (Number(b.t) || 0));
+}
+
+async function loadLogsPage() {
+  const wrap = document.getElementById("logsTableWrap");
+  const subEl = document.getElementById("logsPageSub");
+  bindLogsControls();
+
+  const dateKey = logsState.date || toDayKey(new Date());
+  const input = document.getElementById("logsDateFilter");
+  if (input) input.value = dateKey;
+  if (subEl) subEl.textContent = `Cash drawer activity for ${dateKey}`;
+  if (wrap) wrap.innerHTML = renderSectionState("Loading logs...");
+
+  let statsDoc = null;
+  let drawerLogs = [];
+  try {
+    statsDoc = await getDailyStatsByDate(dateKey);
+  } catch (error) {
+    console.warn("[Logs] Failed to load daily stats:", error);
+  }
+  try {
+    drawerLogs = await getDrawerLogsByDate(dateKey);
+  } catch (error) {
+    console.warn("[Logs] Failed to load drawer log:", error);
+  }
+
+  const legacyStats = statsDoc?.dailyStats || null;
+  const hasRecord = Boolean(legacyStats) || drawerLogs.length > 0;
+
+  const legacyLedger = Array.isArray(legacyStats?.ledgerEntries) ? legacyStats.ledgerEntries : [];
+  const entries = logsMergeEntries(drawerLogs, legacyLedger);
+
+  let terminalLabels = {};
+  let counter = 0;
+  for (const e of entries) {
+    const tid = String(e?.terminalId || "");
+    if (tid && !terminalLabels[tid]) {
+      counter += 1;
+      terminalLabels[tid] = `Terminal ${counter}`;
+    }
+  }
+
+  const hasEntries = entries.length > 0;
+  const floatTotal = logsStartingCash(entries, legacyStats);
+  const cashInTotal = drawerLogs.length > 0
+    ? logsSumKind(entries, "in")
+    : (legacyStats ? Number(legacyStats.cashIn || 0) : 0);
+  const cashOutTotal = drawerLogs.length > 0
+    ? logsSumKind(entries, "out")
+    : (legacyStats ? Number(legacyStats.cashOut || 0) : 0);
+
+  setLogsKpi("logsFloatValue", hasRecord ? logsFormatPeso(floatTotal) : "—");
+  setLogsKpi("logsCashInValue", hasRecord ? logsFormatPeso(cashInTotal) : "—");
+  setLogsKpi("logsCashOutValue", hasRecord ? logsFormatPeso(cashOutTotal) : "—");
+
+  if (!hasRecord) {
+    renderLogsEmptyState(
+      "No record for this date",
+      `The POS did not save any drawer activity on ${dateKey}.`
+    );
+    return;
+  }
+
+  if (!hasEntries) {
+    renderLogsEmptyState(
+      "No cash in / cash out entries",
+      `No drawer activity was recorded on ${dateKey}.`
+    );
+    return;
+  }
+
+  if (!wrap) return;
+  wrap.innerHTML = `
+    <table class="orders-table logs-table">
+      <thead>
+        <tr>
+          <th>Time</th>
+          <th>Type</th>
+          <th>Terminal</th>
+          <th>Reason</th>
+          <th class="orders-th-amount">Amount</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${entries.slice().reverse().map((entry) => {
+          const time = new Date(Number(entry.t) || Date.now()).toLocaleString("en-PH", {
+            month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit",
+          });
+          const isIn = entry.kind === "in";
+          const isFloat = entry.kind === "float";
+          const typeLabel = isIn ? "Cash in" : isFloat ? "Starting cash" : "Cash out";
+          const sign = isIn ? "+" : isFloat ? "" : "−";
+          const terminalLabel = terminalLabels[entry.terminalId] || (entry.terminalId ? String(entry.terminalId).slice(0, 8) : "—");
+          return `<tr>
+            <td>${escapeHtml(time)}</td>
+            <td><span class="logs-type ${isIn ? "is-in" : isFloat ? "is-float" : "is-out"}">${escapeHtml(typeLabel)}</span></td>
+            <td><span class="logs-terminal">${escapeHtml(terminalLabel)}</span></td>
+            <td>${escapeHtml(entry.note || "—")}</td>
+            <td class="orders-th-amount logs-amount ${isIn ? "is-in" : isFloat ? "is-float" : "is-out"}">${sign}${logsFormatPeso(entry.amount)}</td>
+          </tr>`;
+        }).join("")}
+      </tbody>
+    </table>`;
+}
+
+function initLogsDatePicker() {
+  const input = document.getElementById("logsDateFilter");
+  if (!input || input.dataset.bound) return;
+  input.dataset.bound = "1";
+
+  if (!window.AirDatepicker) {
+    input.readOnly = false;
+    input.addEventListener("change", (e) => {
+      logsState.date = e.target.value;
+      loadLogsPage();
+    });
+    return;
+  }
+
+  let picker = new window.AirDatepicker(input, {
+    locale: AIR_DATEPICKER_EN_LOCALE,
+    dateFormat: "yyyy-MM-dd",
+    autoClose: true,
+    keyboardNav: true,
+    toggleSelected: true,
+    maxDate: new Date(),
+    position: airDatepickerSmartPosition,
+    onShow: () => {
+      if (picker) picker.update({ maxDate: new Date() });
+    },
+    onSelect: ({ date }) => {
+      if (Array.isArray(date)) return;
+      logsState.date = date ? toDayKey(date) : "";
+      loadLogsPage();
+    },
+  });
+  logsDatePicker = picker;
+  trackAirDatepickerReposition(logsDatePicker);
+}
+
+function bindLogsControls() {
+  initLogsDatePicker();
+
+  const todayBtn = document.getElementById("logsTodayBtn");
+  if (todayBtn && !todayBtn.dataset.bound) {
+    todayBtn.dataset.bound = "1";
+    todayBtn.addEventListener("click", () => {
+      logsState.date = "";
+      if (logsDatePicker) {
+        logsDatePicker.selectDate(new Date(), { silent: true });
+      }
+      loadLogsPage();
+    });
+  }
+}
+
+window.refreshLogs = async function () {
+  await loadLogsPage();
+};
+
 async function loadInventoryPage() {
   const listWrap = document.getElementById("inventoryListWrap");
   const hasCached = Array.isArray(state.inventoryItems) && state.inventoryItems.length > 0;
@@ -4059,6 +4275,7 @@ window.showPage = async function (pageId, navEl, title) {
     if (pageId === "inventory") await loadInventoryPage();
     if (pageId === "staff") await loadStaffPage();
     if (pageId === "accounts") await loadAccountsPage();
+    if (pageId === "logs") await loadLogsPage();
     if (pageId === "categories") await loadCategoriesPage();
     if (pageId === "settings") await loadSettingsPage();
   } finally {

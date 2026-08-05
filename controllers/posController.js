@@ -21,7 +21,9 @@ import {
   getStorageCount,
   getKitchenOrders,
   saveKitchenOrder,
-  removeKitchenOrder
+  removeKitchenOrder,
+  recordDrawerLogEntry,
+  syncDrawerLogOutbox
 } from "../models/storageModel.js";
 
 // ── STATE ──
@@ -391,8 +393,22 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     window.addEventListener("online", async () => {
       isOnline = true;
-      const result = await syncQueuedOrders();
+      let result = { synced: 0, syncedAlerts: 0, deductionFailures: 0 };
+      try {
+        result = await syncQueuedOrders();
+      } catch (error) {
+        console.warn("[POS] Order sync failed:", error);
+      }
       updateConnectivityStatus();
+      let drawerSync = { synced: 0 };
+      try {
+        drawerSync = await syncDrawerLogOutbox();
+      } catch (error) {
+        console.warn("[POS] Drawer log sync failed:", error);
+      }
+      if (Number(drawerSync?.synced || 0) > 0) {
+        showToast(`Synced ${drawerSync.synced} pending drawer log entr${drawerSync.synced > 1 ? "ies" : "y"}`, "success");
+      }
       if (result.synced > 0) {
         showToast(`Synced ${result.synced} pending order(s)`, "success");
       }
@@ -426,7 +442,16 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
 
     if (navigator.onLine) {
-      await syncQueuedOrders();
+      try {
+        await syncQueuedOrders();
+      } catch (error) {
+        console.warn("[POS] Order sync failed:", error);
+      }
+      try {
+        await syncDrawerLogOutbox();
+      } catch (error) {
+        console.warn("[POS] Drawer log sync failed:", error);
+      }
       updateConnectivityStatus();
     }
   });
@@ -2380,6 +2405,17 @@ window.saveDrawerOpeningFloat = function() {
   }
   dailyStats.openingFloat = Math.round(amount * 100) / 100;
   persistPosState();
+  // Log the starting cash per terminal so the admin Logs page can show each
+  // drawer's float (the shared dailyStats doc is last-writer-wins across
+  // terminals, so it cannot hold per-terminal floats).
+  if (typeof recordDrawerLogEntry === "function") {
+    recordDrawerLogEntry({
+      kind: "float",
+      amount: Math.round(amount * 100) / 100,
+      note: "Starting cash",
+      t: Date.now()
+    }).catch(() => {});
+  }
   renderDrawerModal();
   window.toggleDrawerFloatEdit();
   showToast("Starting cash set.", "success");
@@ -2489,8 +2525,20 @@ window.confirmDrawerAction = function() {
       dailyStats.cashOut = Number(dailyStats.cashOut || 0) + pending.amount;
     }
     const entries = drawerLedgerEntries();
-    entries.push({ t: Date.now(), kind: pending.kind, amount: pending.amount, ...(pending.note ? { note: pending.note } : {}) });
+    const entry = {
+      id: `d_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`,
+      t: Date.now(),
+      kind: pending.kind,
+      amount: pending.amount,
+      ...(pending.note ? { note: pending.note } : {})
+    };
+    entries.push(entry);
     if (entries.length > 100) entries.splice(0, entries.length - 100);
+    // Append-only per-entry Firestore write; offline writes queue for retry.
+    // Guarded so the smoke-test eval scope (no Firestore import) still runs.
+    if (typeof recordDrawerLogEntry === "function") {
+      recordDrawerLogEntry(entry).catch(() => {});
+    }
     const input = document.getElementById("drawerLedgerAmount");
     const noteInput = document.getElementById("drawerLedgerReason");
     if (input) input.value = "";

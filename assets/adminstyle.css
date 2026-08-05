@@ -2125,6 +2125,79 @@ button,
   color: var(--text-primary);
 }
 
+.logs-kpi-row {
+  margin-top: 16px;
+  padding: 0 16px 16px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.logs-toolbar-row {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.logs-kpi-row .orders-kpi-card {
+  animation: ordersRise 0.45s cubic-bezier(0.22, 1, 0.36, 1) 0.16s backwards;
+}
+
+.logs-kpi-row .orders-kpi-card:nth-child(2) {
+  animation-delay: 0.24s;
+}
+
+.logs-kpi-row .orders-kpi-card:nth-child(3) {
+  animation-delay: 0.32s;
+}
+
+.logs-type {
+  display: inline-block;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 3px 8px;
+  border-radius: 6px;
+}
+
+.logs-type.is-in {
+  color: #0f7a3d;
+  background: rgba(15, 122, 61, 0.1);
+}
+
+.logs-type.is-out {
+  color: #b3402a;
+  background: rgba(179, 64, 42, 0.1);
+}
+
+.logs-type.is-float {
+  color: #5b6478;
+  background: rgba(120, 132, 158, 0.14);
+}
+
+.logs-terminal {
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+.logs-amount.is-in {
+  color: #0f7a3d;
+  font-weight: 700;
+}
+
+.logs-amount.is-out {
+  color: #b3402a;
+  font-weight: 700;
+}
+
+.logs-amount.is-float {
+  color: #5b6478;
+  font-weight: 700;
+}
+
 @keyframes ordersRise {
   from {
     opacity: 0;
@@ -5587,6 +5660,10 @@ input:checked + .tslider::before {
   }
 
   .orders-kpi-row {
+    grid-template-columns: 1fr;
+  }
+
+  .logs-kpi-row {
     grid-template-columns: 1fr;
   }
 

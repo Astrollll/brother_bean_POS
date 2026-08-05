@@ -26,7 +26,7 @@
       href="https://cdn.jsdelivr.net/npm/air-datepicker@3.6.0/air-datepicker.css"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="/assets/adminstyle.css?v=20260804B" />
+    <link rel="stylesheet" href="/assets/adminstyle.css?v=20260805A" />
   </head>
   <body>
     <div
@@ -218,6 +218,14 @@
             <span class="nav-icon"
               ><i class="ri-id-card-line" aria-hidden="true"></i></span
             >Accounts
+          </div>
+          <div
+            class="nav-item"
+            onclick="window.showPage('logs', this, 'Logs')"
+          >
+            <span class="nav-icon"
+              ><i class="ri-file-list-3-line" aria-hidden="true"></i></span
+            >Logs
           </div>
           <div
             class="nav-item"
@@ -756,6 +764,72 @@
             </div>
           </div>
 
+          <!-- ── LOGS ── -->
+          <div id="logs" class="page">
+            <div class="page-header">
+              <div class="page-title">Logs</div>
+              <div class="page-sub" id="logsPageSub">
+                Cash drawer activity log from the POS system
+              </div>
+            </div>
+
+            <div class="card compact-card orders-shell-card">
+              <div class="logs-toolbar-row">
+                <div class="orders-filter-field">
+                  <label for="logsDateFilter">Date</label>
+                  <div class="orders-field-control">
+                    <i class="ri-calendar-line orders-field-icon" aria-hidden="true"></i>
+                    <input
+                      id="logsDateFilter"
+                      class="ls-input orders-filter-input"
+                      type="text"
+                      readonly
+                      autocomplete="off"
+                      placeholder="yyyy-MM-dd"
+                      aria-label="Pick a date for the log"
+                    />
+                  </div>
+                </div>
+                <button id="logsTodayBtn" class="orders-btn ghost" type="button">
+                  <i class="ri-refresh-line" aria-hidden="true"></i> Today
+                </button>
+              </div>
+
+              <div class="logs-kpi-row">
+                <div class="orders-kpi-card">
+                  <div class="orders-kpi-label">Starting cash</div>
+                  <div class="orders-kpi-value" id="logsFloatValue">₱0.00</div>
+                </div>
+                <div class="orders-kpi-card">
+                  <div class="orders-kpi-label">Cash in</div>
+                  <div class="orders-kpi-value" id="logsCashInValue">₱0.00</div>
+                </div>
+                <div class="orders-kpi-card">
+                  <div class="orders-kpi-label">Cash out</div>
+                  <div class="orders-kpi-value" id="logsCashOutValue">₱0.00</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="card-head">
+                <span class="card-title">Cash in / Cash out Entries</span
+                ><span
+                  class="card-action"
+                  onclick="window.refreshLogs && window.refreshLogs()"
+                  >Refresh</span
+                >
+              </div>
+              <div id="logsTableWrap" class="tbl-wrap">
+                <div
+                  style="color: var(--muted); font-size: 13px; padding: 10px 0"
+                >
+                  Loading logs...
+                </div>
+              </div>
+            </div>
+          </div>
+
           <!-- ── SETTINGS ── -->
           <div id="settings" class="page">
             <div class="page-header">
@@ -1287,7 +1361,7 @@
     <script src="https://cdn.jsdelivr.net/npm/air-datepicker@3.6.0/air-datepicker.js"></script>
     <script
       type="module"
-      src="/controllers/admin/adminPortalController.js?v=20260804A"
+      src="/controllers/admin/adminPortalController.js?v=20260805A"
     ></script>
   </body>
 </html>
