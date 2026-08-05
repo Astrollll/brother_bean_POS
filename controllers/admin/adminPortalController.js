@@ -859,6 +859,29 @@ async function loadDashboard() {
           if (!exists) mergedOrders.push(order);
         }
       }
+      // Drop "ghost" orders: local saved/queued copies that exist in neither
+      // Firestore nor the offline outbox. This happens when a transaction is
+      // deleted on the admin Transactions page — the Firestore doc is gone but
+      // a stale copy can linger in this terminal's localStorage and would
+      // otherwise keep inflating Sales Analytics forever.
+      if (mergedOrders.length) {
+        const firestoreIds = new Set((Array.isArray(allOrders) ? allOrders : []).map((o) => String(o?.orderId || o?.id || "").trim()));
+        const outboxIds = new Set((Array.isArray(queuedOrders) ? queuedOrders : []).map((o) => String(o?.orderId || o?.id || "").trim()));
+        const ghosts = mergedOrders.filter((o) => {
+          const id = String(o?.orderId || o?.id || "").trim();
+          return id && !firestoreIds.has(id) && !outboxIds.has(id);
+        });
+        if (ghosts.length) {
+          const pruned = mergedOrders.filter((o) => {
+            const id = String(o?.orderId || o?.id || "").trim();
+            if (!id) return false;
+            return firestoreIds.has(id) || outboxIds.has(id);
+          });
+          console.debug(`[Analytics] dropped ${ghosts.length} stale local order(s) not in Firestore or queued outbox`);
+          mergedOrders.length = 0;
+          mergedOrders.push(...pruned);
+        }
+      }
       // Normalize merged orders to ensure date and total fields are usable by analytics
       const normalized = (Array.isArray(mergedOrders) ? mergedOrders : []).map((o) => {
         try {
