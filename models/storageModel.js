@@ -240,6 +240,64 @@ export function removeQueuedOrder(queueId) {
   return outbox.length;
 }
 
+// Remove a sale from today's local saved history, the offline outbox, and the
+// shared Firestore stats mirror, so a transaction deleted on the admin
+// Transactions page stops being counted in Sales Analytics. Returns the number
+// of local copies removed.
+export function purgeSavedSale(orderId) {
+  const target = String(orderId || "");
+  if (!target) return 0;
+
+  let removed = 0;
+
+  try {
+    const key = localHistoryKey();
+    const raw = localStorage.getItem(key);
+    if (raw) {
+      const history = JSON.parse(raw);
+      const next = history.filter((s) => {
+        const id = String(s?.orderId || s?.id || "");
+        const keep = id !== target;
+        if (!keep) removed += 1;
+        return keep;
+      });
+      if (next.length !== history.length) localStorage.setItem(key, JSON.stringify(next));
+    }
+  } catch (e) {
+    console.warn("[Storage] failed to purge saved sale history", e);
+  }
+
+  try {
+    const outbox = getOrderOutbox().filter((o) => {
+      const id = String(o?.payload?.orderId || o?.payload?.id || "");
+      const keep = id !== target;
+      if (!keep) removed += 1;
+      return keep;
+    });
+    localStorage.setItem(STORAGE_KEYS.orderOutbox, JSON.stringify(outbox));
+  } catch (e) {
+    console.warn("[Storage] failed to purge queued order", e);
+  }
+
+  // Refresh the shared Firestore stats mirror so a later loadFromStorage()
+  // does not merge the deleted order back into local history.
+  if (removed > 0) {
+    try {
+      const history = JSON.parse(localStorage.getItem(localHistoryKey()) || "[]");
+      let dailyStats = {};
+      try {
+        const statsRaw = localStorage.getItem(localStatsKey());
+        dailyStats = statsRaw ? JSON.parse(statsRaw) : {};
+      } catch {}
+      persistStatsToFirestore(history, dailyStats).catch(() => {});
+    } catch (e) {
+      console.warn("[Storage] failed to refresh Firestore stats mirror after purge", e);
+    }
+  }
+
+  return removed;
+}
+
 // ── Kitchen Orders (Firestore-first with local fallback) ──
 
 function readLocalKitchenOrders() {

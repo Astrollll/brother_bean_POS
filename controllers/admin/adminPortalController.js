@@ -8,7 +8,7 @@ import { getUserRole, getUserProfile, listUsers, setUserRole, setUserProfile, en
 import { getMenuItems, saveMenuItem, deleteMenuItem, clearMenuItems, syncPendingMenuOps } from "../../models/menuModel.js";
 import { getCategories, saveCategory, deleteCategory, getCategoryIconForName, syncCategoryLocalChanges } from "../../models/categoryModel.js";
 import { getTodayOrders, getAllSalesOrders, deleteOrder, clearAllOrders, getPendingOrderCount, getQueuedOrders, syncQueuedOrders } from "../../models/orderModel.js";
-import { getSavedSalesHistory, getDailyStatsByDate, getDrawerLogsByDate } from "../../models/storageModel.js";
+import { getSavedSalesHistory, getDailyStatsByDate, getDrawerLogsByDate, purgeSavedSale } from "../../models/storageModel.js";
 import { resetDay as archiveResetDay } from "../../models/resetModel.js";
 import { getInventoryItems, saveInventoryItem, deleteInventoryItem, clearInventoryItems, convertQuantityBetweenUnits, normalizeUnit } from "../../models/inventoryModel.js";
 import { inventorySeedItems } from "../../models/defaultSeedData.js";
@@ -2136,6 +2136,7 @@ function bindOrdersTableEvents(wrap) {
 
         try {
           await deleteOrder(orderId);
+          purgeSavedSale(orderId);
           await ModalUtils.success("Transaction Deleted", "The transaction has been removed successfully.");
           await loadOrdersPage();
         } catch (error) {
