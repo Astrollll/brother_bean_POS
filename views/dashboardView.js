@@ -1357,8 +1357,48 @@ export function airDatepickerSmartPosition({ $datepicker, $target, $pointer }) {
 const bbResizeTrackedDatepickers = new Set();
 let bbDatepickerResizeBound = false;
 
+let bbAirDatepickerSafetyPatched = false;
+
+function ensureAirDatepickerTransitionSafety() {
+  if (bbAirDatepickerSafetyPatched || !window.AirDatepicker) return;
+  const AD = window.AirDatepicker;
+  if (AD.prototype.__bbAirDatepickerSafetyPatched) {
+    bbAirDatepickerSafetyPatched = true;
+    return;
+  }
+  AD.prototype.__bbAirDatepickerSafetyPatched = true;
+  bbAirDatepickerSafetyPatched = true;
+
+  const origHide = AD.prototype.hide;
+  const origShow = AD.prototype.show;
+
+  AD.prototype.hide = function () {
+    origHide.call(this);
+    const dp = this;
+    if (dp.__bbAirDatepickerSafetyTimer) clearTimeout(dp.__bbAirDatepickerSafetyTimer);
+    dp.__bbAirDatepickerSafetyTimer = setTimeout(() => {
+      dp.__bbAirDatepickerSafetyTimer = null;
+      if (dp.visible === false && dp.$datepicker && dp.$datepicker.parentNode) {
+        if (dp._onTransitionEnd) {
+          dp.$datepicker.removeEventListener("transitionend", dp._onTransitionEnd);
+        }
+        dp._finishHide();
+      }
+    }, 500);
+  };
+
+  AD.prototype.show = function () {
+    if (this.__bbAirDatepickerSafetyTimer) {
+      clearTimeout(this.__bbAirDatepickerSafetyTimer);
+      this.__bbAirDatepickerSafetyTimer = null;
+    }
+    return origShow.call(this);
+  };
+}
+
 export function trackAirDatepickerReposition(datepicker) {
   if (!datepicker) return;
+  ensureAirDatepickerTransitionSafety();
   bbResizeTrackedDatepickers.add(datepicker);
   if (bbDatepickerResizeBound) return;
   bbDatepickerResizeBound = true;
