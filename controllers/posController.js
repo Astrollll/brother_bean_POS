@@ -597,26 +597,36 @@ function getMenuCategories() {
   const addonsMatch = allCandidates.find((v) => normalizedName(v).includes("addon") || normalizedName(v).includes("add-ons"));
 
   const finalOrdered = [];
+  const seen = new Set();
+  const pushUnique = (value) => {
+    const key = normalizedName(value);
+    if (seen.has(key)) return;
+    seen.add(key);
+    finalOrdered.push(value);
+  };
+
   if (coffeeMatch) {
-    finalOrdered.push(coffeeMatch);
+    pushUnique(coffeeMatch);
   }
 
   // Add remaining categories except coffee/addons, preserving the earlier ordering
   for (const c of ordered) {
     if (coffeeMatch && normalizedName(c) === normalizedName(coffeeMatch)) continue;
     if (addonsMatch && normalizedName(c) === normalizedName(addonsMatch)) continue;
-    finalOrdered.push(c);
+    pushUnique(c);
   }
 
-  // Finally append any leftover available categories (that weren't in ordered)
+  // Finally append any leftover available categories (that weren't in ordered),
+  // collapsed by normalized name so case/whitespace variants like "starter" and
+  // "Starter" never render as two separate chips.
   for (const c of Array.from(available).sort((a, b) => a.localeCompare(b))) {
     if (coffeeMatch && normalizedName(c) === normalizedName(coffeeMatch)) continue;
     if (addonsMatch && normalizedName(c) === normalizedName(addonsMatch)) continue;
-    finalOrdered.push(c);
+    pushUnique(c);
   }
 
   if (addonsMatch) {
-    finalOrdered.push(addonsMatch);
+    pushUnique(addonsMatch);
   }
 
   return finalOrdered;
