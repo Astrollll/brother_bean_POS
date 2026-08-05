@@ -1647,7 +1647,7 @@ export function renderSalesAnalyticsDashboard(data = {}) {
   const fallbackOrders = storedSalesHistory;
 
   viewState.analyticsData = {
-    orders: mergeUniqueOrders(providedOrders, fallbackOrders),
+    orders: mergeUniqueOrders(providedOrders, []),
     todayOrders: Array.isArray(data.todayOrders) ? data.todayOrders : Array.isArray(data.ordersToday) ? data.ordersToday : [],
     menuItems: Array.isArray(data.menuItems) ? data.menuItems : [],
     pendingSyncCount: toNumber(data.pendingSyncCount || 0),
