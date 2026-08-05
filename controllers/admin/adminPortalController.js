@@ -12,7 +12,7 @@ import { getSavedSalesHistory, getDailyStatsByDate, getDrawerLogsByDate } from "
 import { resetDay as archiveResetDay } from "../../models/resetModel.js";
 import { getInventoryItems, saveInventoryItem, deleteInventoryItem, clearInventoryItems, convertQuantityBetweenUnits, normalizeUnit } from "../../models/inventoryModel.js";
 import { inventorySeedItems } from "../../models/defaultSeedData.js";
-import { getAllStaff as getStaff, getSchedule, getOnDutyNowFromSchedule, addStaff, removeStaff, removeStaffByName, removeStaffByAccountUid, updateStaffAccountLink, updateStaffNameByUid, saveSchedule } from "../../models/staffModel.js";
+import { getAllStaff as getStaff, getSchedule, getOnDutyNowFromSchedule, addStaff, removeStaff, removeStaffByName, removeStaffByAccountUid, updateStaffAccountLink, updateStaffNameByUid, saveSchedule, parseShiftRange } from "../../models/staffModel.js";
 import { renderSalesAnalyticsDashboard, renderAdminDashboard, AIR_DATEPICKER_EN_LOCALE, airDatepickerSmartPosition, trackAirDatepickerReposition } from "../../views/dashboardView.js?v=20260805B";
 import { renderAdminMenu } from "../../views/menuView.js";
 import { renderStaffList, renderScheduleEditor, readScheduleFromDOM } from "../../views/staffView.js";
@@ -2857,6 +2857,8 @@ function openInventoryEditModal(item) {
     unitEl.value = nextUnit;
   }
   qtyEl.value = String(item?.quantity ?? 0);
+  const invEditForm = document.getElementById("inventoryEditForm");
+  if (invEditForm) invEditForm.dataset.originalQuantity = String(item?.quantity ?? 0);
   reorderEl.value = String(item?.reorderLevel ?? 0);
   priceEl.value = String(item?.price ?? 0);
   if (saveBtn) saveBtn.textContent = "Update Item";
@@ -2908,7 +2910,10 @@ function bindInventoryEditForm() {
 
     setButtonLoadingState(saveBtn, true, "Saving...");
     try {
-      await saveInventoryItem({ id: id || undefined, name, category, unit, quantity, reorderLevel, price });
+      await saveInventoryItem(
+        { id: id || undefined, name, category, unit, quantity, reorderLevel, price },
+        { originalQuantity: Number(form.dataset.originalQuantity ?? "") }
+      );
       await ModalUtils.success("Success", "Inventory item has been saved successfully.");
       closeInventoryEditModal();
       await loadInventoryPage();
@@ -3171,17 +3176,20 @@ async function submitQuickAddStock() {
     return;
   }
 
-  const newQty = Number(quickAddSelectedItem.quantity || 0) + addQty;
-  await saveInventoryItem({
-    id: quickAddSelectedItem.id,
-    name: quickAddSelectedItem.name,
-    category: quickAddSelectedItem.category,
-    unit: quickAddSelectedItem.unit,
-    quantity: newQty,
-    reorderLevel: quickAddSelectedItem.reorderLevel,
-    price: quickAddSelectedItem.price,
-  });
+  const fallbackNewQty = Number(quickAddSelectedItem.quantity || 0) + addQty;
+  const result = await saveInventoryItem(
+    {
+      id: quickAddSelectedItem.id,
+      name: quickAddSelectedItem.name,
+      category: quickAddSelectedItem.category,
+      unit: quickAddSelectedItem.unit,
+      reorderLevel: quickAddSelectedItem.reorderLevel,
+      price: quickAddSelectedItem.price,
+    },
+    { quantityDelta: addQty }
+  );
 
+  const newQty = Number(result?.quantity ?? fallbackNewQty);
   await ModalUtils.success("Stock Updated", `${addQty} ${quickAddSelectedItem.unit} added to ${quickAddSelectedItem.name}. New stock: ${newQty} ${quickAddSelectedItem.unit}.`);
   closeQuickAddStock();
   await loadInventoryPage();
@@ -3398,20 +3406,10 @@ function isValidEmailAddress(value) {
 }
 
 function isValidShiftValue(value) {
-  const text = String(value || "").trim();
-  if (!text) return false;
-
-  const twelveOrTwentyFour = /^(\d{1,2})(?::([0-5]\d))?\s*(AM|PM)?\s*-\s*(\d{1,2})(?::([0-5]\d))?\s*(AM|PM)?$/i;
-  if (!twelveOrTwentyFour.test(text)) return false;
-
-  const match = text.match(twelveOrTwentyFour);
-  if (!match) return false;
-
-  const fromHour = Number(match[1]);
-  const toHour = Number(match[4]);
-  if (fromHour < 0 || fromHour > 24 || toHour < 0 || toHour > 24) return false;
-
-  return true;
+  // Delegate to the same parser the runtime scheduler uses (staffModel), so a
+  // schedule that passes this check is guaranteed to actually put staff on duty.
+  // Rejects values like 24:00-24:00, 13 AM, or 0 AM that the scheduler ignores.
+  return parseShiftRange(value) !== null;
 }
 
 function validateScheduleBeforeSave() {
@@ -3866,7 +3864,7 @@ function bindAccountsControls() {
       const nextRole = String(actionBtn.dataset.accountNextRole || "staff").toLowerCase();
       const account = state.accounts.find((acc) => acc.uid === uid);
       if (!account) return;
-      const confirmed = await ModalUtils.confirm("Change Role", `Change role for <strong>${escapeHtml(account.fullName || account.email || uid)}</strong> to <strong>${escapeHtml(nextRole)}</strong>?`);
+      const confirmed = await ModalUtils.confirm("Change Role", `Change role for <strong>${escapeHtml(account.fullName || account.email || uid)}</strong> to <strong>${escapeHtml(nextRole)}</strong>?`, { html: true });
       if (confirmed !== 1) return;
       await setUserRole(uid, nextRole, account.email || "");
       await setUserProfile(uid, { role: nextRole, updatedAtMs: Date.now() });
@@ -3886,7 +3884,8 @@ function bindAccountsControls() {
       const nextStatus = String(actionBtn.dataset.accountNextStatus || "active").toLowerCase();
       const confirmed = await ModalUtils.confirm(
         nextStatus === "suspended" ? "Suspend Account" : "Activate Account",
-        `${nextStatus === "suspended" ? "Suspend" : "Activate"} <strong>${escapeHtml(account.fullName || account.email || uid)}</strong>?`
+        `${nextStatus === "suspended" ? "Suspend" : "Activate"} <strong>${escapeHtml(account.fullName || account.email || uid)}</strong>?`,
+        { html: true }
       );
       if (confirmed !== 1) return;
       await setUserProfile(uid, { status: nextStatus, updatedAtMs: Date.now() });
@@ -3903,8 +3902,8 @@ function bindAccountsControls() {
         return;
       }
 
-      const label = account.fullName || account.email || account.uid;
-      const confirmed = await ModalUtils.confirm("Delete Staff Account", `This will disable access and hide the account for <strong>${label}</strong> from this list. This action cannot be undone.`);
+      const label = escapeHtml(account.fullName || account.email || account.uid);
+      const confirmed = await ModalUtils.confirm("Delete Staff Account", `This will disable access and hide the account for <strong>${label}</strong> from this list. This action cannot be undone.`, { html: true });
       if (confirmed !== 1) return;
 
       await setUserProfile(uid, {
@@ -4408,6 +4407,7 @@ window.saveSchedule = async function () {
   await ModalUtils.show({
     type: "success",
     title: "Schedule Saved",
+    html: true,
     message: `
       <div style="display:grid;gap:8px;">
         <div>Weekly schedule has been updated successfully.</div>
@@ -5644,6 +5644,7 @@ window._adminEditCategory = function(id) {
 
   ModalUtils.show({
     title: title,
+    html: true,
     message: content,
     buttons: [
       { text: "Cancel", type: "secondary" },
@@ -5881,6 +5882,7 @@ window._adminEditCategoryAddons = async function(id) {
   try {
     const action = await ModalUtils.show({
       title: `${cat.name} - Category Add-ons`,
+      html: true,
       message: `
         <div class="cat-addon-modal-shell">
           <div class="cat-addon-modal-note">These add-ons will be shared by all menu items under <strong>${escapeHtml(cat.name)}</strong>.</div>
@@ -5954,7 +5956,7 @@ window._adminDeleteCategory = async function(id) {
   const cat = state.categories.find(c => c.id === id);
   if (!cat) return;
 
-  const confirm = await ModalUtils.confirm("Delete Category", `Are you sure you want to delete "${cat.name}"?\
+  const confirm = await ModalUtils.confirm("Delete Category", `Are you sure you want to delete "${escapeHtml(cat.name)}"?\
 \
 This will not delete existing menu items bound to this category.`);
   if (!confirm) return;

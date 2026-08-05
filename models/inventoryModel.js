@@ -1,6 +1,6 @@
 import { db } from "../controllers/firebase.js";
 import {
-  collection, getDocs, doc, setDoc, deleteDoc, getDoc, updateDoc, runTransaction
+  collection, getDocs, doc, deleteDoc, getDoc, runTransaction
 } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js";
 
 const INVENTORY_COLLECTION = "inventory";
@@ -123,22 +123,61 @@ export async function getInventoryItems() {
     .sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")));
 }
 
-export async function saveInventoryItem(item) {
+export async function saveInventoryItem(item, options = {}) {
   const itemId = String(item.id || crypto.randomUUID());
   const normalizedUnit = normalizeUnit(item.unit || "pcs") || "pcs";
-  const payload = {
-    id: itemId,
-    name: String(item.name || "").trim(),
-    category: String(item.category || "General").trim(),
-    unit: String(normalizedUnit).trim(),
-    quantity: Number(item.quantity || 0),
-    reorderLevel: Number(item.reorderLevel || 0),
-    price: Number(item.price || 0),
-    updatedAtMs: Date.now(),
-  };
+  const requestedQty = Number(item.quantity || 0);
+  const originalQty = options.originalQuantity === undefined ? null : Number(options.originalQuantity);
+  const quantityDelta = options.quantityDelta === undefined ? null : Number(options.quantityDelta);
 
-  await setDoc(doc(db, INVENTORY_COLLECTION, itemId), payload);
-  return payload;
+  // Write inside a transaction so a concurrent POS deduction is never silently
+  // clobbered by a stale form copy:
+  //  - quantityDelta (quick-add stock): add to the CURRENT server quantity.
+  //  - originalQuantity (edit form): if the admin left quantity untouched, the
+  //    form value equals the originally-loaded value, so preserve whatever the
+  //    server currently holds instead of overwriting a recent deduction.
+  const resolved = await runTransaction(db, async (tx) => {
+    const ref = doc(db, INVENTORY_COLLECTION, itemId);
+    const snap = await tx.get(ref);
+
+    if (!snap.exists()) {
+      const payload = {
+        id: itemId,
+        name: String(item.name || "").trim(),
+        category: String(item.category || "General").trim(),
+        unit: String(normalizedUnit).trim(),
+        quantity: requestedQty,
+        reorderLevel: Number(item.reorderLevel || 0),
+        price: Number(item.price || 0),
+        updatedAtMs: Date.now(),
+      };
+      tx.set(ref, payload);
+      return payload;
+    }
+
+    const currentQty = Number(snap.data()?.quantity || 0);
+    let nextQty = requestedQty;
+    if (quantityDelta !== null) {
+      nextQty = Math.max(0, currentQty + quantityDelta);
+    } else if (originalQty !== null && requestedQty === originalQty) {
+      nextQty = currentQty;
+    }
+
+    const payload = {
+      id: itemId,
+      name: String(item.name || "").trim(),
+      category: String(item.category || "General").trim(),
+      unit: String(normalizedUnit).trim(),
+      quantity: nextQty,
+      reorderLevel: Number(item.reorderLevel || 0),
+      price: Number(item.price || 0),
+      updatedAtMs: Date.now(),
+    };
+    tx.set(ref, payload, { merge: true });
+    return payload;
+  });
+
+  return resolved;
 }
 
 function normalizeInventoryLookupValue(value) {

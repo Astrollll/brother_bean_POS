@@ -630,7 +630,7 @@ function renderStats(summary) {
   container.innerHTML = `
     ${buildStatCard({ icon: "ti-currency-peso", value: formatPeso(summary.totalSales), label: "Total Sales Today", trend: summary.salesTrend, trendClass: summary.salesTrendClass })}
     ${buildStatCard({ icon: "ti-receipt", value: String(summary.totalOrders || 0), label: "Orders Today", trend: summary.orderTrend, trendClass: summary.orderTrendClass })}
-    ${buildStatCard({ icon: "ti-cup", value: summary.bestSeller || "—", label: `Best Seller • ${summary.bestSellerCount || 0} sold`, trend: "Top item", trendClass: "trend-neutral" })}
+    ${buildStatCard({ icon: "ti-cup", value: escapeHtml(summary.bestSeller || "—"), label: `Best Seller • ${summary.bestSellerCount || 0} sold`, trend: "Top item", trendClass: "trend-neutral" })}
     ${buildStatCard({ icon: "ti-users", value: `${summary.staffOnDuty || 0}/${summary.totalStaff || 0}`, label: "Staff On Duty", trend: summary.staffTrend, trendClass: summary.staffTrendClass })}
   `;
 }
@@ -651,15 +651,15 @@ function renderRecentOrders(orders) {
         .map((order) => {
           const itemsText = getOrderItems(order)
             .slice(0, 3)
-            .map((item) => `${item.name || "Item"} × ${toNumber(item.quantity || 1) || 1}`)
+            .map((item) => `${escapeHtml(item.name || "Item")} × ${toNumber(item.quantity || 1) || 1}`)
             .join(", ");
           const createdAt = formatDateTime(getOrderDate(order));
           return `
             <div class="list-group-item px-0 py-3 d-flex justify-content-between align-items-start gap-3">
               <div class="min-w-0">
-                <div class="fw-semibold text-truncate">#${String(order.orderId || order.id || "—")}</div>
+                <div class="fw-semibold text-truncate">#${escapeHtml(String(order.orderId || order.id || "—"))}</div>
                 <div class="text-muted small text-truncate">${itemsText || "No items"}</div>
-                <div class="text-muted small">${createdAt} • ${String(order.paymentMethod || "—").toUpperCase()}</div>
+                <div class="text-muted small">${createdAt} • ${escapeHtml(String(order.paymentMethod || "—").toUpperCase())}</div>
               </div>
               <div class="fw-semibold text-nowrap">${formatPeso(order.total)}</div>
             </div>
@@ -685,7 +685,7 @@ function renderTopItems(items) {
       <div class="top-item-row">
         <div class="top-rank ${index === 0 ? "gold" : ""}">${index + 1}</div>
         <div class="top-item-name">
-          <div>${item.name}</div>
+          <div>${escapeHtml(item.name)}</div>
           <div class="top-item-sold">${item.quantity} sold</div>
         </div>
         <div class="top-item-rev">${formatPeso(item.revenue)}</div>
@@ -713,10 +713,10 @@ function renderStaffOnDuty(staff) {
       <div class="staff-card mb-2">
         <div class="d-flex justify-content-between align-items-start gap-3">
           <div>
-            <div class="fw-semibold">${member.name || "Staff member"}</div>
-            <div class="text-muted small">${member.role || "Team member"}</div>
+            <div class="fw-semibold">${escapeHtml(member.name || "Staff member")}</div>
+            <div class="text-muted small">${escapeHtml(member.role || "Team member")}</div>
           </div>
-          <span class="badge text-bg-success">${member.shift || "On duty"}</span>
+          <span class="badge text-bg-success">${escapeHtml(member.shift || "On duty")}</span>
         </div>
       </div>
     `)

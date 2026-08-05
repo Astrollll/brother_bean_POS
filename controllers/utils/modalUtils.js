@@ -26,6 +26,7 @@ const ModalUtils = (() => {
         message = '',
         buttons = [{ text: 'OK', type: 'primary' }],
         onClose = null,
+        html = false,
       } = options;
 
       let overlay = document.getElementById('modal-overlay');
@@ -76,10 +77,16 @@ const ModalUtils = (() => {
       header.appendChild(icon);
       header.appendChild(titleWrap);
 
-      // Create body
+      // Create body. Messages are treated as plain text by default so
+      // user-controlled data can never be injected as HTML; callers that
+      // intentionally build markup must opt in with `html: true`.
       const body = document.createElement('div');
       body.className = 'modal-custom-body';
-      body.innerHTML = message;
+      if (html) {
+        body.innerHTML = message;
+      } else {
+        body.textContent = message;
+      }
 
       // Create footer with buttons
       const footer = document.createElement('div');
@@ -309,11 +316,12 @@ const ModalUtils = (() => {
   /**
    * Show confirmation dialog
    */
-  const confirm = (title, message) => {
+  const confirm = (title, message, options = {}) => {
     return show({
       type: 'warning',
       title,
       message,
+      html: !!options.html,
       buttons: [
         { text: 'Cancel', type: 'secondary' },
         { text: 'Confirm', type: 'primary warning' },

@@ -9,7 +9,7 @@ const SCHEDULE_DOC        = "weekly";
 
 export const DAYS = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
 
-function parseShiftRange(shiftText) {
+export function parseShiftRange(shiftText) {
   const text = String(shiftText || "").trim();
   if (!text) return null;
 

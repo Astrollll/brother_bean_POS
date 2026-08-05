@@ -11,7 +11,7 @@ import { getUserProfile, getUserRole } from "../models/userModel.js";
 import { navigateTo } from "./utils/routes.js";
 import { db } from "./firebase.js";
 import {
-  collection, getDocs, doc, setDoc, deleteDoc, query, where
+  collection, getDocs, doc, getDoc, setDoc, deleteDoc, query, where
 } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js";
 import { 
   saveToStorage, 
@@ -294,9 +294,13 @@ document.addEventListener("DOMContentLoaded", async () => {
     } catch (err) {
       console.warn("[POS] Failed to fetch today's orders from Firestore:", err);
     }
-    // Only prune when Firestore was reachable: offline, cached local orders
-    // are still the best view available and must not be dropped.
-    if (todayOrdersFetched) {
+    // Only prune when Firestore was reachable AND the server feed is
+    // authoritative: offline, cached local orders are still the best view
+    // available and must not be dropped. A feed that is empty because today's
+    // orders were archived by a day-end reset is also non-authoritative — a
+    // mid-day reset deletes today's orders from the live feed, and wiping local
+    // drawer/stats on that empty feed would zero out every terminal.
+    if (todayOrdersFetched && (await hasTodayResetMarker()) === false) {
       salesHistory = pruneStaleLocalOrders(
         salesHistory,
         todayOrders,
@@ -349,7 +353,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
 
     // Live-sync daily stats from Firestore so all terminals see shared sales
-    watchTodayOrders((todayOrders, metadata) => {
+    watchTodayOrders(async (todayOrders, metadata) => {
       const now = Date.now();
       const startOfDay = new Date(new Date(now).getFullYear(), new Date(now).getMonth(), new Date(now).getDate()).getTime();
       const endOfDay = startOfDay + 86400000;
@@ -357,8 +361,12 @@ document.addEventListener("DOMContentLoaded", async () => {
       const queued = (typeof getQueuedOrders === "function" ? getQueuedOrders() : []).map((q) => q?.payload || q);
       // Only a server-confirmed snapshot is authoritative enough to prune:
       // offline cached snapshots can be stale/partial and would wrongly drop
-      // orders that exist locally but have not been re-received yet.
-      if (!metadata || metadata.fromCache !== true) {
+      // orders that exist locally but have not been re-received yet. An EMPTY
+      // snapshot is also treated as non-authoritative when today's orders were
+      // archived by a day-end reset, because that empty feed then comes from
+      // the reset deleting today's orders and pruning would wipe every
+      // terminal's live drawer/stats mid-shift.
+      if ((!metadata || metadata.fromCache !== true) && (await hasTodayResetMarker()) === false) {
         salesHistory = pruneStaleLocalOrders(salesHistory, todayOrders, queued);
       }
       salesHistory = mergeOrderLists(
@@ -976,7 +984,8 @@ window.confirmMenuItem = function() {
     i.id === product.id &&
     i.variant     === variant &&
     i.temperature === temp &&
-    JSON.stringify(i.addons) === JSON.stringify(addons)
+    JSON.stringify(i.addons) === JSON.stringify(addons) &&
+    Number(i.discountPercent || 0) === 0
   );
 
   const qtyToAdd = Math.max(1, selectedQty || 1);
@@ -1525,6 +1534,13 @@ window.openPaymentModal = function() {
   document.getElementById("paymentAmount").textContent = `₱${capturedPaymentTotal.toFixed(2)}`;
   document.getElementById("paymentModal").classList.add("active");
   enteredAmount = "";
+  // Keep the method buttons in sync with the current (default) payment method
+  // so a previous order's selection never silently sticks.
+  document.querySelectorAll(".bb-method").forEach((btn) => {
+    const isActive = (btn.dataset.method || "").toLowerCase() === currentPayMethod;
+    btn.classList.toggle("active", isActive);
+    btn.setAttribute("aria-selected", isActive ? "true" : "false");
+  });
   const splitDisp = document.getElementById("splitDisplay");
   if (splitDisp) splitDisp.style.display = "none";
   const numpad = document.getElementById("cashNumpad");
@@ -1552,6 +1568,7 @@ window.openPaymentModal = function() {
 window.closePaymentModal = function() {
   document.getElementById("paymentModal").classList.remove("active");
   enteredAmount = "";
+  currentPayMethod = "cash";
   const numpad = document.getElementById("cashNumpad");
   const methodsEl = document.querySelector(".bb-methods");
   const amountSubgrid = document.querySelector(".bb-amount-subgrid");
@@ -1754,6 +1771,7 @@ window.completePayment = async function() {
     isPwdSenior = false;
     isEmployeeOrder = false;
     enteredAmount = "";
+    currentPayMethod = "cash";
     if (noteEl) noteEl.value = "";
     document.getElementById("pwdSeniorCheck").checked = false;
     document.getElementById("pwdSeniorCheck").disabled = false;
@@ -2649,6 +2667,26 @@ function getSaleTimestampMs(sale) {
     return Number.isFinite(parsed) ? parsed : null;
   }
   return null;
+}
+
+function toDateKey(date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+// True when today's orders were archived by a day-end reset (resets/{todayKey}
+// exists). A reset deletes today's docs from the live `orders` feed, so an
+// empty feed after a reset is EXPECTED and must not be used to prune local
+// sales — otherwise every other open terminal would zero out its drawer/stats
+// mid-shift. Returns null when the marker could not be read (offline/flaky):
+// callers treat that as "do not prune" because pruning is destructive.
+async function hasTodayResetMarker() {
+  try {
+    const snap = await getDoc(doc(db, "resets", toDateKey(new Date())));
+    return snap.exists();
+  } catch (error) {
+    console.warn("[POS] Failed to read reset marker; skipping prune.", error);
+    return null;
+  }
 }
 
 function formatHourLabel24To12(hour24) {

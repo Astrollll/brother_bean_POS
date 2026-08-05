@@ -159,25 +159,16 @@ function removeLocalCategory(id) {
 function mergeCategories(remoteCategories, localCache) {
   const deletedIds = new Set((localCache.deletedIds || []).map((id) => String(id)));
   const byId = new Map();
-  const byName = new Map();
 
   for (const category of [...remoteCategories, ...(localCache.upserts || [])]) {
     if (!category?.id) continue;
     const id = String(category.id);
     if (deletedIds.has(id)) continue;
-    const nameKey = normalizeCategoryKey(category.name || "");
 
-    // Deduplicate by normalized name — keep the version with more data
-    if (byName.has(nameKey)) {
-      const existing = byName.get(nameKey);
-      const existingAddons = Array.isArray(existing.addons) ? existing.addons.length : 0;
-      const incomingAddons = Array.isArray(category.addons) ? category.addons.length : 0;
-      if (incomingAddons <= existingAddons) continue;
-      byId.delete(String(existing.id));
-    }
-
+    // Deduplicate by id only. Local upserts iterate last, so a locally-cached
+    // edit overrides the remote copy of the same category, while two distinct
+    // categories that happen to share a name are both preserved.
     byId.set(id, category);
-    byName.set(nameKey, category);
   }
 
   return Array.from(byId.values()).sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")));
