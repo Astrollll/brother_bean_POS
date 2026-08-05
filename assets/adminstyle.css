@@ -1958,10 +1958,14 @@ button,
 .air-datepicker.-custom-position-.-active- {
   opacity: 1;
   transform: translateY(0) scale(1);
+  transition:
+    opacity 0.22s ease-out,
+    transform 0.22s ease-out;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .air-datepicker.-custom-position- {
+  .air-datepicker.-custom-position-,
+  .air-datepicker.-custom-position-.-active- {
     transform: none;
     transition: none;
   }
