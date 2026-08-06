@@ -755,6 +755,12 @@ function animateCardResize(container, renderFn) {
   }, { once: true });
 }
 
+function animateDashboardList(container, className = "dashboard-list-anim") {
+  if (!container) return;
+  container.classList.add(className);
+  setTimeout(() => container.classList.remove(className), 800);
+}
+
 export function renderAdminDashboard({ orders = [], menuItems = [], staff = [], schedule = {} } = {}) {
   const dashboardRoot = document.getElementById("dashboard");
   if (!dashboardRoot) return;
@@ -762,6 +768,9 @@ export function renderAdminDashboard({ orders = [], menuItems = [], staff = [], 
   if (!viewState.dashboardInitialized) {
     dashboardRoot.innerHTML = buildDashboardTemplate();
     viewState.dashboardInitialized = true;
+    animateDashboardList(document.getElementById("dashboardRecentOrders"));
+    animateDashboardList(document.getElementById("dashboardTopItems"));
+    animateDashboardList(document.getElementById("dashboardStaffOnDuty"), "dashboard-staff-anim");
   }
 
   updateDashboardGreeting();
@@ -823,6 +832,7 @@ export function renderAdminDashboard({ orders = [], menuItems = [], staff = [], 
       };
       const recentContainer = document.getElementById("dashboardRecentOrders");
       if (recentContainer) {
+        animateDashboardList(recentContainer);
         animateCardResize(recentContainer, renderFn);
       } else {
         renderFn();
@@ -845,6 +855,7 @@ export function renderAdminDashboard({ orders = [], menuItems = [], staff = [], 
       };
       const topItemsContainer = document.getElementById("dashboardTopItems");
       if (topItemsContainer) {
+        animateDashboardList(topItemsContainer);
         animateCardResize(topItemsContainer, renderFn);
       } else {
         renderFn();
