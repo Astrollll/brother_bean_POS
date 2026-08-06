@@ -636,17 +636,23 @@ function renderStats(summary) {
   `;
 }
 
+function setContainerHTML(container, html) {
+  if (container.dataset.renderedHtml === html) return false;
+  container.dataset.renderedHtml = html;
+  container.innerHTML = html;
+  return true;
+}
+
 function renderRecentOrders(orders) {
   const container = document.getElementById("dashboardRecentOrders");
   if (!container) return;
 
   const items = Array.isArray(orders) ? orders : [];
+  let html;
   if (!items.length) {
-    container.innerHTML = `<div class="text-muted small">No transactions yet today.</div>`;
-    return;
-  }
-
-  container.innerHTML = `
+    html = `<div class="text-muted small">No transactions yet today.</div>`;
+  } else {
+    html = `
     <div class="list-group list-group-flush">
       ${items
         .map((order) => {
@@ -669,6 +675,8 @@ function renderRecentOrders(orders) {
         .join("")}
     </div>
   `;
+  }
+  setContainerHTML(container, html);
 }
 
 function renderTopItems(items, showAll = false) {
@@ -676,15 +684,13 @@ function renderTopItems(items, showAll = false) {
   if (!container) return;
 
   const list = Array.isArray(items) ? items : [];
+  let html;
   if (!list.length) {
-    container.innerHTML = `<div class="text-muted small">No sales recorded yet.</div>`;
-    return;
-  }
-
-  const visible = showAll ? list : list.slice(0, 5);
-
-  container.innerHTML = visible
-    .map((item, index) => `
+    html = `<div class="text-muted small">No sales recorded yet.</div>`;
+  } else {
+    const visible = showAll ? list : list.slice(0, 5);
+    html = visible
+      .map((item, index) => `
       <div class="top-item-row">
         <div class="top-rank ${index === 0 ? "gold" : ""}">${index + 1}</div>
         <div class="top-item-name">
@@ -694,7 +700,9 @@ function renderTopItems(items, showAll = false) {
         <div class="top-item-rev">${formatPeso(item.revenue)}</div>
       </div>
     `)
-    .join("");
+      .join("");
+  }
+  setContainerHTML(container, html);
 }
 
 function renderStaffOnDuty(staff) {
@@ -705,14 +713,11 @@ function renderStaffOnDuty(staff) {
   const list = Array.isArray(staff) ? staff : [];
   if (meta) meta.textContent = `${list.length} active`;
 
-  if (!list.length) {
-    container.innerHTML = `<div class="text-muted small">No staff are currently marked on duty.</div>`;
-    return;
-  }
-
-  container.innerHTML = list
-    .slice(0, 5)
-    .map((member) => `
+  const html = !list.length
+    ? `<div class="text-muted small">No staff are currently marked on duty.</div>`
+    : list
+        .slice(0, 5)
+        .map((member) => `
       <div class="staff-card dashboard-staff-card mb-2">
         <div class="d-flex justify-content-between align-items-center gap-3">
           <div class="min-w-0">
@@ -723,7 +728,9 @@ function renderStaffOnDuty(staff) {
         </div>
       </div>
     `)
-    .join("");
+        .join("");
+
+  setContainerHTML(container, html);
 }
 
 function animateCardResize(container, renderFn) {
