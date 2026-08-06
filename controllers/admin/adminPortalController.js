@@ -13,7 +13,7 @@ import { resetDay as archiveResetDay } from "../../models/resetModel.js";
 import { getInventoryItems, saveInventoryItem, deleteInventoryItem, clearInventoryItems, convertQuantityBetweenUnits, normalizeUnit } from "../../models/inventoryModel.js";
 import { inventorySeedItems } from "../../models/defaultSeedData.js";
 import { getAllStaff as getStaff, getSchedule, getOnDutyNowFromSchedule, addStaff, removeStaff, removeStaffByName, removeStaffByAccountUid, updateStaffAccountLink, updateStaffNameByUid, saveSchedule, parseShiftRange } from "../../models/staffModel.js";
-import { renderSalesAnalyticsDashboard, renderAdminDashboard, AIR_DATEPICKER_EN_LOCALE, airDatepickerSmartPosition, trackAirDatepickerReposition } from "../../views/dashboardView.js?v=20260806C";
+import { renderSalesAnalyticsDashboard, renderAdminDashboard, AIR_DATEPICKER_EN_LOCALE, airDatepickerSmartPosition, trackAirDatepickerReposition } from "../../views/dashboardView.js?v=20260806D";
 import { renderAdminMenu } from "../../views/menuView.js";
 import { renderStaffList, renderScheduleEditor, readScheduleFromDOM } from "../../views/staffView.js";
 import { navigateTo } from "../utils/routes.js";
