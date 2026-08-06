@@ -777,7 +777,6 @@ export function renderAdminDashboard({ orders = [], menuItems = [], staff = [], 
     viewState.dashboardInitialized = true;
     animateDashboardList(document.getElementById("dashboardRecentOrders"));
     animateDashboardList(document.getElementById("dashboardTopItems"));
-    animateDashboardList(document.getElementById("dashboardStaffOnDuty"), "dashboard-staff-anim");
   }
 
   updateDashboardGreeting();
