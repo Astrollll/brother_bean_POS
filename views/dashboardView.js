@@ -32,6 +32,7 @@ const viewState = {
   customDateRange: null,
   specificDate: null,
   showAllItems: false,
+  showAllTopItems: false,
   categoryFilter: "all",
 };
 
@@ -548,9 +549,9 @@ function buildDashboardTemplate() {
       </div>
     </div>
 
-    <div class="row g-3">
+    <div class="row g-3 align-items-start">
       <div class="col-12 col-xl-6">
-        <div class="card compact-card h-100">
+        <div class="card compact-card">
           <div class="card-head">
             <span class="card-title">Recent Transactions</span>
             <span class="card-action" id="seeAllTransactionsBtn" role="button" tabindex="0">See all</span>
@@ -560,17 +561,17 @@ function buildDashboardTemplate() {
       </div>
 
       <div class="col-12 col-lg-6 col-xl-3">
-        <div class="card compact-card h-100">
+        <div class="card compact-card">
           <div class="card-head">
             <span class="card-title">Best Selling</span>
-            <span class="card-action">By quantity</span>
+            <span class="card-action" id="seeAllTopItemsBtn" role="button" tabindex="0">See all</span>
           </div>
           <div id="dashboardTopItems"></div>
         </div>
       </div>
 
       <div class="col-12 col-lg-6 col-xl-3">
-        <div class="card compact-card h-100">
+        <div class="card compact-card">
           <div class="card-head">
             <span class="card-title">Staff On Duty</span>
             <span class="card-action" id="dashboardStaffMeta">Live</span>
@@ -670,7 +671,7 @@ function renderRecentOrders(orders) {
   `;
 }
 
-function renderTopItems(items) {
+function renderTopItems(items, showAll = false) {
   const container = document.getElementById("dashboardTopItems");
   if (!container) return;
 
@@ -680,7 +681,9 @@ function renderTopItems(items) {
     return;
   }
 
-  container.innerHTML = list
+  const visible = showAll ? list : list.slice(0, 5);
+
+  container.innerHTML = visible
     .map((item, index) => `
       <div class="top-item-row">
         <div class="top-rank ${index === 0 ? "gold" : ""}">${index + 1}</div>
@@ -710,17 +713,46 @@ function renderStaffOnDuty(staff) {
   container.innerHTML = list
     .slice(0, 5)
     .map((member) => `
-      <div class="staff-card mb-2">
-        <div class="d-flex justify-content-between align-items-start gap-3">
-          <div>
-            <div class="fw-semibold">${escapeHtml(member.name || "Staff member")}</div>
-            <div class="text-muted small">${escapeHtml(member.role || "Team member")}</div>
+      <div class="staff-card dashboard-staff-card mb-2">
+        <div class="d-flex justify-content-between align-items-center gap-3">
+          <div class="min-w-0">
+            <div class="fw-semibold text-truncate">${escapeHtml(member.name || "Staff member")}</div>
+            <div class="text-muted small text-truncate">${escapeHtml(member.role || "Team member")}</div>
           </div>
-          <span class="badge text-bg-success">${escapeHtml(member.shift || "On duty")}</span>
+          <span class="badge text-bg-success text-nowrap">${escapeHtml(member.shift || "On duty")}</span>
         </div>
       </div>
     `)
     .join("");
+}
+
+function animateCardResize(container, renderFn) {
+  const card = container.closest(".card");
+  if (!card) return renderFn();
+
+  const startHeight = card.offsetHeight;
+  card.style.transition =
+    "height 0.3s cubic-bezier(0.22, 1, 0.36, 1), transform 0.4s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.4s cubic-bezier(0.22, 1, 0.36, 1)";
+  card.style.overflow = "hidden";
+
+  renderFn();
+
+  card.style.height = "auto";
+  const endHeight = card.offsetHeight;
+  card.style.height = startHeight + "px";
+  void card.offsetHeight;
+  card.style.height = endHeight + "px";
+
+  const cleanup = () => {
+    card.style.height = "";
+    card.style.overflow = "";
+    card.style.transition = "";
+  };
+  const timer = setTimeout(cleanup, 400);
+  card.addEventListener("transitionend", () => {
+    clearTimeout(timer);
+    cleanup();
+  }, { once: true });
 }
 
 export function renderAdminDashboard({ orders = [], menuItems = [], staff = [], schedule = {} } = {}) {
@@ -735,7 +767,8 @@ export function renderAdminDashboard({ orders = [], menuItems = [], staff = [], 
   updateDashboardGreeting();
 
   const sortedOrders = sortOrdersNewestFirst(orders);
-  const topItems = computeTopItems(sortedOrders, menuItems);
+  const allTopItems = computeTopItems(sortedOrders, menuItems, Infinity);
+  const topItems = allTopItems.slice(0, 5);
   const onDutyInfo = getOnDutyNowFromSchedule(staff, schedule, new Date());
 
   const totalSales = sumRevenue(sortedOrders);
@@ -760,7 +793,7 @@ export function renderAdminDashboard({ orders = [], menuItems = [], staff = [], 
     staffTrendClass: staffOnDuty.length ? "trend-up" : "trend-neutral",
   });
   renderRecentOrders(sortedOrders.slice(0, 5));
-  renderTopItems(topItems);
+  renderTopItems(allTopItems, viewState.showAllTopItems);
   renderStaffOnDuty(staffOnDuty);
 
   const updatedAt = document.getElementById("dashboardUpdatedAt");
@@ -774,16 +807,47 @@ export function renderAdminDashboard({ orders = [], menuItems = [], staff = [], 
   if (seeAllBtn) {
     const newBtn = seeAllBtn.cloneNode(true);
     seeAllBtn.replaceWith(newBtn);
+    newBtn.style.display = sortedOrders.length > 5 ? "" : "none";
     newBtn.addEventListener("click", () => {
       const expanded = newBtn.getAttribute("data-expanded") === "true";
-      if (expanded) {
-        renderRecentOrders(sortedOrders.slice(0, 5));
-        newBtn.textContent = "See all";
-        newBtn.setAttribute("data-expanded", "false");
+      const renderFn = () => {
+        if (expanded) {
+          renderRecentOrders(sortedOrders.slice(0, 5));
+          newBtn.textContent = "See all";
+          newBtn.setAttribute("data-expanded", "false");
+        } else {
+          renderRecentOrders(sortedOrders);
+          newBtn.textContent = "Show less";
+          newBtn.setAttribute("data-expanded", "true");
+        }
+      };
+      const recentContainer = document.getElementById("dashboardRecentOrders");
+      if (recentContainer) {
+        animateCardResize(recentContainer, renderFn);
       } else {
-        renderRecentOrders(sortedOrders);
-        newBtn.textContent = "Show less";
-        newBtn.setAttribute("data-expanded", "true");
+        renderFn();
+      }
+    });
+  }
+
+  // bind "See all" best sellers button - toggle between top 5 and all of today's sellers
+  const seeAllTopItemsBtn = document.getElementById("seeAllTopItemsBtn");
+  if (seeAllTopItemsBtn) {
+    const newBtn = seeAllTopItemsBtn.cloneNode(true);
+    seeAllTopItemsBtn.replaceWith(newBtn);
+    newBtn.style.display = allTopItems.length > 5 ? "" : "none";
+    newBtn.textContent = viewState.showAllTopItems ? "Show less" : "See all";
+    newBtn.addEventListener("click", () => {
+      viewState.showAllTopItems = !viewState.showAllTopItems;
+      const renderFn = () => {
+        renderTopItems(allTopItems, viewState.showAllTopItems);
+        newBtn.textContent = viewState.showAllTopItems ? "Show less" : "See all";
+      };
+      const topItemsContainer = document.getElementById("dashboardTopItems");
+      if (topItemsContainer) {
+        animateCardResize(topItemsContainer, renderFn);
+      } else {
+        renderFn();
       }
     });
   }
