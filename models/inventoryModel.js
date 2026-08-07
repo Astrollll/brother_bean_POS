@@ -227,6 +227,60 @@ function findInventoryFallbackMatch(lookup, inventoryId, ingredientName) {
   return null;
 }
 
+// Resolve a recipe ingredient to the inventory item it refers to and the exact
+// quantity (already in the inventory's unit) that deduct would apply. Returns
+// { ok:false, name, reason } for anything deduct would skip (missing inventory,
+// unit mismatch, invalid quantity). Shared by deduct AND restore so a cancel
+// always returns exactly what a placement deducted.
+async function resolveRecipeIngredient(ingredient, multiplier = 1, getLookup) {
+  const inventoryId = String(ingredient?.inventoryId || "").trim();
+  const ingredientName = String(ingredient?.name || "").trim();
+  const rawQty = Number(ingredient?.quantity || 0) * Number(multiplier || 1);
+  if ((!inventoryId && !ingredientName) || !Number.isFinite(rawQty) || rawQty <= 0) {
+    return { ok: false, name: ingredientName || inventoryId || "unknown", reason: "invalid quantity" };
+  }
+
+  let resolvedInventoryId = inventoryId;
+  let inv = null;
+
+  if (inventoryId) {
+    try {
+      const directSnapshot = await getDoc(doc(db, INVENTORY_COLLECTION, inventoryId));
+      if (directSnapshot.exists()) {
+        inv = directSnapshot.data() || {};
+        resolvedInventoryId = directSnapshot.id;
+      }
+    } catch {
+      // Fall through to normalized fallback lookup.
+    }
+  }
+
+  if (!inv) {
+    const lookup = await getLookup();
+    const fallback = findInventoryFallbackMatch(lookup, inventoryId, ingredientName);
+    if (!fallback) {
+      return { ok: false, name: ingredientName || inventoryId || "unknown", reason: "not found in inventory" };
+    }
+    resolvedInventoryId = fallback.id;
+    inv = fallback.data || {};
+  }
+
+  const invUnit = String(inv.unit || "").trim();
+  const recipeUnit = String(ingredient?.unit || invUnit).trim();
+  const converted = convertQuantityBetweenUnits(rawQty, recipeUnit, invUnit);
+  if (converted === null || !Number.isFinite(converted)) {
+    return { ok: false, name: ingredientName || inventoryId || "unknown", reason: `unit mismatch (${recipeUnit || "?"} -> ${invUnit || "?"})` };
+  }
+
+  return {
+    ok: true,
+    inventoryId: resolvedInventoryId,
+    qty: converted,
+    name: String(inv.name || ingredientName || resolvedInventoryId),
+    unit: String(inv.unit || ""),
+  };
+}
+
 // Deduct recipe ingredients from inventory.
 // - Uses a Firestore transaction so concurrent terminals cannot lose updates.
 // - When orderRef is provided, the audit trail (and the per-line progress
@@ -252,56 +306,17 @@ export async function deductInventoryQuantities(recipeItems, multiplier = 1, ord
   };
 
   for (const ingredient of recipeItems) {
-    const inventoryId = String(ingredient.inventoryId || "").trim();
-    const ingredientName = String(ingredient.name || "").trim();
-    const rawQty = Number(ingredient.quantity || 0) * Number(multiplier || 1);
-    if ((!inventoryId && !ingredientName) || !Number.isFinite(rawQty) || rawQty <= 0) {
+    const resolved = await resolveRecipeIngredient(ingredient, multiplier, getInventoryLookup);
+    if (!resolved.ok) {
       skipped += 1;
-      skipDetails.push({ name: ingredientName || inventoryId || "unknown", reason: "invalid quantity" });
+      skipDetails.push({ name: resolved.name, reason: resolved.reason });
       continue;
     }
-
-    let resolvedInventoryId = inventoryId;
-    let inv = null;
-
-    if (inventoryId) {
-      try {
-        const directSnapshot = await getDoc(doc(db, INVENTORY_COLLECTION, inventoryId));
-        if (directSnapshot.exists()) {
-          inv = directSnapshot.data() || {};
-          resolvedInventoryId = directSnapshot.id;
-        }
-      } catch {
-        // Fall through to normalized fallback lookup.
-      }
-    }
-
-    if (!inv) {
-      const lookup = await getInventoryLookup();
-      const fallback = findInventoryFallbackMatch(lookup, inventoryId, ingredientName);
-      if (!fallback) {
-        skipped += 1;
-        skipDetails.push({ name: ingredientName || inventoryId || "unknown", reason: "not found in inventory" });
-        continue;
-      }
-      resolvedInventoryId = fallback.id;
-      inv = fallback.data || {};
-    }
-
-    const invUnit = String(inv.unit || "").trim();
-    const recipeUnit = String(ingredient.unit || invUnit).trim();
-    const converted = convertQuantityBetweenUnits(rawQty, recipeUnit, invUnit);
-    if (converted === null || !Number.isFinite(converted)) {
-      skipped += 1;
-      skipDetails.push({ name: ingredientName || inventoryId || "unknown", reason: `unit mismatch (${recipeUnit || "?"} -> ${invUnit || "?"})` });
-      continue;
-    }
-
-    const prev = aggregate.get(resolvedInventoryId);
-    aggregate.set(resolvedInventoryId, {
-      qty: (prev?.qty || 0) + converted,
-      name: String(inv.name || ingredientName || resolvedInventoryId),
-      unit: String(inv.unit || ""),
+    const prev = aggregate.get(resolved.inventoryId);
+    aggregate.set(resolved.inventoryId, {
+      qty: (prev?.qty || 0) + resolved.qty,
+      name: resolved.name,
+      unit: resolved.unit,
     });
   }
 
@@ -424,6 +439,83 @@ function dedupeSkipDetails(entries) {
     unique.push({ name: String(entry.name || ""), reason: String(entry.reason || "") });
   }
   return unique;
+}
+
+// Add stock back for a canceled/voided sale. Uses the order's recorded
+// inventoryDeductions audit trail (exactly what was deducted, already in the
+// inventory unit) and falls back to re-resolving the item recipes with the same
+// lookup + unit conversion + skip rules deduct uses when no audit trail exists
+// (e.g. offline-queued orders that never deducted).
+export async function restoreInventoryForOrder(sale) {
+  const deductions = Array.isArray(sale?.inventoryDeductions) ? sale.inventoryDeductions : [];
+  const items = Array.isArray(sale?.items) ? sale.items : [];
+  const restoreEntries = new Map();
+
+  const addEntry = (inventoryId, qty, name, unit) => {
+    const id = String(inventoryId || "").trim();
+    if (!id || !Number.isFinite(qty) || qty <= 0) return;
+    const prev = restoreEntries.get(id);
+    restoreEntries.set(id, {
+      qty: (prev?.qty || 0) + qty,
+      name: String(name || prev?.name || ""),
+      unit: String(unit || prev?.unit || ""),
+    });
+  };
+
+  if (deductions.length > 0) {
+    for (const entry of deductions) {
+      addEntry(entry?.inventoryId, Number(entry?.deductedQty || 0), entry?.name, entry?.unit);
+    }
+  } else {
+    // No audit trail (legacy / offline-queued order that never deducted):
+    // re-resolve each ingredient exactly like deduct does (inventory lookup +
+    // unit conversion + skips) so we restore only what would have been
+    // deducted, in the inventory's own unit.
+    let lookupPromise = null;
+    const getLookup = async () => {
+      if (!lookupPromise) lookupPromise = buildInventoryLookupByNormalizedKey();
+      return lookupPromise;
+    };
+    for (const item of items) {
+      const multiplier = Number(item?.quantity || 1);
+      for (const ingredient of Array.isArray(item?.recipe) ? item.recipe : []) {
+        const resolved = await resolveRecipeIngredient(ingredient, multiplier, getLookup);
+        if (!resolved.ok) continue;
+        addEntry(resolved.inventoryId, resolved.qty, resolved.name, resolved.unit);
+      }
+    }
+  }
+
+  if (!restoreEntries.size) return { success: true, restored: 0 };
+
+  const audit = [];
+  try {
+    await runTransaction(db, async (tx) => {
+      for (const [inventoryId, entry] of restoreEntries.entries()) {
+        const ref = doc(db, INVENTORY_COLLECTION, inventoryId);
+        const snapshot = await tx.get(ref);
+        if (!snapshot.exists()) continue;
+        const data = snapshot.data() || {};
+        const currentQty = Number(data.quantity || 0);
+        const restoredQty = Number(entry.qty) || 0;
+        tx.update(ref, { quantity: Math.max(0, currentQty + restoredQty), updatedAtMs: Date.now() });
+        audit.push({
+          inventoryId,
+          name: String(entry.name || data.name || inventoryId),
+          previousQty: currentQty,
+          restoredQty,
+          remainingQty: currentQty + restoredQty,
+          unit: String(entry.unit || data.unit || ""),
+          atMs: Date.now(),
+        });
+      }
+    });
+  } catch (error) {
+    console.warn("[Inventory] Restore failed for canceled order.", error);
+    return { success: false, restored: 0, error: error?.message || "inventory restore failed" };
+  }
+
+  return { success: true, restored: restoreEntries.size, audit };
 }
 
 export async function deleteInventoryItem(id) {

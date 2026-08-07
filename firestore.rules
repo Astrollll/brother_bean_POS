@@ -58,8 +58,9 @@ service cloud.firestore {
       allow read: if request.auth != null;
       allow delete: if request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "admin";
       // Staff may only touch the inventory-audit fields (written atomically by
-      // the deduction transaction during a sale or offline sync); every other
-      // field is locked to admins.
+      // the deduction transaction during a sale or offline sync) plus the soft-
+      // void flags (so they can cancel a sale from the POS). Every other field
+      // is locked to admins.
       allow update: if request.auth != null && (
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "admin" ||
         (
@@ -69,8 +70,15 @@ service cloud.firestore {
             "inventoryDeductions",
             "inventorySkips",
             "inventoryDeductionProgress",
-            "inventoryDeductionFailed"
-          ])
+            "inventoryDeductionFailed",
+            "voided",
+            "voidedAtMs",
+            "voidedBy",
+            "voidReason"
+          ]) &&
+          request.resource.data.voided == true &&
+          request.resource.data.voidedAtMs is number &&
+          request.resource.data.voidedBy is string
         )
       );
     }

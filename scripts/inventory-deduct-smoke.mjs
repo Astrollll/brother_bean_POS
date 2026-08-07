@@ -101,9 +101,9 @@ async function main() {
   const factory = new Function(
     "db", "doc", "getDoc", "updateDoc", "runTransaction", "collection", "getDocs", "INVENTORY_COLLECTION",
     `${block}
-    return { deductInventoryQuantities, convertQuantityBetweenUnits, normalizeUnit };`,
+    return { deductInventoryQuantities, restoreInventoryForOrder, convertQuantityBetweenUnits, normalizeUnit };`,
   );
-  const { deductInventoryQuantities } = factory(
+  const { deductInventoryQuantities, restoreInventoryForOrder } = factory(
     {}, doc, getDoc, updateDoc, runTransaction, collection, getDocs, INVENTORY_COLLECTION,
   );
 
@@ -239,6 +239,70 @@ async function main() {
   );
   assert.equal(store.orders.size, 0, "deduct: no order write without orderRef");
   console.log("OK deduct: orderRef optional");
+
+  // ── restoreInventoryForOrder ──
+
+  // Case R1: audit-trail restore returns exactly the deducted amount
+  store.inventory.set("inv-milk", { name: "Milk", unit: "ml", quantity: 900 });
+  const s1 = await restoreInventoryForOrder({
+    orderId: "order-1",
+    items: [{ menuItemId: "m1", name: "Latte", quantity: 1, recipe: [{ inventoryId: "inv-milk", name: "Milk", unit: "ml", quantity: 50 }] }],
+    inventoryDeductions: [{ inventoryId: "inv-milk", name: "Milk", unit: "ml", deductedQty: 50 }],
+  });
+  assert.equal(store.inventory.get("inv-milk").quantity, 950, "restore: audit trail adds back deductedQty");
+  assert.equal(s1.success, true, "restore: audit-trail path reports success");
+  console.log("OK restore: audit-trail exact restore");
+
+  // Case R2: no audit trail -> recipe fallback converts units to the
+  // inventory unit (recipe in ml, inventory in l)
+  store.inventory.set("inv-milk", { name: "Milk", unit: "l", quantity: 1 });
+  const s2 = await restoreInventoryForOrder({
+    orderId: "order-2",
+    items: [{ menuItemId: "m2", name: "Latte", quantity: 2, recipe: [{ inventoryId: "inv-milk", name: "Milk", unit: "ml", quantity: 50 }] }],
+  });
+  assert.equal(store.inventory.get("inv-milk").quantity, 1.1, "restore: fallback converts recipe unit to inventory unit");
+  assert.equal(s2.restored, 1, "restore: fallback restored one inventory entry");
+  console.log("OK restore: fallback unit conversion (100ml -> 0.1l)");
+
+  // Case R3: fallback skips ingredients that deduct would skip
+  // (missing inventory doc + unit mismatch), restoring only the valid one
+  store.inventory.set("inv-coffee", { name: "Coffee", unit: "g", quantity: 200 });
+  store.inventory.set("inv-straw", { name: "Straw", unit: "pcs", quantity: 10 });
+  const s3 = await restoreInventoryForOrder({
+    orderId: "order-3",
+    items: [{
+      menuItemId: "m3",
+      name: "Cold Brew",
+      quantity: 1,
+      recipe: [
+        { inventoryId: "inv-ghost", name: "Ghost Ingredient", unit: "g", quantity: 10 },
+        { inventoryId: "inv-straw", name: "Straw", unit: "g", quantity: 5 },
+        { inventoryId: "inv-coffee", name: "Coffee", unit: "g", quantity: 10 },
+      ],
+    }],
+  });
+  assert.equal(store.inventory.get("inv-coffee").quantity, 210, "restore: valid ingredient restored");
+  assert.equal(store.inventory.get("inv-ghost"), undefined, "restore: missing doc not restored");
+  assert.equal(store.inventory.get("inv-straw").quantity, 10, "restore: unit mismatch not restored");
+  assert.equal(s3.restored, 1, "restore: only resolvable entries restored");
+  console.log("OK restore: fallback mirrors deduct skips");
+
+  // Case R4: name-only ingredient resolved through the normalized fallback
+  // lookup (no inventoryId on the recipe)
+  store.inventory.set("inv-sugar", { name: "Sugar", unit: "g", quantity: 400 });
+  const s4 = await restoreInventoryForOrder({
+    orderId: "order-4",
+    items: [{ menuItemId: "m4", name: "Pastry", quantity: 1, recipe: [{ name: "Sugar", unit: "g", quantity: 25 }] }],
+  });
+  assert.equal(store.inventory.get("inv-sugar").quantity, 425, "restore: name-only ingredient matched by name");
+  assert.equal(s4.restored, 1, "restore: name-only resolution restored");
+  console.log("OK restore: name-only fallback lookup");
+
+  // Case R5: nothing to restore when the sale has no items/recipe
+  const s5 = await restoreInventoryForOrder({ orderId: "order-5", items: [{ menuItemId: "m5", name: "Espresso", quantity: 1 }] });
+  assert.equal(s5.success, true, "restore: empty sale is a no-op success");
+  assert.equal(s5.restored, 0, "restore: empty sale restores nothing");
+  console.log("OK restore: empty sale no-op");
 
   console.log("PASS: Inventory deduction smoke checks succeeded.");
 }

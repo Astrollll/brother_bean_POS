@@ -6415,7 +6415,8 @@ input:checked + .tslider::before {
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 9999;
+  /* Above the receipt overlay (10000) so dialogs opened from it are visible. */
+  z-index: 11001;
 }
 
 /* ── Receipt overlay & shell (cashier-style) ────────────────── */
@@ -6487,12 +6488,57 @@ input:checked + .tslider::before {
   opacity: 0.7;
 }
 
+.receipt-admin-printer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  font-size: 12px;
+  color: #6b6255;
+  flex-shrink: 0;
+}
+
+.receipt-admin-printer .receipt-admin-link {
+  font-size: 12px;
+  margin-left: 2px;
+}
+
+.receipt-admin-printer.is-connected {
+  color: #2b2620;
+}
+
+.receipt-admin-printer.unsupported {
+  opacity: 0.75;
+}
+
+.receipt-admin-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #c9c1b2;
+  flex-shrink: 0;
+}
+
+.receipt-admin-dot.is-on {
+  background: #3a7d44;
+  box-shadow: 0 0 0 3px rgba(58, 125, 68, 0.2);
+}
+
+.receipt-admin-dot.is-off {
+  background: #a6493a;
+}
+
 /* ── Receipt card (matching cashier receipt) ─────────────────── */
 
 .receipt-wrap {
   position: relative;
   width: 320px;
+  --receipt-teeth-bg: #fbf9f4;
   filter: drop-shadow(0 10px 20px rgba(0, 0, 0, 0.18));
+}
+
+.receipt-admin-overlay .receipt-wrap {
+  --receipt-teeth-bg: #fbf9f4;
 }
 
 .receipt-close-btn {
@@ -6577,10 +6623,19 @@ input:checked + .tslider::before {
 .zigzag-bottom {
   height: 12px;
   width: 100%;
-  background: #fbf9f4;
+  background: var(--receipt-teeth-bg, #fbf9f4);
+  border: 0;
+  line-height: 0;
+  display: block;
+  margin: 0;
+  opacity: 1;
+  filter: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 
 .zigzag-top {
+  margin-bottom: -1px;
   clip-path: polygon(
     0% 100%, 4% 0%, 8% 100%, 12% 0%, 16% 100%, 20% 0%, 24% 100%, 28% 0%,
     32% 100%, 36% 0%, 40% 100%, 44% 0%, 48% 100%, 52% 0%, 56% 100%, 60% 0%,
@@ -6590,6 +6645,7 @@ input:checked + .tslider::before {
 }
 
 .zigzag-bottom {
+  margin-top: -1px;
   clip-path: polygon(
     0% 0%, 4% 100%, 8% 0%, 12% 100%, 16% 0%, 20% 100%, 24% 0%, 28% 100%,
     32% 0%, 36% 100%, 40% 0%, 44% 100%, 48% 0%, 52% 100%, 56% 0%, 60% 100%,
@@ -6604,6 +6660,7 @@ input:checked + .tslider::before {
   padding: 20px 26px 20px;
   font-size: 13px;
   line-height: 1.55;
+  border: 0;
 }
 
 .receipt .center {
@@ -7782,6 +7839,3 @@ input:checked + .tslider::before {
   animation: skeletonShimmer 1.5s ease-in-out infinite;
   border-radius: var(--radius-md);
 }
-
-
-

@@ -65,6 +65,20 @@
           <i class="ri-safe-2-line" aria-hidden="true"></i> Cash Drawer
         </button>
 
+        <button class="nav-btn" type="button" onclick="openPrinterSettings()">
+          <i class="ri-printer-line" aria-hidden="true"></i> Thermal Printer
+        </button>
+        <button
+          class="printer-status"
+          id="printerStatus"
+          type="button"
+          onclick="openPrinterSettings()"
+          title="Tap to manage the thermal printer"
+        >
+          <i class="ri-printer-line" aria-hidden="true"></i>
+          <span>Printer: Not connected</span>
+        </button>
+
         <div class="sidebar-divider"></div>
 
         <!-- Stats Preview -->
@@ -714,17 +728,12 @@
 
         <div class="bb-modal-body" id="receiptContent"></div>
 
-        <div class="bb-modal-footer">
-          <button
-            class="bb-secondary-btn"
-            type="button"
-            onclick="closeReceipt()"
-          >
-            Close
-          </button>
-          <button class="bb-primary-btn" type="button" onclick="printReceipt()">
-            Print receipt
-          </button>
+        <div class="bb-modal-footer bb-receipt-footer">
+          <div class="bb-receipt-footer-right">
+            <button class="bb-primary-btn" type="button" onclick="printReceipt()">
+              Print receipt
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -924,6 +933,40 @@
         <div class="bb-modal-footer bb-drawer-confirm-actions">
           <button type="button" class="bb-drawer-btn" onclick="cancelDrawerConfirm()">Cancel</button>
           <button type="button" class="bb-drawer-btn" id="drawerConfirmOkBtn" onclick="confirmDrawerAction()">Record</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Generic Confirm Popup (cancel order, etc.) -->
+    <div class="modal-overlay bb-drawer-confirm" id="confirmModal" aria-hidden="true">
+      <div
+        class="modal bb-modal bb-mini-modal"
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="confirmTitle"
+        aria-describedby="confirmMessage"
+      >
+        <div class="bb-modal-header">
+          <div class="bb-modal-title-wrap">
+            <div class="bb-modal-kicker" id="confirmKicker">Confirmation</div>
+            <div class="bb-modal-title" id="confirmTitle">Confirm</div>
+          </div>
+          <button
+            class="bb-icon-btn"
+            type="button"
+            onclick="resolveConfirm(false)"
+            aria-label="Close"
+          >
+            &times;
+          </button>
+        </div>
+        <div class="bb-modal-body">
+          <div class="bb-drawer-confirm-message" id="confirmMessage"></div>
+          <div class="bb-drawer-confirm-hint" id="confirmHint"></div>
+        </div>
+        <div class="bb-modal-footer bb-drawer-confirm-actions">
+          <button type="button" class="bb-drawer-btn" onclick="resolveConfirm(false)">Cancel</button>
+          <button type="button" class="bb-drawer-btn bb-drawer-btn-out" id="confirmOkBtn" onclick="resolveConfirm(true)">Confirm</button>
         </div>
       </div>
     </div>
@@ -1193,6 +1236,98 @@
         <div class="bb-modal-footer">
           <button class="bb-secondary-btn" type="button" onclick="closeDiscountPicker()">Cancel</button>
           <button class="bb-primary-btn" type="button" onclick="applyDiscountPicker()" id="discountPickerApplyBtn" disabled>Apply</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Thermal Printer Modal -->
+    <div class="modal-overlay" id="printerModal" aria-hidden="true">
+      <div
+        class="modal bb-modal bb-mini-modal bb-printer-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="printerModalTitle"
+      >
+        <div class="bb-modal-header">
+          <div class="bb-modal-title-wrap">
+            <div class="bb-modal-kicker">Hardware</div>
+            <div class="bb-modal-title" id="printerModalTitle">
+              Thermal Printer
+            </div>
+          </div>
+          <button
+            class="bb-icon-btn"
+            type="button"
+            onclick="closePrinterSettings()"
+            aria-label="Close"
+          >
+            &times;
+          </button>
+        </div>
+        <div class="bb-modal-body">
+          <div class="bb-printer-status-row">
+            <span class="bb-printer-dot" id="printerStatusDot"></span>
+            <span id="printerStatusText">Not connected</span>
+          </div>
+          <div class="bb-printer-device" id="printerDeviceName">
+            No printer connected
+          </div>
+
+          <div class="bb-field">
+            <div class="bb-field-label">Paper width</div>
+            <div class="bb-choice-grid bb-printer-width-grid">
+              <button
+                class="bb-choice bb-printer-width"
+                id="paperWidth58"
+                type="button"
+                onclick="setPaperWidth(58)"
+              >
+                <span class="bb-choice-title">58mm</span>
+                <span class="bb-choice-sub">Small receipt</span>
+              </button>
+              <button
+                class="bb-choice bb-printer-width"
+                id="paperWidth80"
+                type="button"
+                onclick="setPaperWidth(80)"
+              >
+                <span class="bb-choice-title">80mm</span>
+                <span class="bb-choice-sub">Wide receipt</span>
+              </button>
+            </div>
+          </div>
+
+          <label class="bb-toggle-row">
+            <input
+              type="checkbox"
+              id="autoPrintToggle"
+              onchange="setAutoPrint()"
+            />
+            <span>Auto-print the receipt right after payment</span>
+          </label>
+
+          <p class="bb-printer-hint">
+            Uses Web Bluetooth (Chrome or Edge on Windows/Android). Make sure
+            the printer is turned on and nearby, then tap Connect printer. If
+            the printer only supports classic Bluetooth (SPP), it will not show
+            up here.
+          </p>
+        </div>
+        <div class="bb-modal-footer">
+          <button
+            class="bb-secondary-btn"
+            type="button"
+            onclick="closePrinterSettings()"
+          >
+            Close
+          </button>
+          <button
+            class="bb-primary-btn"
+            type="button"
+            id="connectPrinterBtn"
+          >
+            Connect printer
+          </button>
         </div>
       </div>
     </div>

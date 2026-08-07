@@ -32,6 +32,10 @@ export function getDocs(q) {
   }, slow));
 }
 export function getDoc(ref) {
+  const seeded = (window.__itestExistingDocs || {})[ref.path];
+  if (seeded) {
+    return Promise.resolve({ exists: () => true, id: ref.id, data: () => JSON.parse(JSON.stringify(seeded)) });
+  }
   return Promise.resolve({ exists: () => false, id: ref.id, data: () => null });
 }
 export function setDoc(ref, data) {
@@ -60,7 +64,13 @@ export function setDoc(ref, data) {
   }
   return Promise.resolve();
 }
-export function updateDoc() { return Promise.resolve(); }
+export function updateDoc(ref, data) {
+  if (window.__itestForceUpdateDocFail === true) {
+    return Promise.reject(new Error("itest: forced updateDoc failure (permission-denied)"));
+  }
+  if (window.__itestWrites) window.__itestWrites.push({ ref: ref.path, data: JSON.parse(JSON.stringify(data || {})) });
+  return Promise.resolve();
+}
 export function deleteDoc(ref) {
   if (window.__itestForceDeleteDocFail === true) {
     return Promise.reject(new Error("itest: forced deleteDoc failure"));

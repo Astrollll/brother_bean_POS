@@ -5,7 +5,20 @@ import { getMenuItems, watchMenuItems }  from "../models/menuModel.js";
 import { getCategories } from "../models/categoryModel.js";
 import { getCategoryIconForName } from "../models/categoryModel.js";
 import { isDefaultTemplateMenuItem } from "../models/defaultSeedData.js";
-import { saveOrder, syncQueuedOrders, getPendingOrderCount, getTodayOrders, watchTodayOrders, retryFailedInventoryDeduction, getQueuedOrders } from "../models/orderModel.js";
+import { saveOrder, voidOrder, syncQueuedOrders, getPendingOrderCount, getTodayOrders, watchTodayOrders, retryFailedInventoryDeduction, getQueuedOrders } from "../models/orderModel.js";
+import { restoreInventoryForOrder } from "../models/inventoryModel.js";
+import {
+  isSupported as isPrinterSupported,
+  getStatus as getPrinterStatus,
+  getSettings as getPrinterSettings,
+  updateSettings as updatePrinterSettings,
+  connectPrinter as connectThermalPrinter,
+  disconnectPrinter as disconnectThermalPrinter,
+  reconnectSavedPrinter as reconnectThermalPrinter,
+  printReceipt as printThermalReceipt,
+  autoPrintReceipt,
+  onPrinterStatus,
+} from "./printer/thermalPrinter.js";
 import { watchAuth, getCurrentUser, logout as authLogout } from "./auth/firebaseAuth.js";
 import { getUserProfile, getUserRole } from "../models/userModel.js";
 import { navigateTo } from "./utils/routes.js";
@@ -22,6 +35,7 @@ import {
   getKitchenOrders,
   saveKitchenOrder,
   removeKitchenOrder,
+  purgeSavedSale,
   recordDrawerLogEntry,
   syncDrawerLogOutbox
 } from "../models/storageModel.js";
@@ -49,6 +63,10 @@ let isOnline         = navigator.onLine;
 // scope so both the init flow and the drawer block can call it.
 const persistPosState = () => saveToStorage(salesHistory, dailyStats);
 let posReady = false;
+
+// The sale shown in the receipt modal right now. Kept so the "Cancel" button
+// can void it and return the items to the cart.
+let currentReceiptSale = null;
 
 // Admin deletions in Firestore are authoritative. A local order copy is kept
 // only when the order is still in today's Firestore feed or still queued for
@@ -336,6 +354,14 @@ document.addEventListener("DOMContentLoaded", async () => {
     updateCart();
     applySavedCartDensity();
     updateStats();
+
+    // Thermal printer: restore a previously connected printer and keep the UI
+    // status in sync with connection state.
+    onPrinterStatus(renderPrinterStatus);
+    renderPrinterStatus(getPrinterStatus());
+    if (isPrinterSupported()) {
+      reconnectThermalPrinter().then((status) => renderPrinterStatus(status)).catch(() => {});
+    }
 
     // Live update POS menu whenever Firestore changes
     watchMenuItems((items) => {
@@ -1453,7 +1479,12 @@ window.restoreUnpaidOrderToCart = async function(orderId) {
   }
 
   if (cart.length) {
-    const replace = window.confirm("Current order has items. Replace it with the unpaid order?");
+    const replace = await window.askConfirm({
+      title: "Replace current order",
+      message: "Current order has items. Replace it with the unpaid order?",
+      okText: "Replace",
+      danger: true,
+    });
     if (!replace) return;
   }
 
@@ -1488,7 +1519,12 @@ window.restoreUnpaidOrderToCart = async function(orderId) {
 
 window.deleteUnpaidOrder = async function(orderId) {
   if (!orderId) return;
-  const confirmed = window.confirm("Delete this unpaid order? This cannot be undone.");
+  const confirmed = await window.askConfirm({
+    title: "Delete unpaid order",
+    message: "Delete this unpaid order? This cannot be undone.",
+    okText: "Delete",
+    danger: true,
+  });
   if (!confirmed) return;
   await removeUnpaidOrderById(orderId);
   renderUnpaidOrdersList();
@@ -1774,7 +1810,8 @@ window.completePayment = async function() {
     refreshDrawerIfOpen();
 
     // Generate receipt
-    generateReceipt({ ...sale, items: cart, amountTendered, change: amountTendered - total });
+    currentReceiptSale = { ...sale, items: cart, amountTendered, change: amountTendered - total };
+    generateReceipt(currentReceiptSale);
 
     // Reset state
     cart        = [];
@@ -1797,6 +1834,10 @@ window.completePayment = async function() {
 
     document.getElementById("receiptModal").classList.add("active");
     updateConnectivityStatus();
+    // Auto-print to the Bluetooth thermal printer when one is connected
+    autoPrintReceipt(currentReceiptSale).then((result) => {
+      if (result?.status === "sent") showToast("Receipt sent to printer", "success");
+    }).catch(() => {});
     showToast(sale.queued ? "Payment saved offline and queued for sync." : "Payment successful! Thank you!", "success");
     if (!sale.queued && sale.inventoryDeductionError) {
       showToast("Order saved, but inventory deduction failed. Please contact admin.", "warning");
@@ -1821,6 +1862,10 @@ function generateReceipt(sale) {
   if (titleEl) {
     titleEl.textContent = sale.unpaid ? "Unpaid order" : sale.queued ? "Pending order" : "Receipt";
   }
+
+  // Only a sale just completed in this terminal can be canceled (voided and
+  // returned to the cart). Pending/queued/unpaid receipts cannot.
+  currentReceiptSale = sale;
 
   const itemRows = (sale.items || []).map((item) => {
     const basePrice = Number(item.price) || 0;
@@ -1980,6 +2025,7 @@ window.closeReceipt = function() {
   }
   const titleEl = document.getElementById("receiptTitle");
   if (titleEl) titleEl.textContent = "Receipt";
+  currentReceiptSale = null;
 };
 
 window.openPendingOrder = async function(orderId) {
@@ -2013,70 +2059,162 @@ window.openPendingOrder = async function(orderId) {
   }
 };
 
-window.printReceipt = function() {
-  const receiptContent = document.getElementById("receiptContent").innerHTML;
-  const existing = document.getElementById("printFrame");
-  if (existing) existing.remove();
-  const iframe = document.createElement("iframe");
-  iframe.id = "printFrame";
-  iframe.style.cssText = "position:fixed;top:-9999px;left:-9999px;width:0;height:0;border:none;";
-  document.body.appendChild(iframe);
-  const docRef = iframe.contentDocument || iframe.contentWindow.document;
-  docRef.open();
-  docRef.write(`<html><head><title>Brother Bean Receipt</title>
-    <style>
-      /* Print-optimized receipt (58–80mm) */
-      * { margin:0; padding:0; box-sizing:border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-      @page { margin: 6mm; }
-      body {
-        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-        background: #fff;
-        color: #111;
-        font-size: 11px;
-        line-height: 1.35;
-      }
+window.printReceipt = async function() {
+  // Thermal printer only — no browser print window fallback. The receipt is
+  // laid out for the paper width selected in the printer modal; if no printer
+  // is connected the cashier gets a hint instead of a confusing print dialog.
+  if (!currentReceiptSale) return;
+  const result = await printThermalReceipt(currentReceiptSale);
+  if (result.status === "sent") {
+    showToast("Receipt sent to printer", "success");
+    return;
+  }
+  if (result.status === "not-connected") {
+    showToast("No printer connected. Open Thermal Printer and tap Connect printer.", "warning");
+    return;
+  }
+  if (result.status === "unsupported") {
+    showToast("Bluetooth printing not supported. Use Chrome or Edge.", "warning");
+    return;
+  }
+  showToast(`Thermal print failed: ${result.message || "unknown error"}`, "warning");
+};
 
-      .receipt-wrap { width: 320px; margin: 0 auto; }
-      .receipt-close-btn { display: none; }
-      .zigzag-top, .zigzag-bottom { height: 12px; width: 100%; background: #fbf9f4; }
-      .zigzag-top { clip-path: polygon(0% 100%, 4% 0%, 8% 100%, 12% 0%, 16% 100%, 20% 0%, 24% 100%, 28% 0%, 32% 100%, 36% 0%, 40% 100%, 44% 0%, 48% 100%, 52% 0%, 56% 100%, 60% 0%, 64% 100%, 68% 0%, 72% 100%, 76% 0%, 80% 100%, 84% 0%, 88% 100%, 92% 0%, 96% 100%, 100% 0%, 100% 100%); }
-      .zigzag-bottom { clip-path: polygon(0% 0%, 4% 100%, 8% 0%, 12% 100%, 16% 0%, 20% 100%, 24% 0%, 28% 100%, 32% 0%, 36% 100%, 40% 0%, 44% 100%, 48% 0%, 52% 100%, 56% 0%, 60% 100%, 64% 0%, 68% 100%, 72% 0%, 76% 100%, 80% 0%, 84% 100%, 88% 0%, 92% 100%, 96% 0%, 100% 100%, 100% 0%); }
+// ── CANCEL ORDER (void sale, return items to cart) ──
 
-      .receipt { background: #fbf9f4; color: #2b2620; padding: 20px 26px 20px; font-size: 13px; line-height: 1.55; }
-      .center { text-align: center; }
-      .brand-mark { width: 34px; height: 34px; margin: 4px auto 8px; border: 2px solid #2b2620; border-radius: 6px; display: flex; align-items: center; justify-content: center; overflow: hidden; }
-      .brand-mark img { width: 100%; height: 100%; object-fit: cover; filter: none; }
-      .brand-name { font-weight: 700; font-size: 16px; letter-spacing: 1px; text-transform: uppercase; }
-      .brand-tag { color: #6b6255; font-size: 11px; font-style: italic; margin-top: 2px; }
-      .brand-addr { color: #6b6255; font-size: 11px; margin-top: 6px; }
-      .rule { border: none; border-top: 1px dashed #cfc7b8; margin: 12px 0; }
-      .meta-row { display: flex; justify-content: space-between; font-size: 12px; }
-      .meta-row .label { color: #6b6255; }
-      .meta-row .value { font-weight: 700; }
-      .item { margin-bottom: 10px; }
-      .item-name { display: flex; justify-content: space-between; font-weight: 700; }
-      .item-variant { color: #6b6255; font-size: 11px; margin-top: 1px; }
-      .item-calc { display: flex; justify-content: space-between; margin-top: 2px; }
-      .item-calc .qty { color: #6b6255; }
-      .item-price-original { text-decoration: line-through; color: #6b6255; margin-right: 2px; }
-      .item-price-arrow { margin: 0 2px; color: #6b6255; }
-      .item-price-label { font-size: 10px; color: #6b6255; }
-      .totals-row { display: flex; justify-content: space-between; }
-      .totals-row.grand { font-weight: 700; font-size: 15px; margin-top: 4px; }
-      .totals-row.sub { color: #6b6255; }
-      .stamp { position: relative; text-align: center; margin: 18px 0 6px; }
-      .stamp span { display: inline-block; border: 2.5px solid #a6493a; color: #a6493a; font-weight: 800; letter-spacing: 3px; padding: 3px 14px; border-radius: 4px; transform: rotate(-6deg); font-size: 13px; opacity: 0.85; }
-      .barcode { margin: 14px 0 4px; height: 34px; background: repeating-linear-gradient(90deg, #2b2620 0px, #2b2620 2px, transparent 2px, transparent 4px, #2b2620 4px, #2b2620 5px, transparent 5px, transparent 9px); }
-      .footer-msg { font-weight: 700; margin-bottom: 2px; }
-      .footer-sub { color: #6b6255; font-size: 11px; margin-bottom: 10px; }
-      .footer-legal { color: #6b6255; font-size: 10px; line-height: 1.6; }
+// Rebuild cart entries from a just-completed sale's items, merging any that
+// already exist (same product, variant, temperature, addons, discount).
+function restoreSaleItemsToCart(items) {
+  for (const item of Array.isArray(items) ? items : []) {
+    const id = item?.menuItemId || item?.id;
+    if (!id) continue;
+    const addons = Array.isArray(item?.addons) ? item.addons : [];
+    const variant = item?.variant || null;
+    const temperature = item?.temperature || null;
+    const discountPercent = Number(item?.discountPercent || 0);
+    const quantity = Math.max(1, Number(item?.quantity) || 1);
 
-      /* Ensure buttons/controls never print */
-      button { display:none !important; }
-      @media print { body { margin: 0; } }
-    </style></head><body>${receiptContent}</body></html>`);
-  docRef.close();
-  iframe.onload = () => { iframe.contentWindow.focus(); iframe.contentWindow.print(); };
+    const existingIdx = cart.findIndex((i) =>
+      i.id === id &&
+      (i.variant || null) === variant &&
+      (i.temperature || null) === temperature &&
+      JSON.stringify(i.addons) === JSON.stringify(addons) &&
+      Number(i.discountPercent || 0) === discountPercent
+    );
+
+    if (existingIdx > -1) {
+      cart[existingIdx].quantity += quantity;
+    } else {
+      cart.push({
+        id,
+        name: item?.name,
+        price: Number(item?.price) || 0,
+        variant,
+        temperature,
+        addons,
+        quantity,
+        discountPercent,
+        recipe: Array.isArray(item?.recipe) ? item.recipe : [],
+      });
+    }
+  }
+}
+
+// Shared void flow: soft-void the sale in Firestore, remove it from the kitchen
+// queue and local history/outbox, restore deducted stock, and put the items
+// back into the cart. The Firestore record is flagged voided (staff can't hard
+// delete orders) and every read path filters voided orders out.
+async function voidSale(sale) {
+  const orderId = String(sale?.orderId || sale?.id);
+  if (!orderId) throw new Error("missing orderId");
+
+  // 1) Void the sale: Firestore soft-void + kitchen queue + local history/outbox.
+  //    If the Firestore void fails (rules/network), abort BEFORE touching the
+  //    kitchen queue or local records so the sale is never falsely reported as
+  //    cancelled while still live in Firestore (where admin/other POS see it).
+  await voidOrder(orderId, {
+    voidedBy: cashierName || "Staff",
+    voidReason: "Canceled from pending orders",
+  });
+  try { await removeKitchenOrder(orderId); } catch (error) {
+    console.warn("[POS] Cancel: kitchen order delete failed.", error);
+  }
+  purgeSavedSale(orderId);
+
+  // 2) Recompute local stats without the canceled sale
+  salesHistory = salesHistory.filter((o) => {
+    const key = String(o?.orderId || o?.id || "");
+    return key !== orderId;
+  });
+  dailyStats = recomputeDailyStats(salesHistory, dailyStats);
+  persistPosState();
+  refreshDrawerIfOpen();
+
+  // 3) Restore deducted inventory stock
+  const restoreResult = await restoreInventoryForOrder(sale);
+
+  // 4) Return items to the cart (re-applying PWD/employee flags so the
+  //    cart totals match what was originally charged)
+  restoreSaleItemsToCart(sale.items || []);
+  if (sale.isPwdSenior === true) {
+    isPwdSenior = true;
+    const pwdCheck = document.getElementById("pwdSeniorCheck");
+    if (pwdCheck) pwdCheck.checked = true;
+    document.getElementById("discountToggle")?.classList.add("active");
+    document.querySelector(".discount-section")?.classList.add("is-active");
+  } else if (sale.orderType === "employee" || sale.paymentMethod === "employee") {
+    isEmployeeOrder = true;
+    const empCheck = document.getElementById("employeeOrderCheck");
+    if (empCheck) empCheck.checked = true;
+    document.getElementById("employeeOrderToggle")?.classList.add("active");
+    document.querySelector(".employee-order-section")?.classList.add("is-active");
+  }
+
+  updateCart();
+  updateStats();
+
+  return { inventoryRestored: !restoreResult || restoreResult.success !== false };
+}
+
+window.cancelPendingOrder = async function(orderId) {
+  if (!orderId) return;
+  const pending = await getPendingOrders();
+  const order = pending.find((o) => String(o.id) === String(orderId));
+  if (!order) return;
+
+  const sale = {
+    ...(order.payload || {}),
+    orderId: order.payload?.orderId || order.payload?.id || order.id,
+  };
+
+  const confirmed = await window.askConfirm({
+    title: "Cancel pending order",
+    message: `Cancel pending order #${String(orderId).replace(/^q_/, "")} and return the items to the cart?`,
+    hint: "The order will be removed from the queue and sales records, deducted stock will be restored, and the payment must be returned to the customer.",
+    okText: "Cancel order",
+    danger: true,
+  });
+  if (!confirmed) return;
+
+  try {
+    const result = await voidSale(sale);
+    closeReceipt();
+    updateConnectivityStatus();
+    if (result?.inventoryRestored === false) {
+      showToast("Pending order canceled. Inventory could not be restored — please notify admin.", "warning");
+    } else {
+      showToast("Pending order canceled. Items returned to the cart.", "success");
+    }
+  } catch (error) {
+    const denied = /permission|denied|permission-denied/i.test(String(error?.message || error?.code || ""));
+    console.error("[POS] Cancel pending order failed:", error);
+    showToast(
+      denied
+        ? "Unable to cancel the order — cancel requires permission (rules may need redeploy). Please notify admin."
+        : "Unable to cancel the pending order. Please try again.",
+      "warning"
+    );
+  }
 };
 
 // ── DRAWER MATH ──
@@ -2592,6 +2730,67 @@ document.addEventListener("keydown", (e) => {
     }
   }
 }, true);
+
+// ── Generic confirmation popup ──
+// Promise-based in-app confirm (replaces window.confirm so the UI matches the
+// drawer popup instead of a native browser dialog). askConfirm returns a
+// Promise that resolves true/false once the staff taps Confirm/Cancel.
+let confirmPending = null;
+
+window.askConfirm = function(options = {}) {
+  return new Promise((resolve) => {
+    const modal = document.getElementById("confirmModal");
+    const kickerEl = document.getElementById("confirmKicker");
+    const titleEl = document.getElementById("confirmTitle");
+    const messageEl = document.getElementById("confirmMessage");
+    const hintEl = document.getElementById("confirmHint");
+    const okBtn = document.getElementById("confirmOkBtn");
+    if (!modal || !titleEl || !messageEl || !okBtn) {
+      resolve(true);
+      return;
+    }
+    confirmPending = resolve;
+    if (kickerEl) kickerEl.textContent = options.kicker || "Confirmation";
+    titleEl.textContent = options.title || "Confirm";
+    messageEl.textContent = options.message || "Are you sure?";
+    if (hintEl) {
+      hintEl.textContent = options.hint || "";
+      hintEl.style.display = options.hint ? "" : "none";
+    }
+    okBtn.textContent = options.okText || "Confirm";
+    okBtn.classList.toggle("bb-drawer-btn-out", options.danger === true);
+    modal.classList.add("active");
+    modal.setAttribute("aria-hidden", "false");
+    okBtn.focus();
+  });
+};
+
+window.resolveConfirm = function(ok) {
+  const resolve = confirmPending;
+  confirmPending = null;
+  const modal = document.getElementById("confirmModal");
+  if (modal) {
+    modal.classList.remove("active");
+    modal.setAttribute("aria-hidden", "true");
+  }
+  if (typeof resolve === "function") resolve(ok === true);
+};
+
+document.addEventListener("keydown", (e) => {
+  const modal = document.getElementById("confirmModal");
+  if (!modal || !modal.classList.contains("active")) return;
+  if (e.key === "Escape") {
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    resolveConfirm(false);
+  } else if (e.key === "Enter") {
+    const tag = document.activeElement?.tagName?.toLowerCase();
+    if (tag !== "button") {
+      e.preventDefault();
+      resolveConfirm(true);
+    }
+  }
+}, true);
 // ── END DRAWER MATH ──
 
 window.closeDrawerModal = function() {
@@ -2931,14 +3130,12 @@ window.closePendingOrdersModal = function() {
 };
 
 window.refreshPendingOrders = function() {
-  renderPendingOrdersList();
   updateConnectivityStatus();
 };
 
 window.markPendingOrderPrepared = async function(orderId) {
   if (!orderId) return;
   await removeKitchenOrder(orderId);
-  renderPendingOrdersList();
   updateConnectivityStatus();
   showToast("Order marked as prepared and removed from pending list", "success");
 };
@@ -2976,6 +3173,7 @@ async function renderPendingOrdersList() {
         <div class="pending-item-actions">
           <button class="sidebar-pending-button" type="button" onclick="event.stopPropagation(); openPendingOrder('${order.id}')">View Receipt</button>
           <button class="sidebar-pending-button" type="button" onclick="event.stopPropagation(); markPendingOrderPrepared('${order.id}')">Done preparing</button>
+          <button class="sidebar-pending-button pending-cancel-btn" type="button" onclick="event.stopPropagation(); cancelPendingOrder('${order.id}')">Cancel order</button>
         </div>
       </div>
     `;
@@ -3036,3 +3234,104 @@ function showToast(message, type = "success") {
   toast.classList.add("show");
   setTimeout(() => toast.classList.remove("show"), 3000);
 }
+
+// ── THERMAL PRINTER UI ──
+
+function renderPrinterStatus(status) {
+  const connected = !!(status && status.connected);
+  const name = (status && status.deviceName) || "";
+  const supported = !status || status.supported !== false;
+
+  const sidebarEl = document.getElementById("printerStatus");
+  if (sidebarEl) {
+    sidebarEl.className = "printer-status" + (connected ? " is-connected" : "");
+    sidebarEl.innerHTML = connected
+      ? `<i class="ri-printer-fill" aria-hidden="true"></i><span>${name ? "Printer: " + escapeHtml(name) : "Printer: Connected"}</span>`
+      : `<i class="ri-printer-line" aria-hidden="true"></i><span>Printer: Not connected</span>`;
+  }
+
+  const textEl = document.getElementById("printerStatusText");
+  if (textEl) {
+    textEl.textContent = connected
+      ? `Connected: ${name || "thermal printer"}`
+      : supported
+        ? "Not connected"
+        : "Bluetooth not supported by this browser (use Chrome or Edge)";
+  }
+
+  const dotEl = document.getElementById("printerStatusDot");
+  if (dotEl) dotEl.className = "bb-printer-dot" + (connected ? " is-on" : "");
+
+  const deviceEl = document.getElementById("printerDeviceName");
+  if (deviceEl) {
+    deviceEl.textContent = connected && name ? name : "No printer connected";
+  }
+
+  const connectBtn = document.getElementById("connectPrinterBtn");
+  if (connectBtn) {
+    connectBtn.textContent = connected ? "Disconnect" : supported ? "Connect printer" : "Unsupported browser";
+    connectBtn.disabled = !supported;
+    connectBtn.onclick = connected ? () => window.disconnectPrinter() : () => window.connectPrinter();
+  }
+
+  const settings = getPrinterSettings();
+  const autoPrintToggle = document.getElementById("autoPrintToggle");
+  if (autoPrintToggle) autoPrintToggle.checked = settings.autoPrint !== false;
+  const w58 = document.getElementById("paperWidth58");
+  const w80 = document.getElementById("paperWidth80");
+  if (w58) w58.classList.toggle("active", settings.paperWidth !== 80);
+  if (w80) w80.classList.toggle("active", settings.paperWidth === 80);
+}
+
+window.openPrinterSettings = function() {
+  const modal = document.getElementById("printerModal");
+  if (!modal) return;
+  renderPrinterStatus(getPrinterStatus());
+  modal.classList.add("active");
+  modal.setAttribute("aria-hidden", "false");
+};
+
+window.closePrinterSettings = function() {
+  const modal = document.getElementById("printerModal");
+  if (!modal) return;
+  modal.classList.remove("active");
+  modal.setAttribute("aria-hidden", "true");
+};
+
+window.connectPrinter = async function() {
+  if (!isPrinterSupported()) {
+    showToast("Web Bluetooth is not available in this browser. Use Chrome or Edge.", "warning");
+    return;
+  }
+  const btn = document.getElementById("connectPrinterBtn");
+  if (btn) { btn.disabled = true; btn.textContent = "Connecting..."; }
+  try {
+    await connectThermalPrinter();
+    const status = getPrinterStatus();
+    if (status.connected) {
+      showToast(`Printer connected: ${status.deviceName || "thermal printer"}`, "success");
+    }
+  } catch (error) {
+    if (!/cancelled|cancel/i.test(String(error?.message || ""))) {
+      showToast(error?.message || "Unable to connect to the printer.", "warning");
+    }
+  } finally {
+    renderPrinterStatus(getPrinterStatus());
+  }
+};
+
+window.disconnectPrinter = async function() {
+  await disconnectThermalPrinter();
+  renderPrinterStatus(getPrinterStatus());
+  showToast("Printer disconnected.", "info");
+};
+
+window.setPaperWidth = function(width) {
+  updatePrinterSettings({ paperWidth: width === 80 ? 80 : 58 });
+  renderPrinterStatus(getPrinterStatus());
+};
+
+window.setAutoPrint = function() {
+  const toggle = document.getElementById("autoPrintToggle");
+  updatePrinterSettings({ autoPrint: !!(toggle && toggle.checked) });
+};

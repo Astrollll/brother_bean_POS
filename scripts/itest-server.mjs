@@ -30,6 +30,7 @@ async function run() {
   if (/[?&]initfail=1/.test(location.search)) return runOfflinePruneTest();
   if (/[?&]placeorder=1/.test(location.search)) return runOrderDedupeTest();
   if (/[?&]offlinesave=1/.test(location.search)) return runOfflineSaveTest();
+  if (/[?&]cancelflow=1/.test(location.search)) return runCancelFlowTest();
   const results = { steps: [], errors: [] };
   const el = (id) => document.getElementById(id);
   const read = (id) => {
@@ -231,9 +232,95 @@ async function runOfflineSaveTest() {
 
   window.__itestResults = results;
 }
-// Clicking it must NOT open the modal or persist anything until init has
-// loaded today's stats (the firestore stub is slowed via ?slowinit=1 so the
-// pre-init window is deterministic).
+// Cancel pending order flow: the Firestore soft-void must (a) write the void
+// fields to /orders/{orderId}, (b) drop the sale from local history so the POS
+// no longer counts it, and (c) FAIL visibly — leaving the order pending — when
+// the void write is rejected (e.g. rules not deployed), instead of falsely
+// reporting the order cancelled while it stays live in Firestore.
+async function runCancelFlowTest() {
+  const results = { steps: [], mode: "cancelflow", errors: [] };
+  const el = (id) => document.getElementById(id);
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  const read = (id) => {
+    const e = el(id);
+    return e ? { text: e.textContent, value: e.value } : null;
+  };
+  const step = (name, extra = {}) => results.steps.push([name, extra]);
+
+  const d = new Date();
+  const todayKey = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+  const orderId = "test-order-void-1";
+  const seedHistory = () => localStorage.setItem("brotherBean_salesHistory_" + todayKey, JSON.stringify([
+    { id: orderId, orderId, createdAtMs: Date.now(), total: 250, paymentMethod: "cash", status: "paid" },
+  ]));
+  const seedKitchen = (id, total) => localStorage.setItem("brotherBean_kitchenOrders", JSON.stringify([
+    { id, createdAt: Date.now(), payload: { orderId: id, createdAtMs: Date.now(), total, paymentMethod: "cash", status: "paid", items: [{ name: "Test", price: total, quantity: 1 }] } },
+  ]));
+
+  try {
+    localStorage.setItem("brotherBean_lastResetDate", new Date().toDateString());
+    seedHistory();
+    seedKitchen(orderId, 250);
+  } catch (e) {}
+
+  for (let i = 0; i < 200 && typeof window.cancelPendingOrder !== "function"; i++) await wait(50);
+
+  window.openPendingOrdersModal();
+  await wait(100);
+  step("pendingBefore", { listed: String(el("pendingOrdersModalList")?.innerHTML || "").includes(orderId) });
+  window.closePendingOrdersModal();
+
+  // Success path: the order doc exists in Firestore, so the void must update it.
+  window.__itestExistingDocs = { ["/orders/" + orderId]: { status: "paid", total: 250 } };
+  const cancelPromise = window.cancelPendingOrder(orderId);
+  await wait(150);
+  step("confirmShown", { open: !!document.getElementById("confirmModal")?.classList.contains("active") });
+  window.resolveConfirm(true);
+  await cancelPromise;
+  await wait(300);
+
+  const voidWrites = (window.__itestWrites || []).filter((w) => w.ref === "/orders/" + orderId && w.data && w.data.voided === true);
+  step("voidWrite", { count: voidWrites.length, data: voidWrites[0]?.data });
+  step("afterCancel", { orders: read("todayOrders")?.text, total: read("totalSales")?.text });
+  let history = [];
+  try { history = JSON.parse(localStorage.getItem("brotherBean_salesHistory_" + todayKey) || "[]"); } catch {}
+  step("historyAfter", { count: history.length, hasOrder: history.some((o) => String(o.orderId || o.id) === orderId) });
+  let kitchen = [];
+  try { kitchen = JSON.parse(localStorage.getItem("brotherBean_kitchenOrders") || "[]"); } catch {}
+  step("kitchenAfter", { hasOrder: kitchen.some((o) => String(o.id) === orderId) });
+
+  // Failure path: rejected void write must NOT cancel — order stays pending and
+  // local records are untouched.
+  const id2 = "test-order-void-2";
+  window.__itestExistingDocs = { ["/orders/" + id2]: { status: "paid", total: 99 } };
+  window.__itestForceUpdateDocFail = true;
+  seedKitchen(id2, 99);
+  localStorage.setItem("brotherBean_salesHistory_" + todayKey, JSON.stringify([
+    { id: id2, orderId: id2, createdAtMs: Date.now(), total: 99, paymentMethod: "cash", status: "paid" },
+  ]));
+  const failPromise = window.cancelPendingOrder(id2);
+  await wait(150);
+  window.resolveConfirm(true);
+  await failPromise;
+  await wait(150);
+  window.__itestForceUpdateDocFail = false;
+  kitchen = [];
+  try { kitchen = JSON.parse(localStorage.getItem("brotherBean_kitchenOrders") || "[]"); } catch {}
+  history = [];
+  try { history = JSON.parse(localStorage.getItem("brotherBean_salesHistory_" + todayKey) || "[]"); } catch {}
+  step("failPath", {
+    stillPending: kitchen.some((o) => String(o.id) === id2),
+    historyUntouched: history.some((o) => String(o.orderId || o.id) === id2),
+    toast: el("toastMessage")?.textContent || "",
+    toastShown: document.getElementById("toast")?.classList.contains("show") || false,
+  });
+
+  window.__itestResults = results;
+}
+
+// Clicking the drawer button must NOT open the modal or persist anything until
+// init has loaded today's stats (the firestore stub is slowed via ?slowinit=1
+// so the pre-init window is deterministic).
 async function runGuardTest() {
   const results = { steps: [], mode: "guard", errors: [] };
   const el = (id) => document.getElementById(id);
@@ -478,6 +565,48 @@ const server = app.listen(PORT, async () => {
         console.log(`FAIL: ${failures.length} offline-save check(s):`);
         failures.forEach((f) => console.log(`  - ${f}`));
         console.log(`  offlinesave steps: ${JSON.stringify(offlineResults.steps)}`);
+        failed = true;
+      }
+    }
+    // Cancel pending order flow: soft-void success + failure handling.
+    const cancelPage = await browser.newPage();
+    attach(cancelPage, "cancelflow");
+    await cancelPage.goto(`http://localhost:${PORT}/itest.html?cancelflow=1`, { waitUntil: "networkidle0", timeout: 60000 });
+    const cancelResults = await waitResults(cancelPage);
+    if (!cancelResults) {
+      console.log("FAIL: cancel-flow test produced no results");
+      failed = true;
+    } else if (cancelResults.fatal) {
+      console.log(`FAIL (cancelflow): ${cancelResults.fatal}`);
+      failed = true;
+    } else {
+      const cstep = (name) => cancelResults.steps.find((s) => s[0] === name)?.[1];
+      const pendingBefore = cstep("pendingBefore");
+      const confirmShown = cstep("confirmShown");
+      const voidWrite = cstep("voidWrite");
+      const afterCancel = cstep("afterCancel");
+      const historyAfter = cstep("historyAfter");
+      const kitchenAfter = cstep("kitchenAfter");
+      const failPath = cstep("failPath");
+      const checks = [];
+      const check = (label, cond) => checks.push(cond ? null : label);
+      check("pending modal lists the order before cancel", pendingBefore?.listed === true);
+      check("confirm popup shown before cancel", confirmShown?.open === true);
+      check("void write targets /orders/{orderId}", voidWrite?.count === 1);
+      check("void write carries the audit fields", !!voidWrite?.data?.voided && typeof voidWrite?.data?.voidedAtMs === "number" && String(voidWrite?.data?.voidedBy || "") === "Staff");
+      check("POS no longer counts the order", String(afterCancel?.orders || "") === "0" && String(afterCancel?.total || "").includes("₱250.00") === false);
+      check("local history purged the order", historyAfter?.count === 0 && historyAfter?.hasOrder === false);
+      check("pending/kitchen list purged the order", kitchenAfter?.hasOrder === false);
+      check("rejected void write leaves the order pending", failPath?.stillPending === true);
+      check("rejected void write leaves local records untouched", failPath?.historyUntouched === true);
+      check("rejected void write surfaces a failure toast", failPath?.toastShown === true && String(failPath?.toast || "").includes("Unable to cancel"));
+      const failures = checks.filter(Boolean);
+      if (failures.length === 0) {
+        console.log("PASS: Cancel pending order (soft-void) checks succeeded.");
+      } else {
+        console.log(`FAIL: ${failures.length} cancel-flow check(s):`);
+        failures.forEach((f) => console.log(`  - ${f}`));
+        console.log(`  cancelflow steps: ${JSON.stringify(cancelResults.steps)}`);
         failed = true;
       }
     }

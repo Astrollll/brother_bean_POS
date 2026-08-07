@@ -144,7 +144,7 @@ export async function getTodayOrders() {
     where("createdAt", "<",  end)
   );
   const snap = await getDocs(q);
-  const orders = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  const orders = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(o => o.voided !== true);
   return applyCashierNames(orders);
 }
 
@@ -157,7 +157,7 @@ export function watchTodayOrders(onChange, onError) {
     where("createdAt", "<",  end)
   );
   return onSnapshot(q, async (snap) => {
-    const orders = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    const orders = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(o => o.voided !== true);
     const named = await applyCashierNames(orders);
     onChange(named, snap.metadata);
   }, onError);
@@ -166,7 +166,7 @@ export function watchTodayOrders(onChange, onError) {
 // Fetch all orders with optional date range filter (YYYY-MM-DD)
 export async function getAllOrders(fromDate = null, toDate = null) {
   const snap = await getDocs(collection(db, ORDERS_COLLECTION));
-  const orders = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  const orders = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(o => o.voided !== true);
 
   const from = fromDate ? new Date(`${fromDate}T00:00:00`) : null;
   const to = toDate ? new Date(`${toDate}T23:59:59`) : null;
@@ -215,7 +215,7 @@ export async function getAllSalesOrders(fromDate = null, toDate = null) {
       getAllOrders(),
       getArchivedOrders(),
     ]);
-    const orders = mergeUniqueOrders(activeOrders, archivedOrders).sort((a, b) => orderSortKey(b) - orderSortKey(a));
+    const orders = mergeUniqueOrders(activeOrders, archivedOrders).filter(o => o.voided !== true).sort((a, b) => orderSortKey(b) - orderSortKey(a));
 
     const from = fromDate ? new Date(`${fromDate}T00:00:00`) : null;
     const to = toDate ? new Date(`${toDate}T23:59:59`) : null;
@@ -291,6 +291,33 @@ export async function repairOrderTimestamps(orders) {
 export async function deleteOrder(orderId) {
   if (!orderId) return;
   await deleteDoc(doc(db, ORDERS_COLLECTION, String(orderId)));
+}
+
+// Mark an order as voided (soft delete). Staff can cancel a sale from the POS,
+// but firestore.rules only lets admins hard-delete order docs — so cancel
+// flags the record instead and every read path filters voided orders out of
+// transactions/reports while keeping the record for audit.
+// If the order doc doesn't exist yet (e.g. a queued/offline sale that hasn't
+// synced), there is nothing to void in Firestore — treated as a no-op. Any
+// other failure (rules, network) is propagated so the caller can abort the
+// cancel instead of falsely reporting success.
+export async function voidOrder(orderId, voidInfo = {}) {
+  const id = String(orderId || "");
+  if (!id) return;
+  const orderRef = doc(db, ORDERS_COLLECTION, id);
+  try {
+    const snap = await getDoc(orderRef);
+    if (snap.exists() !== true) return;
+  } catch {
+    // Reads failing likely means the void write will fail too — fall through
+    // and let updateDoc raise the real error.
+  }
+  await updateDoc(orderRef, {
+    voided: true,
+    voidedAtMs: Date.now(),
+    voidedBy: String(voidInfo.voidedBy || "").trim() || "Staff",
+    voidReason: String(voidInfo.voidReason || "").trim() || "Voided",
+  });
 }
 
 export async function clearAllOrders() {

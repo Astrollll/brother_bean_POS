@@ -1312,6 +1312,11 @@
           <button type="button" class="receipt-admin-link" onclick="window.refundOrderReceipt && window.refundOrderReceipt()">Refund</button>
           <button type="button" class="receipt-admin-link" onclick="window.printOrderReceipt && window.printOrderReceipt()">Print</button>
         </div>
+        <div class="receipt-admin-printer" id="adminPrinterRow">
+          <span class="receipt-admin-dot" id="adminPrinterDot"></span>
+          <span id="adminPrinterStatus">Thermal printer: Not connected</span>
+          <button type="button" class="receipt-admin-link" id="adminPrinterBtn">Connect printer</button>
+        </div>
       </div>
     </div>
 
