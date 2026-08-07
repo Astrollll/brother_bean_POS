@@ -10379,9 +10379,30 @@ body[data-cart-density="compact"] .cart-section .checkout-btn {
 }
 
 .bb-receipt-footer .bb-secondary-btn,
-.bb-receipt-footer .bb-primary-btn {
+.bb-receipt-footer .bb-primary-btn,
+.bb-receipt-footer .bb-cancel-btn {
   min-width: 0;
   padding: 14px 20px;
+}
+
+.bb-receipt-footer .bb-cancel-btn {
+  border-radius: 14px;
+  background: #fff;
+  color: var(--danger);
+  border-color: rgba(239, 68, 68, 0.35);
+  box-shadow: var(--shadow-sm);
+}
+
+.bb-receipt-footer .bb-cancel-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+  border-color: rgba(239, 68, 68, 0.55);
+  background: rgba(239, 68, 68, 0.06);
+}
+
+.bb-receipt-footer .bb-cancel-btn:active:not(:disabled) {
+  transform: translateY(0);
+  box-shadow: none;
 }
 
 @media (max-width: 480px) {

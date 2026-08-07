@@ -1864,8 +1864,11 @@ function generateReceipt(sale) {
   }
 
   // Only a sale just completed in this terminal can be canceled (voided and
-  // returned to the cart). Pending/queued/unpaid receipts cannot.
+  // returned to the cart). Pending/queued/unpaid receipts cannot, so the
+  // Cancel order button below the receipt is only shown for a fresh PAID sale.
   currentReceiptSale = sale;
+  const cancelBtn = document.getElementById("cancelReceiptBtn");
+  if (cancelBtn) cancelBtn.style.display = (!sale.unpaid && !sale.queued) ? "" : "none";
 
   const itemRows = (sale.items || []).map((item) => {
     const basePrice = Number(item.price) || 0;
@@ -2081,6 +2084,45 @@ window.printReceipt = async function() {
 };
 
 // ── CANCEL ORDER (void sale, return items to cart) ──
+
+// Cancel the sale whose receipt is open — only reachable right after a
+// completed payment (the button is hidden on pending/queued/unpaid receipts).
+// Voids the Firestore order, restores deducted stock, and returns the items
+// to the cart so the cashier can re-sell or re-quote them.
+window.cancelReceiptOrder = async function() {
+  const sale = currentReceiptSale;
+  if (!sale) return;
+
+  const orderShort = String(sale.orderId || sale.id || "—").slice(-6);
+  const confirmed = await window.askConfirm({
+    title: "Cancel this order?",
+    message: `Cancel order #${orderShort} and return the items to the cart?`,
+    hint: "The order will be removed from the sales records, deducted stock will be restored, and the payment must be returned to the customer.",
+    okText: "Cancel order",
+    danger: true,
+  });
+  if (!confirmed) return;
+
+  try {
+    const result = await voidSale(sale);
+    closeReceipt();
+    updateConnectivityStatus();
+    if (result?.inventoryRestored === false) {
+      showToast("Order canceled. Inventory could not be restored — please notify admin.", "warning");
+    } else {
+      showToast("Order canceled. Items returned to the cart.", "success");
+    }
+  } catch (error) {
+    const denied = /permission|denied|permission-denied/i.test(String(error?.message || error?.code || ""));
+    console.error("[POS] Cancel receipt order failed:", error);
+    showToast(
+      denied
+        ? "Unable to cancel the order — cancel requires permission. Please notify admin."
+        : "Unable to cancel the order. Please try again.",
+      "warning"
+    );
+  }
+};
 
 // Rebuild cart entries from a just-completed sale's items, merging any that
 // already exist (same product, variant, temperature, addons, discount).
