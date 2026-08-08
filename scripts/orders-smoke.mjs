@@ -78,6 +78,7 @@ function loadBlock() {
       "document", "window", "state", "orderFilters", "ordersDatePickers",
       "ModalUtils",
       "escapeHtml", "formatMoney", "deleteOrder", "loadOrdersPage", "getAllSalesOrders",
+      "getOrderStatus",
       `${block}\nreturn { ${exports.join(", ")} };`,
     );
     return factory;
@@ -101,7 +102,7 @@ function buildHarness() {
     orderStockExpanded: {},
   };
   const orderFilters = {
-    search: "", payment: "all", sortBy: "latest", pageSize: 10,
+    search: "", payment: "all", status: "all", sortBy: "latest", pageSize: 10,
     page: 1, fromDate: "", toDate: "", preset: "",
   };
   return {
@@ -116,6 +117,14 @@ function buildHarness() {
     deleteOrder: async () => {},
     loadOrdersPage: async () => {},
     getAllSalesOrders: async () => [],
+    getOrderStatus: (order) => {
+      if (!order) return "pending";
+      if (order.voided === true) return "cancelled";
+      const status = String(order.status || "").toLowerCase();
+      if (status === "cancelled") return "cancelled";
+      if (status === "pending") return "pending";
+      return "done";
+    },
   };
 }
 
@@ -127,6 +136,7 @@ async function main() {
     harness.ordersDatePickers,
     harness.ModalUtils, escapeHtml, harness.formatMoney,
     harness.deleteOrder, harness.loadOrdersPage, harness.getAllSalesOrders,
+    harness.getOrderStatus,
   );
 
   const today = new Date();
@@ -197,6 +207,23 @@ async function main() {
   const noNoteOrder = { ...order, note: "", items: [{ name: "Latte", quantity: 1, price: 120 }] };
   row = api.buildOrderMainRow(noNoteOrder);
   assert(!row.includes("orders-note-inline"), "main row no note indicator when empty");
+
+  const pendingOrder = { ...order, status: "pending", items: [{ name: "Latte", quantity: 1, price: 120 }] };
+  row = api.buildOrderMainRow(pendingOrder);
+  assertContains(row, "b-amber", "main row pending badge");
+  assertContains(row, "Pending", "main row pending label");
+
+  const cancelledOrder = { ...order, status: "cancelled", voided: true, voidedAtMs: Date.now(), voidedBy: "Staff", items: [{ name: "Latte", quantity: 1, price: 120 }] };
+  row = api.buildOrderMainRow(cancelledOrder);
+  assertContains(row, "b-red", "main row cancelled badge");
+  assertContains(row, "Cancelled", "main row cancelled label");
+  assertContains(row, "orders-amount-strike", "main row cancelled amount struck");
+  assertContains(row, "not recorded in sales", "main row cancelled sales-not-recorded note");
+
+  const legacyPaidOrder = { ...order, status: "paid", items: [{ name: "Latte", quantity: 1, price: 120 }] };
+  row = api.buildOrderMainRow(legacyPaidOrder);
+  assertContains(row, "b-green", "main row legacy paid shows done badge");
+  assertContains(row, "Done", "main row legacy paid label");
 
   // 5. Detail row rendering
   const detailOrder = {
@@ -362,6 +389,28 @@ async function main() {
   api.applyOrderFilters();
   assert(harness.state.filteredOrders.length === 0, "gcash filter matches none");
 
+  // 11b. Status filter
+  const mixedStatus = [
+    { ...makeOrder("s1", 0, 9), status: "pending" },
+    { ...makeOrder("s2", 0, 10), status: "done" },
+    { ...makeOrder("s3", 0, 11), status: "cancelled", voided: true },
+    { ...makeOrder("s4", 0, 12) },
+  ];
+  harness.state.allOrders = mixedStatus;
+  harness.orderFilters.payment = "all";
+  harness.orderFilters.status = "cancelled";
+  api.applyOrderFilters();
+  assert(harness.state.filteredOrders.length === 1 && harness.state.filteredOrders[0].id === "s3", "status filter cancelled matches only cancelled");
+  harness.orderFilters.status = "pending";
+  api.applyOrderFilters();
+  assert(harness.state.filteredOrders.length === 1 && harness.state.filteredOrders[0].id === "s1", "status filter pending matches only pending");
+  harness.orderFilters.status = "done";
+  api.applyOrderFilters();
+  assert(harness.state.filteredOrders.length === 2, "status filter done matches done + legacy");
+  harness.orderFilters.status = "all";
+  api.applyOrderFilters();
+  assert(harness.state.filteredOrders.length === 4, "status filter all matches everything");
+
   // 12. Presets
   harness.orderFilters.preset = "";
   api.setOrderPreset("7d");
@@ -406,21 +455,21 @@ async function main() {
   assert(noteEl.textContent === "SHORT", "note collapses to short");
   assert(toggleBtn.textContent === "See more", "note button see more");
 
-  // 15. KPI render
-  harness.state.filteredOrders = [{ total: 100 }, { total: 200 }];
+  // 15. KPI render (cancelled orders count but are excluded from sales)
+  harness.state.filteredOrders = [{ total: 100 }, { total: 200 }, { total: 999, voided: true, status: "cancelled" }];
   api.renderOrdersKpis(harness.state.filteredOrders);
   assert(
-    harness.documentStub.getElementById("ordersCountKpi").textContent === "2",
-    "kpi count",
+    harness.documentStub.getElementById("ordersCountKpi").textContent === "3",
+    "kpi count includes cancelled transactions",
   );
   assertContains(
     harness.documentStub.getElementById("ordersTotalKpi").textContent,
     "300.00",
-    "kpi total",
+    "kpi total excludes cancelled sales",
   );
   assertContains(
     harness.documentStub.getElementById("ordersPageSub").textContent,
-    "2 transaction(s) shown",
+    "3 transaction(s) shown",
     "kpi sub text",
   );
 

@@ -11,6 +11,7 @@ export function getDocs(q) {
   const slow = /[?&]slowinit=1/.test(location.search) ? 1500 : 0;
   const failOrders = /[?&]initfail=1/.test(location.search) && /\/orders(\/|$)/.test(q?.path || "");
   const seedMenu = /[?&](placeorder|offlinesave)=1/.test(location.search) && /\/menu(\/|$)/.test(q?.path || "");
+  const seededOrders = /^\/orders$/.test(q?.path || "") ? (window.__itestOrdersDocs || null) : null;
   return new Promise((resolve, reject) => setTimeout(() => {
     if (failOrders) return reject(new Error("itest: orders fetch failed (offline)"));
     if (seedMenu) {
@@ -27,6 +28,10 @@ export function getDocs(q) {
         popular: false,
       };
       return resolve({ empty: false, docs: [{ id: "p1", data: () => JSON.parse(JSON.stringify(item)) }], size: 1 });
+    }
+    if (seededOrders) {
+      const docs = seededOrders.map((d) => ({ id: d.id, data: () => JSON.parse(JSON.stringify(d)) }));
+      return resolve({ empty: docs.length === 0, docs, size: docs.length });
     }
     resolve({ empty: true, docs: [], size: 0 });
   }, slow));

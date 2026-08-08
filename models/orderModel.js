@@ -164,9 +164,10 @@ export function watchTodayOrders(onChange, onError) {
 }
 
 // Fetch all orders with optional date range filter (YYYY-MM-DD)
-export async function getAllOrders(fromDate = null, toDate = null) {
+export async function getAllOrders(fromDate = null, toDate = null, options = {}) {
   const snap = await getDocs(collection(db, ORDERS_COLLECTION));
-  const orders = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(o => o.voided !== true);
+  let orders = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  if (options.includeVoided !== true) orders = orders.filter(o => o.voided !== true);
 
   const from = fromDate ? new Date(`${fromDate}T00:00:00`) : null;
   const to = toDate ? new Date(`${toDate}T23:59:59`) : null;
@@ -209,13 +210,17 @@ async function getArchivedOrders() {
 }
 
 // Fetch every sale the system knows about, including archived orders under resets/{date}/orders.
-export async function getAllSalesOrders(fromDate = null, toDate = null) {
+// By default voided (cancelled) orders are excluded; pass { includeVoided: true } to also
+// return them (used by the admin transactions page so cancellations stay visible for audit).
+export async function getAllSalesOrders(fromDate = null, toDate = null, options = {}) {
   try {
     const [activeOrders, archivedOrders] = await Promise.all([
-      getAllOrders(),
+      getAllOrders(null, null, { includeVoided: options.includeVoided === true }),
       getArchivedOrders(),
     ]);
-    const orders = mergeUniqueOrders(activeOrders, archivedOrders).filter(o => o.voided !== true).sort((a, b) => orderSortKey(b) - orderSortKey(a));
+    let orders = mergeUniqueOrders(activeOrders, archivedOrders);
+    if (options.includeVoided !== true) orders = orders.filter(o => o.voided !== true);
+    orders.sort((a, b) => orderSortKey(b) - orderSortKey(a));
 
     const from = fromDate ? new Date(`${fromDate}T00:00:00`) : null;
     const to = toDate ? new Date(`${toDate}T23:59:59`) : null;
@@ -240,7 +245,7 @@ export async function getAllSalesOrders(fromDate = null, toDate = null) {
     }));
   } catch (error) {
     console.warn("[Orders] collectionGroup sales query failed; falling back to active orders.", error);
-    return getAllOrders(fromDate, toDate);
+    return getAllOrders(fromDate, toDate, { includeVoided: options.includeVoided === true });
   }
 }
 
@@ -317,6 +322,8 @@ export async function voidOrder(orderId, voidInfo = {}) {
     voidedAtMs: Date.now(),
     voidedBy: String(voidInfo.voidedBy || "").trim() || "Staff",
     voidReason: String(voidInfo.voidReason || "").trim() || "Voided",
+    status: "cancelled",
+    cancelledAtMs: Date.now(),
   });
 }
 
@@ -373,7 +380,7 @@ export async function saveOrder(cart, total, subtotal, paymentMethod, isPwdSenio
       addons:     (item.addons || []).map(a => ({ name: a.name, price: a.price })),
       recipe:     item.recipe || [],
     })),
-    status: "paid",
+    status: "pending",
     paidAt: new Date(),
   };
 
@@ -581,4 +588,18 @@ export async function retryFailedInventoryDeduction(orderId) {
     return true;
   }
   return false;
+}
+
+// Order lifecycle status. Cancelled wins over everything else (a voided order can
+// only ever be "cancelled"); otherwise it reflects the saved status field, which
+// starts "pending" on payment and flips to "done" when prep completes. Orders
+// saved before the status feature (status "paid" or missing) were always
+// completed, so they read as "done".
+export function getOrderStatus(order) {
+  if (!order) return "pending";
+  if (order.voided === true) return "cancelled";
+  const status = String(order.status || "").toLowerCase();
+  if (status === "cancelled") return "cancelled";
+  if (status === "pending") return "pending";
+  return "done";
 }

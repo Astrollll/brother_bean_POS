@@ -24,7 +24,7 @@ import { getUserProfile, getUserRole } from "../models/userModel.js";
 import { navigateTo } from "./utils/routes.js";
 import { db } from "./firebase.js";
 import {
-  collection, getDocs, doc, getDoc, setDoc, deleteDoc, query, where
+  collection, getDocs, doc, getDoc, setDoc, deleteDoc, updateDoc, query, where
 } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js";
 import { 
   saveToStorage, 
@@ -3177,7 +3177,23 @@ window.refreshPendingOrders = function() {
 
 window.markPendingOrderPrepared = async function(orderId) {
   if (!orderId) return;
+  const pending = await getPendingOrders();
+  const kitchen = pending.find((o) => String(o.id) === String(orderId));
+  const docId = String(kitchen?.payload?.orderId || kitchen?.payload?.id || orderId).replace(/^q_/, "");
   await removeKitchenOrder(orderId);
+  // Flip the order's status to "done" so the admin transactions page shows it
+  // as prepared. Best-effort: if the doc isn't in Firestore yet (offline queued
+  // sale) or the write fails, keep the pending list working — the status just
+  // stays "pending" and will read from the synced doc later.
+  try {
+    await updateDoc(doc(db, "orders", docId), {
+      status: "done",
+      preparedAtMs: Date.now(),
+      preparedBy: cashierName || "Staff",
+    });
+  } catch (error) {
+    console.warn("[POS] Mark prepared: order status update failed.", error);
+  }
   updateConnectivityStatus();
   showToast("Order marked as prepared and removed from pending list", "success");
 };

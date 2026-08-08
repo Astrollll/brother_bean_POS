@@ -282,6 +282,24 @@ async function runCancelFlowTest() {
   const voidWrites = (window.__itestWrites || []).filter((w) => w.ref === "/orders/" + orderId && w.data && w.data.voided === true);
   step("voidWrite", { count: voidWrites.length, data: voidWrites[0]?.data });
   step("afterCancel", { orders: read("todayOrders")?.text, total: read("totalSales")?.text });
+
+  // Regression: after a soft-void the order doc must STILL be returned by
+  // getAllSalesOrders({ includeVoided: true }) so the admin transactions page
+  // keeps the cancellation visible. Without includeVoided it must be excluded.
+  window.__itestOrdersDocs = [{
+    id: orderId,
+    orderId,
+    status: "cancelled",
+    voided: true,
+    total: 250,
+    paymentMethod: "cash",
+    createdAtMs: Date.now(),
+    items: [{ name: "Test", price: 250, quantity: 1 }],
+  }];
+  const salesOrders = await (await import("/models/orderModel.js")).getAllSalesOrders(null, null, { includeVoided: true });
+  step("salesOrdersIncludeVoided", { hasOrder: salesOrders.some((o) => String(o.orderId || o.id) === orderId) });
+  const salesOrdersDefault = await (await import("/models/orderModel.js")).getAllSalesOrders();
+  step("salesOrdersDefault", { hasOrder: salesOrdersDefault.some((o) => String(o.orderId || o.id) === orderId) });
   let history = [];
   try { history = JSON.parse(localStorage.getItem("brotherBean_salesHistory_" + todayKey) || "[]"); } catch {}
   step("historyAfter", { count: history.length, hasOrder: history.some((o) => String(o.orderId || o.id) === orderId) });
@@ -313,6 +331,22 @@ async function runCancelFlowTest() {
     historyUntouched: history.some((o) => String(o.orderId || o.id) === id2),
     toast: el("toastMessage")?.textContent || "",
     toastShown: document.getElementById("toast")?.classList.contains("show") || false,
+  });
+
+  // Mark-prepared flow: flipping an order to done updates the order doc with
+  // status "done" + preparedAtMs and removes it from the kitchen list.
+  const id3 = "test-order-prepared-3";
+  window.__itestExistingDocs = { ["/orders/" + id3]: { status: "pending", total: 75 } };
+  seedKitchen(id3, 75);
+  await window.markPendingOrderPrepared(id3);
+  await wait(150);
+  const preparedWrites = (window.__itestWrites || []).filter((w) => w.ref === "/orders/" + id3 && w.data && w.data.status === "done");
+  kitchen = [];
+  try { kitchen = JSON.parse(localStorage.getItem("brotherBean_kitchenOrders") || "[]"); } catch {}
+  step("markPrepared", {
+    orderStatusWrite: preparedWrites.length,
+    preparedAtMsType: typeof preparedWrites[0]?.data?.preparedAtMs,
+    removedFromKitchen: !kitchen.some((o) => String(o.id) === id3),
   });
 
   window.__itestResults = results;
@@ -557,7 +591,7 @@ const server = app.listen(PORT, async () => {
       check("seeded menu item rendered", menu?.cards === 1);
       check("payment completed without hanging on the drop", typeof placed?.elapsedMs === "number" && placed.elapsedMs < 3000);
       check("order counted exactly once while queued", placed?.orders === "1" && String(placed?.total || "") === "₱100.00");
-      check("order queued to the local outbox", outbox?.count === 1 && outbox?.hasOrderId === true && outbox?.status === "paid");
+      check("order queued to the local outbox", outbox?.count === 1 && outbox?.hasOrderId === true && outbox?.status === "pending");
       const failures = checks.filter(Boolean);
       if (failures.length === 0) {
         console.log("PASS: Sudden-offline order queueing checks succeeded.");
@@ -588,18 +622,26 @@ const server = app.listen(PORT, async () => {
       const historyAfter = cstep("historyAfter");
       const kitchenAfter = cstep("kitchenAfter");
       const failPath = cstep("failPath");
+      const markPrepared = cstep("markPrepared");
+      const salesOrdersIncludeVoided = cstep("salesOrdersIncludeVoided");
+      const salesOrdersDefault = cstep("salesOrdersDefault");
       const checks = [];
       const check = (label, cond) => checks.push(cond ? null : label);
       check("pending modal lists the order before cancel", pendingBefore?.listed === true);
       check("confirm popup shown before cancel", confirmShown?.open === true);
       check("void write targets /orders/{orderId}", voidWrite?.count === 1);
       check("void write carries the audit fields", !!voidWrite?.data?.voided && typeof voidWrite?.data?.voidedAtMs === "number" && String(voidWrite?.data?.voidedBy || "") === "Staff");
+      check("void write flips status to cancelled", voidWrite?.data?.status === "cancelled" && typeof voidWrite?.data?.cancelledAtMs === "number");
       check("POS no longer counts the order", String(afterCancel?.orders || "") === "0" && String(afterCancel?.total || "").includes("₱250.00") === false);
       check("local history purged the order", historyAfter?.count === 0 && historyAfter?.hasOrder === false);
       check("pending/kitchen list purged the order", kitchenAfter?.hasOrder === false);
       check("rejected void write leaves the order pending", failPath?.stillPending === true);
       check("rejected void write leaves local records untouched", failPath?.historyUntouched === true);
       check("rejected void write surfaces a failure toast", failPath?.toastShown === true && String(failPath?.toast || "").includes("Unable to cancel"));
+      check("mark prepared updates order to status done", markPrepared?.orderStatusWrite === 1 && markPrepared?.preparedAtMsType === "number");
+      check("mark prepared removes order from kitchen list", markPrepared?.removedFromKitchen === true);
+      check("admin transactions keeps the cancelled order (includeVoided)", salesOrdersIncludeVoided?.hasOrder === true);
+      check("default sales orders exclude the cancelled order", salesOrdersDefault?.hasOrder === false);
       const failures = checks.filter(Boolean);
       if (failures.length === 0) {
         console.log("PASS: Cancel pending order (soft-void) checks succeeded.");

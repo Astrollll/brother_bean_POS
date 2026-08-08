@@ -2483,6 +2483,22 @@ button,
   color: var(--primary-dark);
 }
 
+.orders-note-cancelled {
+  color: var(--danger);
+  background: rgba(239, 68, 68, 0.06);
+  border-color: rgba(239, 68, 68, 0.18);
+}
+
+.orders-note-cancelled i {
+  color: var(--danger);
+}
+
+.orders-amount-strike {
+  color: var(--text-muted);
+  text-decoration: line-through;
+  font-weight: 600;
+}
+
 .orders-pay-badge {
   display: inline-block;
   padding: 3px 10px;
@@ -3964,6 +3980,11 @@ th:not(:first-child), td:not(:first-child) {
 .b-red {
   background: rgba(239, 68, 68, 0.1);
   color: var(--danger);
+}
+
+.b-amber {
+  background: rgba(245, 158, 11, 0.14);
+  color: #B45309;
 }
 
 .b-blue {

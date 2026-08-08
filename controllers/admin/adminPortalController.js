@@ -7,7 +7,7 @@ import { getAdminSettings, saveAdminSettings, getDefaultSettings, syncPendingAdm
 import { getUserRole, getUserProfile, listUsers, setUserRole, setUserProfile, ensureAdminAccessProfile } from "../../models/userModel.js";
 import { getMenuItems, saveMenuItem, deleteMenuItem, clearMenuItems, syncPendingMenuOps } from "../../models/menuModel.js";
 import { getCategories, saveCategory, deleteCategory, getCategoryIconForName, syncCategoryLocalChanges } from "../../models/categoryModel.js";
-import { getTodayOrders, getAllSalesOrders, deleteOrder, clearAllOrders, getPendingOrderCount, getQueuedOrders, syncQueuedOrders } from "../../models/orderModel.js";
+import { getTodayOrders, getAllSalesOrders, deleteOrder, clearAllOrders, getPendingOrderCount, getQueuedOrders, syncQueuedOrders, getOrderStatus } from "../../models/orderModel.js";
 import { getSavedSalesHistory, getDailyStatsByDate, getDrawerLogsByDate, purgeSavedSale } from "../../models/storageModel.js";
 import { resetDay as archiveResetDay } from "../../models/resetModel.js";
 import { getInventoryItems, saveInventoryItem, deleteInventoryItem, clearInventoryItems, convertQuantityBetweenUnits, normalizeUnit } from "../../models/inventoryModel.js";
@@ -99,6 +99,7 @@ function withTimeout(promise, timeoutMs, label) {
 const orderFilters = {
   search: "",
   payment: "all",
+  status: "all",
   sortBy: "latest",
   pageSize: 10,
   page: 1,
@@ -1187,7 +1188,7 @@ async function loadOrdersPage() {
   wrap.innerHTML = `<div style="color:var(--muted);font-size:13px;padding:10px 0;">Loading transactions...</div>`;
 
   try {
-    state.allOrders = await getAllSalesOrders();
+    state.allOrders = await getAllSalesOrders(null, null, { includeVoided: true });
     state.orderStockExpanded = {};
     bindOrdersControls();
     applyOrderFilters();
@@ -1215,6 +1216,7 @@ function orderHasDiscount(order) {
 function applyOrderFilters() {
   const search = (orderFilters.search || "").trim().toLowerCase();
   const payment = (orderFilters.payment || "all").toLowerCase();
+  const statusFilter = (orderFilters.status || "all").toLowerCase();
   const from = orderFilters.fromDate ? new Date(`${orderFilters.fromDate}T00:00:00`) : null;
   const to = orderFilters.toDate ? new Date(`${orderFilters.toDate}T23:59:59`) : null;
 
@@ -1222,6 +1224,8 @@ function applyOrderFilters() {
     const date = getOrderDate(order);
     if (from && (!date || date < from)) return false;
     if (to && (!date || date > to)) return false;
+
+    if (statusFilter !== "all" && getOrderStatus(order) !== statusFilter) return false;
 
     const normalizedPayment = String(order.paymentMethod || "cash").toLowerCase();
     const orderType = String(order.orderType || "regular").toLowerCase();
@@ -1623,11 +1627,22 @@ function buildOrderMainRow(order) {
   const total = Number(order.total || 0).toFixed(2);
   const type = String(order.paymentMethod || "cash").toUpperCase();
   const isEmployee = String(order.orderType || "regular").toLowerCase() === "employee";
-  const status = isEmployee
+  const lifecycle = getOrderStatus(order);
+  const status = lifecycle === "cancelled"
+    ? `<span class="badge b-red">Cancelled</span>`
+    : isEmployee
     ? `<span class="badge b-blue">Employee</span>`
     : order.isPwdSenior
     ? `<span class="badge b-orange">PWD</span>`
+    : lifecycle === "pending"
+    ? `<span class="badge b-amber">Pending</span>`
     : `<span class="badge b-green">Done</span>`;
+  const cancelNote = lifecycle === "cancelled"
+    ? `<span class="orders-note-inline orders-note-cancelled" title="Order was cancelled — sale not recorded in analytics"><i class="ri-close-circle-line" aria-hidden="true"></i> Cancelled — not recorded in sales</span>`
+    : "";
+  const amountCell = lifecycle === "cancelled"
+    ? `<span class="orders-amount-strike" title="Sales not recorded (order cancelled)">₱${total}</span>`
+    : `₱${total}`;
   const expanded = !!state.orderStockExpanded?.[orderKey];
   return `
     <tr class="orders-main-row" data-order-id="${escapeHtml(orderKey)}">
@@ -1636,10 +1651,10 @@ function buildOrderMainRow(order) {
         <span class="orders-ref">#${escapeHtml(shortId)}</span>
         <span class="orders-count">${itemCount} item${itemCount === 1 ? "" : "s"}</span>
       </td>
-      <td class="orders-items-cell"><span class="orders-item-chips">${itemChips || `<span class="orders-items-empty">—</span>`}${moreLabel}</span>${noteInline}</td>
+      <td class="orders-items-cell"><span class="orders-item-chips">${itemChips || `<span class="orders-items-empty">—</span>`}${moreLabel}</span>${noteInline}${cancelNote}</td>
       <td><span class="orders-pay-badge">${escapeHtml(type)}</span></td>
       <td class="orders-time-cell">${time}</td>
-      <td class="orders-amount-cell">₱${total}</td>
+      <td class="orders-amount-cell">${amountCell}</td>
       <td>${status}</td>
       <td class="orders-actions-cell">
         <button class="orders-btn ghost inventory-mini-btn order-view-btn" type="button" data-order-action="view" data-order-id="${escapeHtml(orderKey)}" title="View receipt" aria-label="View receipt"><i class="ri-receipt-line" aria-hidden="true"></i></button>
@@ -1746,7 +1761,12 @@ function buildAdminReceiptHTML(order) {
   const orderShort = String(order.orderId || order.id || "—").slice(-6) || "—";
   const payment = String(order.paymentMethod || "cash").toUpperCase();
   const cashier = String(order.cashierName || order.cashierUid || order.staffName || order.staff || "Staff");
-  const paidStamp = String(order.status || "paid").toLowerCase() === "paid" ? "PAID" : String(order.status || "PENDING").toUpperCase();
+  const lifecycleStatus = getOrderStatus(order);
+  const paidStamp = lifecycleStatus === "cancelled"
+    ? "CANCELLED"
+    : lifecycleStatus === "pending"
+    ? "PENDING"
+    : "PAID";
   const items = Array.isArray(order.items) ? order.items : [];
 
   const itemRows = items.map((item) => {
@@ -1943,7 +1963,8 @@ window.printOrderReceipt = async function() {
 function normalizeAdminOrderForPrinter(order) {
   return {
     ...order,
-    queued: String(order.status || "paid").toLowerCase() !== "paid",
+    queued: order.queued === true,
+    cancelled: getOrderStatus(order) === "cancelled",
   };
 }
 
@@ -2058,7 +2079,10 @@ function renderOrdersKpis(orders) {
   const totalEl = document.getElementById("ordersTotalKpi");
   const subEl = document.getElementById("ordersPageSub");
 
-  const totalSales = orders.reduce((sum, order) => sum + Number(order.total || 0), 0);
+  const totalSales = orders.reduce((sum, order) => {
+    if (getOrderStatus(order) === "cancelled") return sum;
+    return sum + Number(order.total || 0);
+  }, 0);
 
   if (subEl) subEl.textContent = `${orders.length} transaction(s) shown`;
 
@@ -2232,13 +2256,14 @@ function exportOrdersCsv() {
       .join(", ");
     const date = getOrderDate(order);
     const isEmployee = String(order.orderType || "regular").toLowerCase() === "employee";
+    const lifecycle = getOrderStatus(order);
     return [
       String(order.orderId || order.id || ""),
       items,
       String(order.paymentMethod || "cash").toUpperCase(),
       date ? date.toLocaleString("en-PH") : "-",
-      Number(order.total || 0).toFixed(2),
-      isEmployee ? "EMPLOYEE" : order.isPwdSenior ? "PWD" : "DONE",
+      lifecycle === "cancelled" ? "CANCELLED (not recorded)" : Number(order.total || 0).toFixed(2),
+      lifecycle === "cancelled" ? "CANCELLED" : isEmployee ? "EMPLOYEE" : order.isPwdSenior ? "PWD" : lifecycle === "pending" ? "PENDING" : "DONE",
       String(order.note || ""),
     ];
   });
@@ -2261,6 +2286,7 @@ function exportOrdersCsv() {
 function bindOrdersControls() {
   const searchInput = document.getElementById("ordersSearch");
   const paymentInput = document.getElementById("ordersPaymentFilter");
+  const statusInput = document.getElementById("ordersStatusFilter");
   const fromInput = document.getElementById("ordersFromDate");
   const toInput = document.getElementById("ordersToDate");
   const sortInput = document.getElementById("ordersSortBy");
@@ -2282,6 +2308,15 @@ function bindOrdersControls() {
     paymentInput.dataset.bound = "1";
     paymentInput.addEventListener("change", (e) => {
       orderFilters.payment = e.target.value;
+      orderFilters.page = 1;
+      applyOrderFilters();
+    });
+  }
+
+  if (statusInput && !statusInput.dataset.bound) {
+    statusInput.dataset.bound = "1";
+    statusInput.addEventListener("change", (e) => {
+      orderFilters.status = e.target.value;
       orderFilters.page = 1;
       applyOrderFilters();
     });
@@ -2330,6 +2365,7 @@ function bindOrdersControls() {
     clearBtn.addEventListener("click", () => {
       orderFilters.search = "";
       orderFilters.payment = "all";
+      orderFilters.status = "all";
       orderFilters.sortBy = "latest";
       orderFilters.pageSize = 10;
       orderFilters.page = 1;
@@ -2339,6 +2375,7 @@ function bindOrdersControls() {
 
       if (searchInput) searchInput.value = "";
       if (paymentInput) paymentInput.value = "all";
+      if (statusInput) statusInput.value = "all";
       if (sortInput) sortInput.value = "latest";
       if (pageSizeInput) pageSizeInput.value = "10";
       syncOrderDateInputs();
