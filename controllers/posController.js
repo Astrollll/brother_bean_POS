@@ -16,7 +16,6 @@ import {
   disconnectPrinter as disconnectThermalPrinter,
   reconnectSavedPrinter as reconnectThermalPrinter,
   printReceipt as printThermalReceipt,
-  autoPrintReceipt,
   onPrinterStatus,
 } from "./printer/thermalPrinter.js";
 import { watchAuth, getCurrentUser, logout as authLogout } from "./auth/firebaseAuth.js";
@@ -1834,10 +1833,6 @@ window.completePayment = async function() {
 
     document.getElementById("receiptModal").classList.add("active");
     updateConnectivityStatus();
-    // Auto-print to the Bluetooth thermal printer when one is connected
-    autoPrintReceipt(currentReceiptSale).then((result) => {
-      if (result?.status === "sent") showToast("Receipt sent to printer", "success");
-    }).catch(() => {});
     showToast(sale.queued ? "Payment saved offline and queued for sync." : "Payment successful! Thank you!", "success");
     if (!sale.queued && sale.inventoryDeductionError) {
       showToast("Order saved, but inventory deduction failed. Please contact admin.", "warning");
@@ -3345,8 +3340,6 @@ function renderPrinterStatus(status) {
   }
 
   const settings = getPrinterSettings();
-  const autoPrintToggle = document.getElementById("autoPrintToggle");
-  if (autoPrintToggle) autoPrintToggle.checked = settings.autoPrint !== false;
   const w58 = document.getElementById("paperWidth58");
   const w80 = document.getElementById("paperWidth80");
   if (w58) w58.classList.toggle("active", settings.paperWidth !== 80);
@@ -3399,9 +3392,4 @@ window.disconnectPrinter = async function() {
 window.setPaperWidth = function(width) {
   updatePrinterSettings({ paperWidth: width === 80 ? 80 : 58 });
   renderPrinterStatus(getPrinterStatus());
-};
-
-window.setAutoPrint = function() {
-  const toggle = document.getElementById("autoPrintToggle");
-  updatePrinterSettings({ autoPrint: !!(toggle && toggle.checked) });
 };

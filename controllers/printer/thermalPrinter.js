@@ -30,7 +30,6 @@ const STORAGE_KEYS = {
 
 const DEFAULT_SETTINGS = {
   paperWidth: 58, // mm — 58 or 80
-  autoPrint: true, // print the receipt automatically right after payment
   serviceUuid: "0000ffe0-0000-1000-8000-00805f9b34fb",
   charUuid: "0000ffe1-0000-1000-8000-00805f9b34fb",
 };
@@ -266,15 +265,6 @@ export async function printReceipt(sale) {
     if (device && !manualDisconnect) scheduleReconnect();
     return { status: "error", message: connectionError };
   }
-}
-
-// Auto-print after payment. Only prints when a printer is connected and the
-// auto-print setting is on; otherwise it's a silent no-op (the cashier can
-// still tap "Print receipt").
-export async function autoPrintReceipt(sale) {
-  if (!readSettings().autoPrint) return { status: "disabled", message: "" };
-  const result = await printReceipt(sale);
-  return result;
 }
 
 // ── INTERNAL: connection + writing ──
@@ -582,22 +572,19 @@ function truncate(text, maxLen) {
   return t.length > maxLen ? t.slice(0, Math.max(1, maxLen - 1)) + "." : t;
 }
 
-// Fixed "YYYY-MM-DD HH:MM" date so the line is stable regardless of browser
-// locale (toLocaleString output can be very long and shift the column math).
+// Date printed exactly as shown on the on-screen POS/admin receipts: the stored
+// "timestamp" string when present (e.g. "8/9/2026, 2:30:45 PM"), otherwise a
+// locale-formatted date from createdAt/createdAtMs.
 function formatDate(sale) {
-  let d = null;
+  if (sale?.timestamp) return sanitizeText(String(sale.timestamp));
+  const locale = { month: "numeric", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" };
   const ms = Number(sale?.createdAtMs) || 0;
-  if (ms > 0) {
-    d = new Date(ms);
-  } else if (sale?.createdAt) {
-    d = typeof sale.createdAt.toDate === "function" ? sale.createdAt.toDate() : new Date(sale.createdAt);
-  } else if (sale?.timestamp) {
-    const parsed = Date.parse(sale.timestamp);
-    if (!Number.isNaN(parsed)) d = new Date(parsed);
+  if (ms > 0) return new Date(ms).toLocaleString("en-PH", locale);
+  if (sale?.createdAt) {
+    const d = typeof sale.createdAt.toDate === "function" ? sale.createdAt.toDate() : new Date(sale.createdAt);
+    if (!Number.isNaN(d.getTime())) return d.toLocaleString("en-PH", locale);
   }
-  if (!d || Number.isNaN(d.getTime())) return sanitizeText(String(sale?.timestamp || "-"));
-  const p = (n) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+  return "-";
 }
 
 export function buildEscReceipt(sale, paperWidth = 58) {
@@ -605,7 +592,7 @@ export function buildEscReceipt(sale, paperWidth = 58) {
   const lines = [];
 
   // Header
-  lines.push([CMD.boldOn, textLine(center("BROTHER BEAN COFFEE HOUSE", width)), CMD.boldOff]);
+  lines.push([CMD.boldOn, textLine(center("Brother Bean Coffee House", width)), CMD.boldOff]);
   lines.push([textLine(center("anytime is coffee time.", width))]);
   lines.push([textLine(center(truncate("N. Guevarra St. Brgy. Zone 1 Poblacion Dasmarinas City Cavite", width), width))]);
   lines.push([textLine("")]);
@@ -622,7 +609,9 @@ export function buildEscReceipt(sale, paperWidth = 58) {
   lines.push([textLine(alignRow("Cashier", truncate(String(sale.cashierName || "Staff"), width - 8), width))]);
   lines.push([textLine(dashedLine(width, "="))]);
 
-  // Items
+  // Items — mirrors the on-screen POS/admin receipt layout: item name, variant,
+  // then "qty x price" with line total (addon prices are folded into the unit
+  // price, exactly like the on-screen receipt).
   for (const item of Array.isArray(sale.items) ? sale.items : []) {
     const qty = Number(item.quantity) || 1;
     const base = Number(item.price) || 0;
@@ -632,37 +621,66 @@ export function buildEscReceipt(sale, paperWidth = 58) {
     const unitPrice = originalUnit * (1 - discountPct);
     const lineTotal = unitPrice * qty;
 
-    const namePrice = alignRow(truncate(`${qty} x ${item.name}`, width - 9), formatMoney(lineTotal), width);
-    const nameIsBold = discountPct > 0;
-    lines.push([
-      nameIsBold ? CMD.boldOn : new Uint8Array([]),
-      textLine(namePrice),
-      nameIsBold ? CMD.boldOff : new Uint8Array([]),
-    ]);
+    lines.push([textLine(truncate(String(item.name || "Item"), width))]);
 
     const variant = [item.variant, item.temperature && item.temperature !== "N/A" ? item.temperature : null].filter(Boolean).join(" · ");
     if (variant) lines.push([textLine("  " + truncate(variant, width - 2))]);
 
-    if (discountPct > 0) {
-      lines.push([textLine("  " + truncate(`-${Math.round(discountPct * 100)}% off`, width - 2))]);
-    }
-
-    for (const addon of Array.isArray(item.addons) ? item.addons : []) {
-      lines.push([textLine(alignRow("  + " + truncate(String(addon.name || ""), width - 12), formatMoney(addon?.price || 0), width))]);
-    }
+    const pctLabel = `(-${Math.round(discountPct * 100)}%)`;
+    const spaced = `${qty} x ${formatMoney(originalUnit)} -> ${formatMoney(unitPrice)} ${pctLabel}`;
+    const compact = `${qty} x ${formatMoney(originalUnit)}->${formatMoney(unitPrice)}${pctLabel}`;
+    const rightLen = sanitizeText(formatMoney(lineTotal)).length;
+    const priceLabel = discountPct > 0
+      ? (spaced.length + rightLen <= width ? spaced : compact)
+      : `${qty} x ${formatMoney(unitPrice)}`;
+    lines.push([textLine(alignRow(priceLabel, formatMoney(lineTotal), width))]);
   }
   lines.push([textLine(dashedLine(width, "="))]);
 
-  // Totals
-  const subtotal = (Array.isArray(sale.items) ? sale.items : []).reduce((sum, item) => {
+  // Totals — mirrors the on-screen POS/admin receipt discount logic.
+  const originalSubtotal = (Array.isArray(sale.items) ? sale.items : []).reduce((sum, item) => {
     const qty = Number(item.quantity) || 1;
     const addonsTotal = (Array.isArray(item.addons) ? item.addons : []).reduce((s, a) => s + (Number(a?.price) || 0), 0);
     const originalUnit = (Number(item.price) || 0) + addonsTotal;
     return sum + originalUnit * qty;
   }, 0);
-
-  lines.push([textLine(alignRow("Subtotal", formatMoney(subtotal), width))]);
+  const totalItemSavings = (Array.isArray(sale.items) ? sale.items : []).reduce((sum, item) => {
+    const qty = Number(item.quantity) || 1;
+    const addonsTotal = (Array.isArray(item.addons) ? item.addons : []).reduce((s, a) => s + (Number(a?.price) || 0), 0);
+    const discountPct = Number(item.discountPercent) || 0;
+    const originalUnit = (Number(item.price) || 0) + addonsTotal;
+    return sum + originalUnit * discountPct * qty;
+  }, 0);
+  const subtotalRounded = Math.round(originalSubtotal * 100) / 100;
+  const savingsRounded = Math.round(totalItemSavings * 100) / 100;
   const total = Number(sale.total) || 0;
+  const totalRounded = Math.round(total * 100) / 100;
+
+  lines.push([textLine(alignRow("Subtotal", formatMoney(subtotalRounded), width))]);
+
+  const isEmployeeOrder = sale.orderType === "employee" || sale.paymentMethod === "employee" || sale.isEmployeeOrder === true;
+  if (isEmployeeOrder) {
+    const employeeDiscount = Math.max(0, subtotalRounded - totalRounded);
+    if (employeeDiscount > 0) {
+      lines.push([textLine(alignRow("Employee discount", "-" + formatMoney(employeeDiscount), width))]);
+    }
+  } else {
+    const hasPwdSenior = Number(sale.discountAmount) > 0 || sale.isPwdSenior === true;
+    let displayItemSavings = 0;
+    if (totalItemSavings > 0) {
+      displayItemSavings = hasPwdSenior ? savingsRounded : (subtotalRounded - totalRounded);
+    }
+    const displayDiscount = hasPwdSenior
+      ? Math.max(0, subtotalRounded - displayItemSavings - totalRounded)
+      : 0;
+    if (displayItemSavings > 0) {
+      lines.push([textLine(alignRow("Item discounts", "-" + formatMoney(displayItemSavings), width))]);
+    }
+    if (displayDiscount > 0) {
+      lines.push([textLine(alignRow("Discount", "-" + formatMoney(displayDiscount), width))]);
+    }
+  }
+
   lines.push([
     CMD.boldOn,
     textLine(alignRow("TOTAL", formatMoney(total), width)),
@@ -672,7 +690,7 @@ export function buildEscReceipt(sale, paperWidth = 58) {
 
   const method = String(sale.paymentMethod || "cash").toLowerCase();
   if (method === "split") {
-    lines.push([textLine(alignRow("Paid", `${formatMoney(sale.cashAmount || 0)} + ${formatMoney(sale.gcashAmount || 0)}`, width))]);
+    lines.push([textLine(alignRow("Paid", `Cash ${formatMoney(sale.cashAmount || 0)} + GCash ${formatMoney(sale.gcashAmount || 0)}`, width))]);
   } else {
     lines.push([textLine(alignRow("Tendered", formatMoney(sale.amountTendered ?? total), width))]);
     lines.push([textLine(alignRow("Change", formatMoney(sale.change ?? 0), width))]);
@@ -684,22 +702,30 @@ export function buildEscReceipt(sale, paperWidth = 58) {
   lines.push([textLine(center(`<< ${stamp} >>`, width))]);
   lines.push([textLine("")]);
 
-  // Footer
+  // Barcode (Code128) from the order number, when present — same spot as the
+  // on-screen receipt (between the stamp and the footer).
+  const barcodeBytes = buildCode128(orderNumber(sale));
+  if (barcodeBytes) {
+    lines.push(joinChunks(CMD.alignCenter, barcodeBytes, textLine("")));
+  }
+
+  // Footer — mirrors the on-screen POS/admin receipt footer.
+  lines.push([textLine(dashedLine(width, "="))]);
   lines.push([CMD.alignCenter, textLine(center("Thank you for visiting!", width))]);
   lines.push([textLine(center("Please come again", width))]);
-  lines.push([textLine(center("VAT Reg TIN: 000-000-000-000", width))]);
-
-  // Barcode (Code128) from the order number, when present.
-  const barcodeBytes = buildCode128(orderNumber(sale));
-  const afterItems = barcodeBytes
-    ? joinChunks(CMD.alignCenter, barcodeBytes, textLine(""))
-    : new Uint8Array([]);
+  const vatLine = "VAT Registered TIN: 000-000-000-000";
+  if (sanitizeText(vatLine).length <= width) {
+    lines.push([textLine(center(vatLine, width))]);
+  } else {
+    lines.push([textLine(center("VAT Registered TIN:", width))]);
+    lines.push([textLine(center("000-000-000-000", width))]);
+  }
+  lines.push([textLine(center("Permit No: 0000000", width))]);
 
   const body = joinChunks(
     CMD.init,
     CMD.fontA,
     ...lines.flat(),
-    afterItems,
     FEED_AND_CUT_BYTES
   );
   return body;
