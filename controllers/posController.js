@@ -3297,6 +3297,7 @@ function showToast(message, type = "success") {
 
 function renderPrinterStatus(status) {
   const connected = !!(status && status.connected);
+  const reconnecting = !!(status && status.reconnecting && !connected);
   const name = (status && status.deviceName) || "";
   const supported = !status || status.supported !== false;
 
@@ -3305,16 +3306,20 @@ function renderPrinterStatus(status) {
     sidebarEl.className = "printer-status" + (connected ? " is-connected" : "");
     sidebarEl.innerHTML = connected
       ? `<i class="ri-printer-fill" aria-hidden="true"></i><span>${name ? "Printer: " + escapeHtml(name) : "Printer: Connected"}</span>`
-      : `<i class="ri-printer-line" aria-hidden="true"></i><span>Printer: Not connected</span>`;
+      : reconnecting
+        ? `<i class="ri-printer-line" aria-hidden="true"></i><span>Printer: Reconnecting...</span>`
+        : `<i class="ri-printer-line" aria-hidden="true"></i><span>Printer: Not connected</span>`;
   }
 
   const textEl = document.getElementById("printerStatusText");
   if (textEl) {
     textEl.textContent = connected
       ? `Connected: ${name || "thermal printer"}`
-      : supported
-        ? "Not connected"
-        : "Bluetooth not supported by this browser (use Chrome or Edge)";
+      : reconnecting
+        ? "Reconnecting to printer..."
+        : supported
+          ? "Not connected"
+          : "Bluetooth not supported by this browser (use Chrome or Edge)";
   }
 
   const dotEl = document.getElementById("printerStatusDot");
@@ -3327,8 +3332,8 @@ function renderPrinterStatus(status) {
 
   const connectBtn = document.getElementById("connectPrinterBtn");
   if (connectBtn) {
-    connectBtn.textContent = connected ? "Disconnect" : supported ? "Connect printer" : "Unsupported browser";
-    connectBtn.disabled = !supported;
+    connectBtn.textContent = connected ? "Disconnect" : reconnecting ? "Reconnecting..." : supported ? "Connect printer" : "Unsupported browser";
+    connectBtn.disabled = !supported || reconnecting;
     connectBtn.onclick = connected ? () => window.disconnectPrinter() : () => window.connectPrinter();
   }
 

@@ -5,8 +5,9 @@
     "smoke:orders-sync": "node scripts/orders-sync-smoke.mjs",
     "smoke:inventory-deduct": "node scripts/inventory-deduct-smoke.mjs",
     "smoke:drawer": "node scripts/drawer-smoke.mjs",
+    "smoke:printer": "node scripts/printer-smoke.mjs",
     "smoke:itest": "node scripts/itest-server.mjs",
-    "smoke": "npm run smoke:staff && npm run smoke:orders && npm run smoke:orders-sync && npm run smoke:inventory-deduct && npm run smoke:drawer && npm run smoke:itest"
+    "smoke": "npm run smoke:staff && npm run smoke:orders && npm run smoke:orders-sync && npm run smoke:inventory-deduct && npm run smoke:drawer && npm run smoke:printer && npm run smoke:itest"
   },
   "devDependencies": {
     "cors": "^2.8.6",

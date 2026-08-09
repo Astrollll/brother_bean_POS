@@ -1922,6 +1922,11 @@ window.openOrderReceipt = function(orderId) {
   modal.style.display = "flex";
   modal.setAttribute("aria-hidden", "false");
   renderAdminPrinterStatus();
+  // If a printer was paired on the other side (POS), auto-reconnect it now so
+  // the admin side is ready to reprint without the cashier pairing it again.
+  if (isPrinterSupported() && !getPrinterStatus().connected) {
+    reconnectThermalPrinter().catch(() => {});
+  }
 };
 
 window.closeOrderReceipt = function() {
@@ -1978,6 +1983,7 @@ function renderAdminPrinterStatus() {
   if (!row || !text) return;
 
   const status = getPrinterStatus();
+  const reconnecting = !!(status && status.reconnecting && !status.connected);
   if (!status.supported) {
     dot.className = "receipt-admin-dot is-off";
     text.textContent = "Bluetooth printing not supported — use Chrome or Edge";
@@ -1993,7 +1999,16 @@ function renderAdminPrinterStatus() {
     row.className = "receipt-admin-printer is-connected";
     if (btn) {
       btn.textContent = "Disconnect";
+      btn.disabled = false;
       btn.onclick = () => window.disconnectAdminPrinter();
+    }
+  } else if (reconnecting) {
+    dot.className = "receipt-admin-dot is-off";
+    text.textContent = "Thermal printer: Reconnecting...";
+    row.className = "receipt-admin-printer";
+    if (btn) {
+      btn.textContent = "Reconnecting...";
+      btn.disabled = true;
     }
   } else {
     dot.className = "receipt-admin-dot is-off";
@@ -2001,6 +2016,7 @@ function renderAdminPrinterStatus() {
     row.className = "receipt-admin-printer";
     if (btn) {
       btn.textContent = "Connect printer";
+      btn.disabled = false;
       btn.onclick = () => window.connectAdminPrinter();
     }
   }

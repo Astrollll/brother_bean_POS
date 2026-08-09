@@ -10,6 +10,18 @@
 //   * ESC/POS bytes are generated here (58mm/32-char or 80mm/42-char layouts),
 //     written to the printer, fed, and cut.
 //   * The selected printer + settings are remembered across reloads.
+//
+// Keeping the link alive (the part that used to "disconnect after a while"):
+//   * Web Bluetooth GATT links are not permanent — printers sleep, BLE
+//     supervision timers fire, and the laptop suspending/resuming drops the
+//     radio link. None of that is fatal if we recover from it.
+//   * While connected, a lightweight ESC/POS real-time status request
+//     (DLE EOT 1, prints nothing) is sent after every ~20s of inactivity so
+//     the printer never drifts into its sleep/auto-power-off state.
+//   * If the link still drops (laptop sleep, radio blip, printer reboot), the
+//     module reconnects automatically with backoff and keeps trying for about
+//     a minute; printing also attempts a reconnect first if a saved device is
+//     known but the link is down.
 
 const STORAGE_KEYS = {
   device: "bb-pos-thermal-device",
@@ -38,10 +50,25 @@ const KNOWN_PAIRS = [
 const BLE_WRITE_CHUNK = 20;
 const FEED_AND_CUT_BYTES = new Uint8Array([0x1B, 0x64, 0x05, 0x1D, 0x56, 0x42]);
 
+// Link keep-alive + auto-reconnect.
+const KEEP_ALIVE_IDLE_MS = 20000; // send a keep-alive after 20s with no writes
+const KEEP_ALIVE_CHECK_MS = 10000; // check the idle timer every 10s
+const DLE_EOT_STATUS = new Uint8Array([0x10, 0x04, 0x01]); // ESC/POS real-time status request (printer status) — prints nothing
+const RECONNECT_BASE_DELAY = 1000; // 1s, 2s, 4s, 8s, 16s, 30s
+const RECONNECT_MAX_DELAY = 30000;
+const RECONNECT_MAX_ATTEMPTS = 6;
+
 // ── STATE ──
 let device = null;
 let writeCharacteristic = null;
 let connectionError = null;
+let manualDisconnect = false;
+let reconnecting = false;
+let autoReconnectTimer = null;
+let reconnectAttempts = 0;
+let keepAliveTimer = null;
+let printing = false;
+let lastActivityAt = 0;
 
 // Status listeners (posController registers one to update the UI).
 const _listeners = new Set();
@@ -99,6 +126,7 @@ export function getStatus() {
   return {
     supported: isSupported(),
     connected: isConnected(),
+    reconnecting,
     deviceName: device ? device.name : null,
     deviceId: device ? device.id : null,
     error: connectionError,
@@ -152,18 +180,33 @@ export async function connectPrinter() {
 }
 
 export async function disconnectPrinter() {
+  manualDisconnect = true;
+  stopAutoReconnect();
+  stopKeepAlive();
   try {
     if (device?.gatt?.connected) device.gatt.disconnect();
   } catch {}
+  if (device && device.__bbListenerAttached) {
+    try { device.removeEventListener("gattserverdisconnected", handleServerDisconnected); } catch {}
+    device.__bbListenerAttached = false;
+  }
   device = null;
   writeCharacteristic = null;
   connectionError = null;
+  reconnectAttempts = 0;
   saveSavedDevice(null);
   notifyStatus();
 }
 
 // Re-connect to a printer selected in a previous session (Chrome grants
 // re-access to already-paired devices via getDevices()).
+//
+// This is how one side of the app "shares" the printer with the other: the
+// paired device is persisted in localStorage, and any page that loads
+// re-establishes the link automatically. The first attempt can fail because
+// the OTHER side still holds the printer's single BLE link; that failure is
+// not fatal — the device reference is kept and the module retries with backoff
+// until the link is free (or the page is unloaded).
 export async function reconnectSavedPrinter() {
   const saved = readSavedDevice();
   if (!saved || !isSupported()) return getStatus();
@@ -178,7 +221,11 @@ export async function reconnectSavedPrinter() {
       saveSavedDevice(null);
       return getStatus();
     }
-    await attachDevice(match, readSettings());
+    device = match;
+    manualDisconnect = false;
+    reconnecting = false;
+    registerDisconnectHandler(match);
+    await reconnectDevice();
   } catch (error) {
     connectionError = `Reconnect failed: ${error?.message || "unknown error"}`;
     console.warn("[Printer] Reconnect failed.", error);
@@ -189,22 +236,34 @@ export async function reconnectSavedPrinter() {
 
 // Print a sale receipt. Returns { status, message } — never throws.
 export async function printReceipt(sale) {
-  const status = getStatus();
   if (!isSupported()) {
     return { status: "unsupported", message: "Bluetooth not supported by this browser." };
   }
-  if (!status.connected) {
+  // Opportunistic reconnect: if we know a printer but the link dropped, bring
+  // it back before giving up so an idle-timeout doesn't kill a sale's receipt.
+  if (!isConnected() && device && !manualDisconnect) {
+    try {
+      await reconnectDevice();
+    } catch {}
+  }
+  if (!isConnected()) {
     return { status: "not-connected", message: "No printer connected." };
   }
 
   try {
     const bytes = buildEscReceipt(sale, readSettings().paperWidth || 58);
-    await writeBytes(bytes);
+    printing = true;
+    try {
+      await writeBytes(bytes);
+    } finally {
+      printing = false;
+    }
     return { status: "sent", message: "Receipt sent to printer." };
   } catch (error) {
     connectionError = error?.message || "Print failed.";
     console.warn("[Printer] Print failed.", error);
     notifyStatus();
+    if (device && !manualDisconnect) scheduleReconnect();
     return { status: "error", message: connectionError };
   }
 }
@@ -223,44 +282,158 @@ export async function autoPrintReceipt(sale) {
 async function attachDevice(selected, settings) {
   connectionError = null;
   device = selected;
+  manualDisconnect = false;
+  reconnecting = false;
+  stopAutoReconnect();
+  stopKeepAlive();
 
   try {
-    const server = await device.gatt.connect();
-    const services = await server.getPrimaryServices();
-
-    // 1) Prefer the saved/known transparent-serial pair.
-    let characteristic = await findCharacteristic(services, settings.serviceUuid, settings.charUuid);
-
-    // 2) Otherwise scan every service for the first writable characteristic
-    //    that looks like a data pipe.
-    if (!characteristic) {
-      for (const service of services) {
-        characteristic = await findWritableCharacteristic(service);
-        if (characteristic) break;
-      }
-    }
-
-    if (!characteristic) {
-      throw new Error("No writable data characteristic found on this printer. Some printers only support classic Bluetooth (SPP), which the browser cannot access.");
-    }
-
-    writeCharacteristic = characteristic;
-    saveSavedDevice({ id: device.id, name: device.name });
-    device.addEventListener("gattserverdisconnected", () => {
-      writeCharacteristic = null;
-      notifyStatus();
-    });
+    writeCharacteristic = await establishConnection(selected, settings);
+    saveSavedDevice({ id: selected.id, name: selected.name });
+    registerDisconnectHandler(selected);
+    reconnectAttempts = 0;
+    startKeepAlive();
     notifyStatus();
     return;
   } catch (error) {
     const failed = device;
     device = null;
     writeCharacteristic = null;
+    stopKeepAlive();
     connectionError = error?.message || "Unable to connect to the printer.";
     try { if (failed?.gatt) await failed.gatt.disconnect(); } catch {}
     notifyStatus();
     throw new Error(connectionError);
   }
+}
+
+// Connect to the GATT server and return the writable data characteristic.
+// Throws on failure and does NOT touch module state so auto-reconnect retries
+// can keep the `device` reference for the next attempt.
+async function establishConnection(selected, settings) {
+  const server = await selected.gatt.connect();
+  const services = await server.getPrimaryServices();
+
+  // 1) Prefer the saved/known transparent-serial pair.
+  let characteristic = await findCharacteristic(services, settings.serviceUuid, settings.charUuid);
+
+  // 2) Otherwise scan every service for the first writable characteristic
+  //    that looks like a data pipe.
+  if (!characteristic) {
+    for (const service of services) {
+      characteristic = await findWritableCharacteristic(service);
+      if (characteristic) break;
+    }
+  }
+
+  if (!characteristic) {
+    throw new Error("No writable data characteristic found on this printer. Some printers only support classic Bluetooth (SPP), which the browser cannot access.");
+  }
+
+  return characteristic;
+}
+
+function registerDisconnectHandler(selected) {
+  if (!selected.__bbListenerAttached) {
+    selected.addEventListener("gattserverdisconnected", handleServerDisconnected);
+    selected.__bbListenerAttached = true;
+  }
+}
+
+function handleServerDisconnected() {
+  writeCharacteristic = null;
+  stopKeepAlive();
+  notifyStatus();
+  if (manualDisconnect || !device) return;
+  scheduleReconnect();
+}
+
+function stopAutoReconnect() {
+  clearTimeout(autoReconnectTimer);
+  autoReconnectTimer = null;
+  reconnecting = false;
+}
+
+function scheduleReconnect() {
+  if (manualDisconnect || !device || reconnecting) return;
+  if (reconnectAttempts >= RECONNECT_MAX_ATTEMPTS) {
+    connectionError = "Printer connection was lost and automatic reconnection timed out. Tap Connect printer to re-pair.";
+    console.warn("[Printer]", connectionError);
+    notifyStatus();
+    return;
+  }
+  reconnectAttempts++;
+  reconnecting = true;
+  notifyStatus();
+  const delay = Math.min(RECONNECT_MAX_DELAY, RECONNECT_BASE_DELAY * Math.pow(2, reconnectAttempts - 1));
+  autoReconnectTimer = setTimeout(() => {
+    autoReconnectTimer = null;
+    reconnectDevice();
+  }, delay);
+}
+
+// Reconnect to the remembered device. Keeps `device` on failure so later
+// attempts (and print-time recovery) can still reuse it.
+async function reconnectDevice() {
+  if (!device || manualDisconnect) return;
+  connectionError = null;
+  stopKeepAlive();
+  try {
+    writeCharacteristic = await establishConnection(device, readSettings());
+    saveSavedDevice({ id: device.id, name: device.name });
+    registerDisconnectHandler(device);
+    reconnectAttempts = 0;
+    reconnecting = false;
+    startKeepAlive();
+    notifyStatus();
+  } catch (error) {
+    writeCharacteristic = null;
+    connectionError = error?.message || "Reconnect failed.";
+    console.warn("[Printer] Reconnect failed:", error?.message);
+    reconnecting = false;
+    notifyStatus();
+    scheduleReconnect();
+  }
+}
+
+// ── Keep-alive ──
+// BLE links (and most thermal printers) idle-drop: after enough silent time the
+// printer sleeps or the radio supervision timer fires and the connection dies.
+// A periodic, non-printing ESC/POS status request keeps the link busy so it
+// never drifts into that state, and doubles as a dead-link detector (a failed
+// write triggers the auto-reconnect path).
+function startKeepAlive() {
+  stopKeepAlive();
+  lastActivityAt = Date.now();
+  keepAliveTimer = setInterval(keepAliveTick, KEEP_ALIVE_CHECK_MS);
+}
+
+function stopKeepAlive() {
+  clearInterval(keepAliveTimer);
+  keepAliveTimer = null;
+}
+
+async function keepAliveTick() {
+  if (manualDisconnect || printing) return;
+  if (!device || !device.gatt?.connected || !writeCharacteristic) return;
+  if (Date.now() - lastActivityAt < KEEP_ALIVE_IDLE_MS) return;
+  try {
+    await writeChunk(DLE_EOT_STATUS);
+  } catch (error) {
+    handleServerDisconnected();
+  }
+}
+
+// When the tab becomes visible again (laptop woke up, user switched back),
+// the radio may have silently dropped — give the link a fresh reconnect push.
+if (typeof document !== "undefined") {
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState !== "visible") return;
+    if (device && !manualDisconnect && !reconnecting && !device.gatt?.connected) {
+      reconnectAttempts = 0;
+      scheduleReconnect();
+    }
+  });
 }
 
 async function findCharacteristic(services, serviceUuid, charUuid) {
@@ -290,18 +463,23 @@ async function findWritableCharacteristic(service) {
   return null;
 }
 
+async function writeChunk(chunk) {
+  if (!writeCharacteristic) throw new Error("Printer is not connected.");
+  if (writeCharacteristic.properties.writeWithoutResponse) {
+    await writeCharacteristic.writeValueWithoutResponse(chunk);
+  } else {
+    await writeCharacteristic.writeValueWithResponse(chunk);
+  }
+  lastActivityAt = Date.now();
+}
+
 async function writeBytes(bytes) {
   if (!writeCharacteristic) throw new Error("Printer is not connected.");
 
   // Chunk to the BLE MTU floor (20 bytes). Awaiting each write serializes the
   // writes so the printer's buffer is never flooded.
   for (let i = 0; i < bytes.length; i += BLE_WRITE_CHUNK) {
-    const chunk = bytes.subarray(i, i + BLE_WRITE_CHUNK);
-    if (writeCharacteristic.properties.writeWithoutResponse) {
-      await writeCharacteristic.writeValueWithoutResponse(chunk);
-    } else {
-      await writeCharacteristic.writeValueWithResponse(chunk);
-    }
+    await writeChunk(bytes.subarray(i, i + BLE_WRITE_CHUNK));
   }
 }
 
