@@ -81,12 +81,25 @@ service cloud.firestore {
             "preparedBy"
           ]) &&
           (
+            // Inventory audit written atomically by the deduction transaction
+            // during a sale or offline sync (incl. the failure flag written by
+            // the retry path). No lifecycle change, so this must not require a
+            // status transition.
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+              "inventoryAlerts",
+              "inventoryDeductions",
+              "inventorySkips",
+              "inventoryDeductionProgress",
+              "inventoryDeductionFailed"
+            ]) ||
+            // Cancel / soft-void transition
             (
               request.resource.data.get("voided", false) == true &&
               request.resource.data.voidedAtMs is number &&
               request.resource.data.voidedBy is string &&
               request.resource.data.status == "cancelled"
             ) ||
+            // Mark-prepared transition
             (
               request.resource.data.get("voided", false) != true &&
               request.resource.data.status == "done" &&
