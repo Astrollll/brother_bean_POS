@@ -4,6 +4,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js";
 
 const INVENTORY_COLLECTION = "inventory";
+const ORDERS_COLLECTION = "orders";
 
 const UNIT_ALIASES = {
   pcs: "pcs",
@@ -446,6 +447,13 @@ function dedupeSkipDetails(entries) {
 // inventory unit) and falls back to re-resolving the item recipes with the same
 // lookup + unit conversion + skip rules deduct uses when no audit trail exists
 // (e.g. offline-queued orders that never deducted).
+//
+// IMPORTANT: it never restores stock a sale did NOT actually consume. If the
+// local copy has no audit trail, the authoritative order doc is read to confirm
+// whether a deduction happened (a completed retry/sync writes the audit there
+// even when the local copy predates it). Orders whose deduction failed or timed
+// out, or offline-queued orders that were never synced, deduct nothing — so a
+// cancel must not re-resolve recipes and "restore" phantom stock.
 export async function restoreInventoryForOrder(sale) {
   const deductions = Array.isArray(sale?.inventoryDeductions) ? sale.inventoryDeductions : [];
   const items = Array.isArray(sale?.items) ? sale.items : [];
@@ -462,31 +470,60 @@ export async function restoreInventoryForOrder(sale) {
     });
   };
 
-  if (deductions.length > 0) {
+  let hadAudit = deductions.length > 0;
+  if (hadAudit) {
     for (const entry of deductions) {
       addEntry(entry?.inventoryId, Number(entry?.deductedQty || 0), entry?.name, entry?.unit);
     }
   } else {
-    // No audit trail (legacy / offline-queued order that never deducted):
-    // re-resolve each ingredient exactly like deduct does (inventory lookup +
-    // unit conversion + skips) so we restore only what would have been
-    // deducted, in the inventory's own unit.
-    let lookupPromise = null;
-    const getLookup = async () => {
-      if (!lookupPromise) lookupPromise = buildInventoryLookupByNormalizedKey();
-      return lookupPromise;
-    };
-    for (const item of items) {
-      const multiplier = Number(item?.quantity || 1);
-      for (const ingredient of Array.isArray(item?.recipe) ? item.recipe : []) {
-        const resolved = await resolveRecipeIngredient(ingredient, multiplier, getLookup);
-        if (!resolved.ok) continue;
-        addEntry(resolved.inventoryId, resolved.qty, resolved.name, resolved.unit);
+    // No audit on the local copy. Check the authoritative order doc: a deduction
+    // that completed after the local copy was made (retry, queued-order sync)
+    // appends the audit there. We only fall back to re-resolving recipes for
+    // orders that provably deducted stock (legacy pre-audit orders).
+    const orderDoc = await readOrderInventoryAudit(sale);
+    if (Array.isArray(orderDoc.audit) && orderDoc.audit.length > 0) {
+      hadAudit = true;
+      for (const entry of orderDoc.audit) {
+        addEntry(entry?.inventoryId, Number(entry?.deductedQty || 0), entry?.name, entry?.unit);
+      }
+    } else {
+      const deductionFailed =
+        sale?.inventoryDeductionError === true ||
+        sale?.inventoryDeductionFailed === true ||
+        orderDoc.deductionFailed === true;
+      const neverSyncedQueued =
+        sale?.queued === true && orderDoc.docExists !== true;
+      if (deductionFailed || neverSyncedQueued) {
+        // Nothing was deducted, so there is nothing to restore. Re-resolving the
+        // recipes here would add stock the sale never consumed.
+        return {
+          success: true,
+          restored: 0,
+          skipped: true,
+          reason: deductionFailed ? "deduction-failed" : "never-deducted",
+        };
+      }
+      // Legacy order (deducted before the audit trail existed): re-resolve each
+      // ingredient exactly like deduct does (inventory lookup + unit conversion
+      // + skips) so we restore only what would have been deducted, in the
+      // inventory's own unit.
+      let lookupPromise = null;
+      const getLookup = async () => {
+        if (!lookupPromise) lookupPromise = buildInventoryLookupByNormalizedKey();
+        return lookupPromise;
+      };
+      for (const item of items) {
+        const multiplier = Number(item?.quantity || 1);
+        for (const ingredient of Array.isArray(item?.recipe) ? item.recipe : []) {
+          const resolved = await resolveRecipeIngredient(ingredient, multiplier, getLookup);
+          if (!resolved.ok) continue;
+          addEntry(resolved.inventoryId, resolved.qty, resolved.name, resolved.unit);
+        }
       }
     }
   }
 
-  if (!restoreEntries.size) return { success: true, restored: 0 };
+  if (!restoreEntries.size) return { success: true, restored: 0, hadAudit };
 
   const audit = [];
   try {
@@ -516,6 +553,28 @@ export async function restoreInventoryForOrder(sale) {
   }
 
   return { success: true, restored: restoreEntries.size, audit };
+}
+
+// Read the authoritative deduction audit for an order from Firestore. Returns
+// { audit, docExists, deductionFailed }. A completed deduction (including ones
+// finished by a later retry or queued-order sync) appends its audit to the
+// order doc, so this is the source of truth whenever the local copy has none.
+async function readOrderInventoryAudit(sale) {
+  const orderId = String(sale?.orderId || sale?.id || "").trim();
+  if (!orderId) return { audit: null, docExists: null, deductionFailed: false };
+  try {
+    const snap = await getDoc(doc(db, ORDERS_COLLECTION, orderId));
+    if (!snap.exists()) return { audit: [], docExists: false, deductionFailed: false };
+    const data = snap.data() || {};
+    return {
+      audit: Array.isArray(data.inventoryDeductions) ? data.inventoryDeductions : [],
+      docExists: true,
+      deductionFailed: data.inventoryDeductionFailed === true,
+    };
+  } catch (error) {
+    console.warn("[Inventory] Restore: could not read order doc to confirm deduction.", error);
+    return { audit: null, docExists: null, deductionFailed: false };
+  }
 }
 
 export async function deleteInventoryItem(id) {

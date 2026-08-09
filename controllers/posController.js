@@ -2107,7 +2107,9 @@ window.cancelReceiptOrder = async function() {
     const result = await voidSale(sale);
     closeReceipt();
     updateConnectivityStatus();
-    if (result?.inventoryRestored === false) {
+    if (result?.inventoryRestoredSkipped === true) {
+      showToast("Order canceled. No stock was deducted for this order, so none was restored.", "warning");
+    } else if (result?.inventoryRestored === false) {
       showToast("Order canceled. Inventory could not be restored — please notify admin.", "warning");
     } else {
       showToast("Order canceled. Items returned to the cart.", "success");
@@ -2215,7 +2217,10 @@ async function voidSale(sale) {
   updateCart();
   updateStats();
 
-  return { inventoryRestored: !restoreResult || restoreResult.success !== false };
+  return {
+    inventoryRestored: !restoreResult || restoreResult.success !== false,
+    inventoryRestoredSkipped: restoreResult?.skipped === true,
+  };
 }
 
 window.cancelPendingOrder = async function(orderId) {
@@ -2242,7 +2247,9 @@ window.cancelPendingOrder = async function(orderId) {
     const result = await voidSale(sale);
     closeReceipt();
     updateConnectivityStatus();
-    if (result?.inventoryRestored === false) {
+    if (result?.inventoryRestoredSkipped === true) {
+      showToast("Pending order canceled. No stock was deducted for this order, so none was restored.", "warning");
+    } else if (result?.inventoryRestored === false) {
       showToast("Pending order canceled. Inventory could not be restored — please notify admin.", "warning");
     } else {
       showToast("Pending order canceled. Items returned to the cart.", "success");

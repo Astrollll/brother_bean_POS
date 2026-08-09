@@ -99,12 +99,12 @@ async function main() {
   const { doc, getDoc, updateDoc, runTransaction, collection, getDocs, INVENTORY_COLLECTION } = makeHarness(store);
 
   const factory = new Function(
-    "db", "doc", "getDoc", "updateDoc", "runTransaction", "collection", "getDocs", "INVENTORY_COLLECTION",
+    "db", "doc", "getDoc", "updateDoc", "runTransaction", "collection", "getDocs", "INVENTORY_COLLECTION", "ORDERS_COLLECTION",
     `${block}
     return { deductInventoryQuantities, restoreInventoryForOrder, convertQuantityBetweenUnits, normalizeUnit };`,
   );
   const { deductInventoryQuantities, restoreInventoryForOrder } = factory(
-    {}, doc, getDoc, updateDoc, runTransaction, collection, getDocs, INVENTORY_COLLECTION,
+    {}, doc, getDoc, updateDoc, runTransaction, collection, getDocs, INVENTORY_COLLECTION, "orders",
   );
 
   const orderRef = doc({}, "orders", "order-1");
@@ -303,6 +303,60 @@ async function main() {
   assert.equal(s5.success, true, "restore: empty sale is a no-op success");
   assert.equal(s5.restored, 0, "restore: empty sale restores nothing");
   console.log("OK restore: empty sale no-op");
+
+  // Case R6: deduction failed/timed out (flagged, no audit anywhere) -> nothing
+  // was deducted, so a cancel must NOT re-resolve recipes and add phantom stock.
+  store.inventory.set("inv-coffee", { name: "Coffee", unit: "g", quantity: 200 });
+  const s6 = await restoreInventoryForOrder({
+    orderId: "order-6",
+    items: [{ menuItemId: "m6", name: "Latte", quantity: 1, recipe: [{ inventoryId: "inv-coffee", name: "Coffee", unit: "g", quantity: 10 }] }],
+    inventoryDeductionError: true,
+  });
+  assert.equal(s6.success, true, "restore: flagged failure still succeeds");
+  assert.equal(s6.restored, 0, "restore: flagged failure restores nothing");
+  assert.equal(s6.skipped, true, "restore: flagged failure reports skip");
+  assert.equal(store.inventory.get("inv-coffee").quantity, 200, "restore: no phantom stock when deduction failed");
+  console.log("OK restore: failed deduction restores nothing");
+
+  // Case R7: deduction timed out locally but a later retry completed it and
+  // appended the audit to the order doc -> restore exactly what was deducted.
+  store.inventory.set("inv-milk", { name: "Milk", unit: "l", quantity: 1 });
+  store.orders.set("order-7", { inventoryDeductions: [{ inventoryId: "inv-milk", name: "Milk", unit: "l", deductedQty: 0.1 }] });
+  const s7 = await restoreInventoryForOrder({
+    orderId: "order-7",
+    items: [{ menuItemId: "m7", name: "Latte", quantity: 1, recipe: [{ inventoryId: "inv-milk", name: "Milk", unit: "ml", quantity: 100 }] }],
+    inventoryDeductionError: true,
+  });
+  assert.equal(store.inventory.get("inv-milk").quantity, 1.1, "restore: doc audit (written by retry) restores exact amount");
+  assert.equal(s7.restored, 1, "restore: doc-audit path restored one entry");
+  console.log("OK restore: retried deduction restored from order doc audit");
+
+  // Case R8: offline-queued order that was never synced -> never deducted, so
+  // a cancel must not add stock that was never consumed.
+  store.inventory.set("inv-sugar", { name: "Sugar", unit: "g", quantity: 500 });
+  const s8 = await restoreInventoryForOrder({
+    orderId: "order-8",
+    queued: true,
+    items: [{ menuItemId: "m8", name: "Pastry", quantity: 1, recipe: [{ inventoryId: "inv-sugar", name: "Sugar", unit: "g", quantity: 25 }] }],
+  });
+  assert.equal(s8.success, true, "restore: never-synced queued order succeeds");
+  assert.equal(s8.restored, 0, "restore: never-synced queued order restores nothing");
+  assert.equal(s8.skipped, true, "restore: never-synced queued order reports skip");
+  assert.equal(store.inventory.get("inv-sugar").quantity, 500, "restore: no phantom stock for queued-never-synced order");
+  console.log("OK restore: never-synced queued order restores nothing");
+
+  // Case R9: queued order that synced and deducted -> order doc holds the audit,
+  // so cancel restores the exact deducted amount.
+  store.inventory.set("inv-milk", { name: "Milk", unit: "ml", quantity: 900 });
+  store.orders.set("order-9", { inventoryDeductions: [{ inventoryId: "inv-milk", name: "Milk", unit: "ml", deductedQty: 100 }] });
+  const s9 = await restoreInventoryForOrder({
+    orderId: "order-9",
+    queued: true,
+    items: [{ menuItemId: "m9", name: "Latte", quantity: 1, recipe: [{ inventoryId: "inv-milk", name: "Milk", unit: "ml", quantity: 100 }] }],
+  });
+  assert.equal(store.inventory.get("inv-milk").quantity, 1000, "restore: queued+synced order restores from doc audit");
+  assert.equal(s9.restored, 1, "restore: queued+synced order restored one entry");
+  console.log("OK restore: synced queued order restored from doc audit");
 
   console.log("PASS: Inventory deduction smoke checks succeeded.");
 }
