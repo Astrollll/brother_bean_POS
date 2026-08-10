@@ -558,6 +558,31 @@ function alignRow(left, right, width) {
   return pad(clipped, avail) + r;
 }
 
+// Wrap text into lines of at most `width` columns, breaking on word boundaries
+// so nothing is cut off mid-word. A single word longer than the paper is
+// hard-split across lines to keep every line inside the printable area.
+function wrapText(text, width) {
+  const words = sanitizeText(text).split(/\s+/).filter(Boolean);
+  const lines = [];
+  let current = "";
+  for (const word of words) {
+    const candidate = current ? `${current} ${word}` : word;
+    if (sanitizeText(candidate).length <= width) {
+      current = candidate;
+    } else {
+      if (current) lines.push(current);
+      let rest = word;
+      while (sanitizeText(rest).length > width) {
+        lines.push(rest.slice(0, width));
+        rest = rest.slice(width);
+      }
+      current = rest;
+    }
+  }
+  if (current) lines.push(current);
+  return lines;
+}
+
 function dashedLine(width, char = "-") {
   return char.repeat(width);
 }
@@ -594,7 +619,9 @@ export function buildEscReceipt(sale, paperWidth = 58) {
   // Header
   lines.push([CMD.boldOn, textLine(center("Brother Bean Coffee House", width)), CMD.boldOff]);
   lines.push([textLine(center("anytime is coffee time.", width))]);
-  lines.push([textLine(center(truncate("N. Guevarra St. Brgy. Zone 1 Poblacion Dasmarinas City Cavite", width), width))]);
+  for (const addrLine of wrapText("N. Guevarra St., Brgy. Zone 1, Poblacion, Dasmarinas City, Cavite", width)) {
+    lines.push([textLine(center(addrLine, width))]);
+  }
   lines.push([textLine("")]);
   lines.push([textLine(dashedLine(width, "="))]);
 
@@ -629,11 +656,23 @@ export function buildEscReceipt(sale, paperWidth = 58) {
     const pctLabel = `(-${Math.round(discountPct * 100)}%)`;
     const spaced = `${qty} x ${formatMoney(originalUnit)} -> ${formatMoney(unitPrice)} ${pctLabel}`;
     const compact = `${qty} x ${formatMoney(originalUnit)}->${formatMoney(unitPrice)}${pctLabel}`;
-    const rightLen = sanitizeText(formatMoney(lineTotal)).length;
+    const totalLabel = formatMoney(lineTotal);
+    const rightLen = sanitizeText(totalLabel).length;
     const priceLabel = discountPct > 0
-      ? (spaced.length + rightLen <= width ? spaced : compact)
+      ? (sanitizeText(spaced).length + rightLen <= width ? spaced : compact)
       : `${qty} x ${formatMoney(unitPrice)}`;
-    lines.push([textLine(alignRow(priceLabel, formatMoney(lineTotal), width))]);
+    const labelLen = sanitizeText(priceLabel).length;
+    if (labelLen + rightLen <= width) {
+      lines.push([textLine(alignRow(priceLabel, totalLabel, width))]);
+    } else if (labelLen <= width) {
+      // Narrow paper: the discount label cannot share a row with the total, so
+      // print the label on its own line and right-align the amount below it.
+      lines.push([textLine(pad(priceLabel, width))]);
+      lines.push([textLine(pad("", Math.max(0, width - rightLen)) + totalLabel)]);
+    } else {
+      lines.push([textLine(truncate(priceLabel, width))]);
+      lines.push([textLine(pad("", Math.max(0, width - rightLen)) + totalLabel)]);
+    }
   }
   lines.push([textLine(dashedLine(width, "="))]);
 

@@ -147,6 +147,41 @@ assert.equal(printResult.status, "sent", "receipt prints while connected");
 assert.ok(writeLog.length > 1, "receipt bytes were chunked and written");
 writeLog.length = 0;
 
+// 2b) Header address must wrap instead of being cut off, on both paper sizes.
+const ADDRESS = "N. Guevarra St., Brgy. Zone 1, Poblacion, Dasmarinas City, Cavite";
+const decodeReceipt = (body) => {
+  let text = "";
+  for (const b of Array.from(body)) {
+    if (b === 0x0a) text += "\n";
+    else if (b >= 32 && b <= 126) text += String.fromCharCode(b);
+  }
+  return text;
+};
+for (const [paper, lineWidth] of [[58, 32], [80, 42]]) {
+  const text = decodeReceipt(printer.buildEscReceipt(sale, paper));
+  const addrLines = text.split("\n").filter((l) => l.includes("Guevarra") || l.includes("Poblacion") || l.includes("Dasmarinas"));
+  assert.ok(
+    ADDRESS.split(" ").every((word) => text.includes(word)),
+    `${paper}mm receipt keeps every address word (no cut off)`,
+  );
+  assert.ok(addrLines.length >= 2, `${paper}mm address wraps to multiple lines`);
+  assert.ok(addrLines.every((l) => l.trim().length <= lineWidth), `${paper}mm each address line fits ${lineWidth} cols`);
+}
+
+// 2c) Discounted item lines must never merge the discount label into the total.
+const discountedSale = {
+  ...sale,
+  items: [{ name: "Caramel Macchiato", price: 145, quantity: 1, addons: [{ name: "Extra shot", price: 25 }], discountPercent: 0.1 }],
+  total: 153,
+};
+const narrowText = decodeReceipt(printer.buildEscReceipt(discountedSale, 58));
+assert.ok(narrowText.includes("(-10%)"), "58mm keeps the full discount label (-10%)");
+assert.ok(narrowText.includes("P153.00"), "58mm keeps the discounted line total");
+assert.ok(!narrowText.includes("%)P153") && !narrowText.includes("(-10%P"), "58mm discount label never runs into the total");
+const discountedLines = narrowText.split("\n").filter((l) => /^\s+P153\.00\s*$/.test(l));
+assert.ok(discountedLines.length === 1, "58mm discounted total sits on its own right-aligned line");
+assert.ok(discountedLines.every((l) => l.trim().length <= 32), "58mm total amount lines fit within the paper width");
+
 // 3) Unexpected link drop → auto-reconnect
 gattConnected = false;
 assert.ok(typeof disconnectHandler === "function", "disconnect handler registered");

@@ -1959,7 +1959,7 @@ function generateReceipt(sale) {
           </div>
           <div class="brand-name">Brother Bean Coffee House</div>
           <div class="brand-tag">anytime is coffee time.</div>
-          <div class="brand-addr">N. Guevarra St. Brgy. Zone 1 Poblacion Dasmariñas City Cavite</div>
+          <div class="brand-addr">N. Guevarra St., Brgy. Zone 1, Poblacion, Dasmariñas City, Cavite</div>
         </div>
 
         <hr class="rule">
