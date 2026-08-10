@@ -153,12 +153,23 @@ function groupByCategory(items, globalCategories = []) {
       .map((category) => [normalizeCategoryKey(category.name || category.id), String(category.name || category.id)])
   );
 
-  return items.reduce((acc, item) => {
+  // Group by canonical key so case/whitespace variants (e.g. "Starter" vs "starter")
+  // collapse into a single section. Prefer the category doc name for display; otherwise
+  // keep the first-seen raw spelling so the heading casing matches what was entered.
+  const groups = new Map();
+  for (const item of items) {
     const rawCategory = item.category || "Uncategorized";
     const normalized = normalizeCategoryKey(rawCategory);
-    const cat = categoryNameMap.get(normalized) || rawCategory;
-    if (!acc[cat]) acc[cat] = [];
-    acc[cat].push(item);
-    return acc;
-  }, {});
+    const canonical = categoryNameMap.get(normalized);
+    const key = canonical || normalized;
+    if (!groups.has(key)) {
+      groups.set(key, { display: canonical || rawCategory, items: [] });
+    }
+    groups.get(key).items.push(item);
+  }
+  const grouped = {};
+  for (const { display, items: groupItems } of groups.values()) {
+    grouped[display] = groupItems;
+  }
+  return grouped;
 }

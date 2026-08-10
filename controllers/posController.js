@@ -516,7 +516,8 @@ export function renderProducts(filter = "all") {
   }
 
   const grouped = filtered.reduce((acc, item) => {
-    const cat = item.category || 'Uncategorized';
+    const rawCategory = item.category || 'Uncategorized';
+    const cat = getCategoryMeta(rawCategory).name || rawCategory;
     if (!acc[cat]) acc[cat] = [];
     acc[cat].push(item);
     return acc;
