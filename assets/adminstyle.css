@@ -2827,6 +2827,18 @@ button,
   font-style: italic;
 }
 
+.od-stock-restored {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-style: normal;
+  color: var(--success-dark, #1e7e34);
+}
+
+.od-stock-restored i {
+  font-size: 14px;
+}
+
 .quick-actions-card {
   margin-bottom: var(--spacing-2xl);
 }

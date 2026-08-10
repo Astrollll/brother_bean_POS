@@ -1687,8 +1687,12 @@ function buildOrderDetailRow(order, expanded) {
       </div>`;
   }).join("");
 
+  const orderLifecycle = getOrderStatus(order);
+  const orderCancelled = orderLifecycle === "cancelled";
   const { summary: stockSummary, recorded: stockRecorded } = getOrderInventorySummary(order);
-  const stockRows = stockSummary.length
+  const stockRows = orderCancelled
+    ? `<div class="od-empty od-stock-restored"><i class="ri-restart-line" aria-hidden="true"></i> Stock restored — order was cancelled.</div>`
+    : stockSummary.length
     ? stockSummary.map((entry) => {
         const remainingText = entry.remainingQty === null || entry.remainingQty === undefined
           ? "Not recorded"
@@ -1711,7 +1715,7 @@ function buildOrderDetailRow(order, expanded) {
     seenSkips.add(key);
     uniqueSkips.push(skip);
   }
-  const skipNote = uniqueSkips.length
+  const skipNote = !orderCancelled && uniqueSkips.length
     ? `<div class="orders-skip-note"><i class="ri-error-warning-line" aria-hidden="true"></i> <strong>${uniqueSkips.length} ingredient${uniqueSkips.length === 1 ? "" : "s"} not deducted:</strong> ${escapeHtml(uniqueSkips.map((s) => `${s.name || "?"} (${s.reason || "unknown"})`).join(", "))}</div>`
     : "";
 

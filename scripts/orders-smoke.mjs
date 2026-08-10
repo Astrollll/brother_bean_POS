@@ -264,6 +264,20 @@ async function main() {
   assertContains(detail, "Estimated", "detail row estimated badge");
   assertContains(detail, "No stock usage recorded", "detail row empty stock message");
 
+  const cancelledDetailOrder = {
+    ...detailOrder,
+    status: "cancelled",
+    voided: true,
+    voidedAtMs: Date.now(),
+    inventorySkips: [{ name: "Milk", reason: "unit mismatch (g -> ml)" }],
+  };
+  detail = api.buildOrderDetailRow(cancelledDetailOrder, true);
+  assertContains(detail, "Stock restored", "cancelled detail row shows stock restored");
+  assertContains(detail, "od-stock-restored", "cancelled detail row restored class");
+  assert(!detail.includes("od-stock-row"), "cancelled detail row hides stock deductions");
+  assert(!detail.includes("Remaining:"), "cancelled detail row hides remaining snapshots");
+  assert(!detail.includes("orders-skip-note"), "cancelled detail row hides skip note");
+
   const skipDetailOrder = {
     ...detailOrder,
     inventorySkips: [
