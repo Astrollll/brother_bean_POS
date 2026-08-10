@@ -384,7 +384,7 @@ function buildNotifications() {
     notifications.push({
       type: "stock",
       text: `${item.name} \u2014 ${label}`,
-      meta: `${Number(item.quantity || 0)} ${item.unit || "unit"} remaining`,
+      meta: `${formatDecimal(item.quantity)} ${item.unit || "unit"} remaining`,
       date: null,
       navigate: "inventory",
     });
@@ -2695,6 +2695,14 @@ function inventoryStatus(item) {
   return "good";
 }
 
+// Display helper — show whole numbers without decimals, otherwise cap at 2 decimal places
+// (avoids floating-point noise like 4.664020000000004).
+function formatDecimal(value) {
+  const num = Number(value || 0);
+  if (!Number.isFinite(num)) return String(value ?? 0);
+  return num % 1 === 0 ? String(num) : num.toFixed(2);
+}
+
 let _invCategoryFilter = "All";
 let _invSortBy = "name";
 
@@ -2825,8 +2833,8 @@ function renderInventorySection() {
     const quantity = Number(item.quantity || 0);
     const reorderLevel = Math.max(1, Number(item.reorderLevel || 1));
     const price = Number(item.price || 0).toFixed(2);
-    const qtyDisplay = quantity % 1 === 0 ? quantity : quantity.toFixed(2);
-    const reorderDisplay = reorderLevel % 1 === 0 ? reorderLevel : reorderLevel.toFixed(2);
+    const qtyDisplay = formatDecimal(quantity);
+    const reorderDisplay = formatDecimal(reorderLevel);
     const percent = Math.max(5, Math.min(100, Math.round((quantity / (reorderLevel * 2)) * 100)));
     const status = inventoryStatus(item);
     const statusClass = status === "out" ? "inv-status-out" : status === "critical" ? "inv-status-critical" : status === "low" ? "inv-status-low" : "inv-status-good";
@@ -2978,11 +2986,11 @@ function openInventoryEditModal(item) {
     ensureInventoryUnitOption(unitEl, nextUnit);
     unitEl.value = nextUnit;
   }
-  qtyEl.value = String(item?.quantity ?? 0);
+  qtyEl.value = formatDecimal(item?.quantity ?? 0);
   const invEditForm = document.getElementById("inventoryEditForm");
-  if (invEditForm) invEditForm.dataset.originalQuantity = String(item?.quantity ?? 0);
-  reorderEl.value = String(item?.reorderLevel ?? 0);
-  priceEl.value = String(item?.price ?? 0);
+  if (invEditForm) invEditForm.dataset.originalQuantity = formatDecimal(item?.quantity ?? 0);
+  reorderEl.value = formatDecimal(item?.reorderLevel ?? 0);
+  priceEl.value = Number(item?.price ?? 0).toFixed(2);
   if (saveBtn) saveBtn.textContent = "Update Item";
 
   modal.style.display = "flex";
@@ -3204,7 +3212,7 @@ function renderQuickAddSearchResults(term) {
         <span class="quick-add-result-cat">${escapeHtml(item.category)}</span>
       </div>
       <div class="quick-add-result-meta">
-        <span class="badge ${statusClass}">${qty} ${escapeHtml(item.unit)}</span>
+        <span class="badge ${statusClass}">${formatDecimal(qty)} ${escapeHtml(item.unit)}</span>
       </div>
     </div>`;
   }).join("");
@@ -3256,7 +3264,7 @@ function selectQuickAddItem(item) {
     stockBar.style.width = percent + "%";
     stockBar.className = "quick-add-stock-bar" + (statusClass ? " " + statusClass : "");
   }
-  if (stockValue) stockValue.textContent = `${qty} ${item.unit} — ${statusLabel}`;
+  if (stockValue) stockValue.textContent = `${formatDecimal(qty)} ${item.unit} — ${statusLabel}`;
   if (qtyUnit) qtyUnit.textContent = item.unit;
   if (qtyInput) { qtyInput.value = ""; qtyInput.focus(); }
   updateQuickAddPreview();
@@ -3281,10 +3289,10 @@ function updateQuickAddPreview() {
   const addQty = Number(qtyInput.value || 0);
   const current = Number(quickAddSelectedItem.quantity || 0);
   if (addQty > 0) {
-    newTotal.textContent = `${current + addQty} ${quickAddSelectedItem.unit}`;
+    newTotal.textContent = `${formatDecimal(current + addQty)} ${quickAddSelectedItem.unit}`;
     newTotal.classList.add("has-value");
   } else {
-    newTotal.textContent = `${current} ${quickAddSelectedItem.unit}`;
+    newTotal.textContent = `${formatDecimal(current)} ${quickAddSelectedItem.unit}`;
     newTotal.classList.remove("has-value");
   }
 }
@@ -3312,7 +3320,7 @@ async function submitQuickAddStock() {
   );
 
   const newQty = Number(result?.quantity ?? fallbackNewQty);
-  await ModalUtils.success("Stock Updated", `${addQty} ${quickAddSelectedItem.unit} added to ${quickAddSelectedItem.name}. New stock: ${newQty} ${quickAddSelectedItem.unit}.`);
+  await ModalUtils.success("Stock Updated", `${formatDecimal(addQty)} ${quickAddSelectedItem.unit} added to ${quickAddSelectedItem.name}. New stock: ${formatDecimal(newQty)} ${quickAddSelectedItem.unit}.`);
   closeQuickAddStock();
   await loadInventoryPage();
 }
