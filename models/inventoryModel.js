@@ -528,10 +528,19 @@ export async function restoreInventoryForOrder(sale) {
   const audit = [];
   try {
     await runTransaction(db, async (tx) => {
+      // Firestore transactions forbid reads after writes, so all inventory
+      // docs are read first, then updated — same pattern as the deduction
+      // transaction. Interleaving get/update throws on the second ingredient
+      // and aborts the restore, leaving the deducted stock unrecovered.
+      const resolved = [];
       for (const [inventoryId, entry] of restoreEntries.entries()) {
         const ref = doc(db, INVENTORY_COLLECTION, inventoryId);
         const snapshot = await tx.get(ref);
         if (!snapshot.exists()) continue;
+        resolved.push({ inventoryId, ref, snapshot, entry });
+      }
+
+      for (const { inventoryId, ref, snapshot, entry } of resolved) {
         const data = snapshot.data() || {};
         const currentQty = Number(data.quantity || 0);
         const restoredQty = Number(entry.qty) || 0;

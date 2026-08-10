@@ -358,6 +358,28 @@ async function main() {
   assert.equal(s9.restored, 1, "restore: queued+synced order restored one entry");
   console.log("OK restore: synced queued order restored from doc audit");
 
+  // Case R10: multiple inventory items restored in ONE transaction. Real
+  // Firestore throws "Firestore transactions require all reads to be executed
+  // before all writes" if a get() follows an update() in the same transaction,
+  // so all reads must complete before the first write (mirrored by the harness
+  // tx below). The old interleaved loop aborted restore for any order using two
+  // or more distinct ingredients.
+  store.inventory.set("inv-beans", { name: "Beans", unit: "g", quantity: 200 });
+  store.inventory.set("inv-cups", { name: "Cups", unit: "pcs", quantity: 10 });
+  const s10 = await restoreInventoryForOrder({
+    orderId: "order-10",
+    items: [],
+    inventoryDeductions: [
+      { inventoryId: "inv-beans", name: "Beans", unit: "g", deductedQty: 25 },
+      { inventoryId: "inv-cups", name: "Cups", unit: "pcs", deductedQty: 2 },
+    ],
+  });
+  assert.equal(store.inventory.get("inv-beans").quantity, 225, "restore: multi-item beans restored");
+  assert.equal(store.inventory.get("inv-cups").quantity, 12, "restore: multi-item cups restored");
+  assert.equal(s10.restored, 2, "restore: two inventory entries restored");
+  assert.equal(s10.success, true, "restore: multi-item restore succeeds");
+  console.log("OK restore: multi-item transaction reads all before writing");
+
   console.log("PASS: Inventory deduction smoke checks succeeded.");
 }
 
