@@ -3855,6 +3855,72 @@ button,
   color: #b91c1c;
 }
 
+/* ── Inventory table row actions ── */
+#inventoryListWrap table.inv-table td.inventory-row-actions .inv-actions-inner {
+  gap: 6px;
+}
+
+#inventoryListWrap table.inv-table .row-action-btn {
+  width: 34px;
+  height: 34px;
+  min-width: 34px;
+  min-height: 34px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  background: #fff;
+  border: 1px solid var(--border-color);
+  opacity: 1;
+  cursor: pointer;
+  transform: translateY(0) scale(1);
+  transition: background var(--transition-fast), color var(--transition-fast),
+    border-color var(--transition-fast), transform var(--transition-fast),
+    box-shadow var(--transition-fast);
+}
+
+#inventoryListWrap table.inv-table .row-action-btn i {
+  font-size: 16px;
+  line-height: 1;
+}
+
+#inventoryListWrap table.inv-table .row-action-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.08);
+}
+
+#inventoryListWrap table.inv-table .row-action-btn:active {
+  transform: translateY(0) scale(0.94);
+}
+
+#inventoryListWrap table.inv-table .row-action-restock {
+  color: #059669;
+}
+
+#inventoryListWrap table.inv-table .row-action-restock:hover {
+  background: rgba(5, 150, 105, 0.1);
+  border-color: rgba(5, 150, 105, 0.3);
+}
+
+#inventoryListWrap table.inv-table .row-action-edit {
+  color: var(--primary);
+}
+
+#inventoryListWrap table.inv-table .row-action-edit:hover {
+  background: rgba(107, 68, 35, 0.1);
+  border-color: rgba(107, 68, 35, 0.3);
+}
+
+#inventoryListWrap table.inv-table .row-action-delete {
+  color: #b91c1c;
+}
+
+#inventoryListWrap table.inv-table .row-action-delete:hover {
+  background: rgba(239, 68, 68, 0.1);
+  border-color: rgba(239, 68, 68, 0.3);
+}
+
 .inventory-edit-modal {
   max-width: 860px;
   width: min(92vw, 860px);

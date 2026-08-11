@@ -2955,9 +2955,9 @@ function renderInventorySection() {
       <td class="inv-status-cell"><span class="inv-status-badge ${statusClass}">${statusLabel}</span></td>
       <td class="inventory-row-actions">
         <div class="inv-actions-inner">
-          <button class="row-action-btn" type="button" data-inv-action="restock" data-inv-id="${escapeHtml(item.id)}" title="Quick restock" aria-label="Quick restock"><i class="ri-add-box-line" aria-hidden="true"></i></button>
-          <button class="row-action-btn" type="button" data-inv-action="edit" data-inv-id="${escapeHtml(item.id)}" title="Edit inventory item" aria-label="Edit inventory item"><i class="ri-pencil-line" aria-hidden="true"></i></button>
-          <button class="row-action-btn danger" type="button" data-inv-action="delete" data-inv-id="${escapeHtml(item.id)}" title="Delete inventory item" aria-label="Delete inventory item"><i class="ri-delete-bin-line" aria-hidden="true"></i></button>
+          <button class="row-action-btn row-action-restock" type="button" data-inv-action="restock" data-inv-id="${escapeHtml(item.id)}" title="Quick restock" aria-label="Quick restock"><i class="ri-add-box-line" aria-hidden="true"></i></button>
+          <button class="row-action-btn row-action-edit" type="button" data-inv-action="edit" data-inv-id="${escapeHtml(item.id)}" title="Edit inventory item" aria-label="Edit inventory item"><i class="ri-pencil-line" aria-hidden="true"></i></button>
+          <button class="row-action-btn row-action-delete" type="button" data-inv-action="delete" data-inv-id="${escapeHtml(item.id)}" title="Delete inventory item" aria-label="Delete inventory item"><i class="ri-delete-bin-line" aria-hidden="true"></i></button>
         </div>
       </td>
     </tr>`);
