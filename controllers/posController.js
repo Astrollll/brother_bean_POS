@@ -289,6 +289,12 @@ document.addEventListener("DOMContentLoaded", async () => {
       salesHistory = [];
       showToast("Daily stats reset for new day", "info");
       persistPosState();
+      // Another terminal may have already recorded today's drawer (e.g. the
+      // opening float) before this terminal's first load of the new day, so
+      // re-apply the shared drawer state instead of keeping the zeroed reset.
+      if (typeof getSharedDrawerState === "function") {
+        getSharedDrawerState().then(applySharedDrawer).catch(() => {});
+      }
     }
 
     // Seed stats from Firestore so all cashiers see today's shared sales.
@@ -2464,6 +2470,18 @@ function refreshDrawerIfOpen() {
   if (modal && modal.classList.contains("active")) renderDrawerModal();
 }
 
+// Copy the shared drawer fields into dailyStats. Used by both the open-drawer
+// poll and the day-rollover re-apply so the two paths stay in sync.
+function applySharedDrawer(shared) {
+  if (!shared) return;
+  dailyStats.openingFloat = Number(shared.openingFloat || 0);
+  dailyStats.cashIn = Number(shared.cashIn || 0);
+  dailyStats.cashOut = Number(shared.cashOut || 0);
+  dailyStats.actualCash = shared.actualCash ?? null;
+  dailyStats.cashOnHandAuto = shared.cashOnHandAuto;
+  if (Array.isArray(shared.ledgerEntries)) dailyStats.ledgerEntries = shared.ledgerEntries;
+}
+
 // Pull the shared drawer state (all terminals) from Firestore so one terminal
 // immediately sees another's float, cash in/out, or manual count. Skipped while
 // staff is mid-edit or right after a local write so a poll can never discard a
@@ -2477,13 +2495,7 @@ async function refreshSharedDrawer() {
   if (actualInput && actualInput.matches && actualInput.matches(":focus")) return;
   try {
     const shared = await getSharedDrawerState();
-    if (!shared) return;
-    dailyStats.openingFloat = Number(shared.openingFloat || 0);
-    dailyStats.cashIn = Number(shared.cashIn || 0);
-    dailyStats.cashOut = Number(shared.cashOut || 0);
-    dailyStats.actualCash = shared.actualCash ?? null;
-    dailyStats.cashOnHandAuto = shared.cashOnHandAuto;
-    if (Array.isArray(shared.ledgerEntries)) dailyStats.ledgerEntries = shared.ledgerEntries;
+    applySharedDrawer(shared);
     refreshDrawerIfOpen();
   } catch {}
 }
