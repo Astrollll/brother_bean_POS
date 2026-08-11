@@ -36,7 +36,8 @@ import {
   removeKitchenOrder,
   purgeSavedSale,
   recordDrawerLogEntry,
-  syncDrawerLogOutbox
+  syncDrawerLogOutbox,
+  getSharedDrawerState
 } from "../models/storageModel.js";
 
 // ── STATE ──
@@ -57,6 +58,11 @@ let cashierName      = "Staff";
 let salesHistory     = [];
 let dailyStats       = { orders: 0, totalSales: 0, discountsApplied: 0, cashReceived: 0, openingFloat: 0, cashIn: 0, cashOut: 0 };
 let isOnline         = navigator.onLine;
+
+// Shared-drawer refresh bookkeeping: a local write short-circuits the next
+// poll so a re-render can never discard a value that is still saving.
+let drawerLastLocalWrite = 0;
+let drawerRefreshTimer = null;
 
 // Persist today's stats (localStorage + Firestore mirror). Declared at module
 // scope so both the init flow and the drawer block can call it.
@@ -2281,8 +2287,8 @@ function mergeOrderLists(...lists) {
 }
 
 // Rebuild daily stats from the authoritative, de-duplicated order list. The
-// drawer-only fields (opening float, cash in/out, manual count) are per-terminal
-// state and are carried over from the previous stats untouched.
+// drawer-only fields (opening float, cash in/out, manual count) are shared
+// across terminals and are carried over from the previous stats untouched.
 function recomputeDailyStats(orders, prev = dailyStats) {
   return {
     orders: orders.length,
@@ -2458,6 +2464,30 @@ function refreshDrawerIfOpen() {
   if (modal && modal.classList.contains("active")) renderDrawerModal();
 }
 
+// Pull the shared drawer state (all terminals) from Firestore so one terminal
+// immediately sees another's float, cash in/out, or manual count. Skipped while
+// staff is mid-edit or right after a local write so a poll can never discard a
+// value that is still saving.
+async function refreshSharedDrawer() {
+  if (Date.now() - drawerLastLocalWrite < 3000) return;
+  if (typeof getSharedDrawerState !== "function") return;
+  const floatEdit = document.getElementById("drawerFloatEdit");
+  if (floatEdit && floatEdit.classList.contains("is-open")) return;
+  const actualInput = document.getElementById("drawerActualInput");
+  if (actualInput && actualInput.matches && actualInput.matches(":focus")) return;
+  try {
+    const shared = await getSharedDrawerState();
+    if (!shared) return;
+    dailyStats.openingFloat = Number(shared.openingFloat || 0);
+    dailyStats.cashIn = Number(shared.cashIn || 0);
+    dailyStats.cashOut = Number(shared.cashOut || 0);
+    dailyStats.actualCash = shared.actualCash ?? null;
+    dailyStats.cashOnHandAuto = shared.cashOnHandAuto;
+    if (Array.isArray(shared.ledgerEntries)) dailyStats.ledgerEntries = shared.ledgerEntries;
+    refreshDrawerIfOpen();
+  } catch {}
+}
+
 // Since there is no physical drawer connection, the cash on hand is tracked
 // automatically: it always equals starting cash + today's cash orders + cash
 // in − cash out, live-updated with every order. Staff may still override it
@@ -2530,7 +2560,7 @@ function renderDrawerHistory() {
   if (!listEl) return;
   const entries = drawerLedgerEntries();
   if (entries.length === 0) {
-    listEl.innerHTML = `<li class="bb-drawer-history-empty">No cash in / cash out entries today.</li>`;
+    listEl.innerHTML = `<li class="bb-drawer-history-empty">No drawer activity yet today.</li>`;
     return;
   }
   const formatPeso = (n) => `₱${(Number(n) || 0).toFixed(2)}`;
@@ -2540,12 +2570,18 @@ function renderDrawerHistory() {
     .map((entry) => {
       const time = new Date(Number(entry.t) || Date.now()).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
       const isIn = entry.kind === "in";
+      const isOut = entry.kind === "out";
+      const isFloat = entry.kind === "float";
+      const isCount = entry.kind === "count";
+      const label = isIn ? "Cash in" : isOut ? "Cash out" : isFloat ? "Starting cash" : isCount ? "Cash count" : "Drawer";
+      const sign = isIn ? "+" : isOut ? "−" : "";
+      const rowClass = isIn ? "is-in" : isOut ? "is-out" : "is-neutral";
       const note = entry.note ? `<span class="bb-drawer-history-note">${escapeDrawerText(entry.note)}</span>` : "";
-      return `<li class="bb-drawer-history-item ${isIn ? "is-in" : "is-out"}">
-        <span class="bb-drawer-history-label">${isIn ? "Cash in" : "Cash out"}</span>
+      return `<li class="bb-drawer-history-item ${rowClass}">
+        <span class="bb-drawer-history-label">${escapeDrawerText(label)}</span>
         ${note}
         <span class="bb-drawer-history-time">${time}</span>
-        <span class="bb-drawer-history-amount">${isIn ? "+" : "−"}${formatPeso(entry.amount)}</span>
+        <span class="bb-drawer-history-amount">${sign}${formatPeso(entry.amount)}</span>
       </li>`;
     })
     .join("");
@@ -2561,6 +2597,12 @@ window.openDrawer = function() {
   renderDrawerModal();
   modal.classList.add("active");
   modal.setAttribute("aria-hidden", "false");
+  // Refresh once on open, then poll every 30s while the drawer stays open so
+  // another terminal's drawer activity appears here without a reload.
+  refreshSharedDrawer();
+  if (!drawerRefreshTimer) {
+    drawerRefreshTimer = setInterval(refreshSharedDrawer, 30000);
+  }
 };
 
 window.drawerSwitchTab = function(tab) {
@@ -2600,10 +2642,11 @@ window.saveDrawerOpeningFloat = function() {
     return;
   }
   dailyStats.openingFloat = Math.round(amount * 100) / 100;
+  drawerLastLocalWrite = Date.now();
   persistPosState();
-  // Log the starting cash per terminal so the admin Logs page can show each
-  // drawer's float (the shared dailyStats doc is last-writer-wins across
-  // terminals, so it cannot hold per-terminal floats).
+  // Log the starting cash to the shared drawer log so every terminal and the
+  // admin Logs page see the same float (the shared dailyStats doc is
+  // last-writer-wins across terminals, so it cannot hold the drawer state).
   if (typeof recordDrawerLogEntry === "function") {
     recordDrawerLogEntry({
       kind: "float",
@@ -2714,6 +2757,16 @@ window.confirmDrawerAction = function() {
   if (pending.kind === "count") {
     dailyStats.actualCash = pending.amount;
     dailyStats.cashOnHandAuto = false;
+    // Publish the manual count to the shared drawer log so other terminals
+    // stop auto-tracking and show the same counted cash on hand.
+    if (typeof recordDrawerLogEntry === "function") {
+      recordDrawerLogEntry({
+        kind: "count",
+        amount: pending.amount,
+        note: "Manual count",
+        t: Date.now()
+      }).catch(() => {});
+    }
   } else {
     if (pending.kind === "in") {
       dailyStats.cashIn = Number(dailyStats.cashIn || 0) + pending.amount;
@@ -2741,6 +2794,7 @@ window.confirmDrawerAction = function() {
     if (noteInput) noteInput.value = "";
   }
 
+  drawerLastLocalWrite = Date.now();
   persistPosState();
   renderDrawerModal();
   const label = pending.kind === "in" ? "Cash in" : pending.kind === "out" ? "Cash out" : "Cash count";
@@ -2843,6 +2897,10 @@ window.closeDrawerModal = function() {
   if (!modal) return;
   modal.classList.remove("active");
   modal.setAttribute("aria-hidden", "true");
+  if (drawerRefreshTimer) {
+    clearInterval(drawerRefreshTimer);
+    drawerRefreshTimer = null;
+  }
 };
 
 window.logout = function() {

@@ -2581,15 +2581,17 @@ async function loadLogsPage() {
           });
           const isIn = entry.kind === "in";
           const isFloat = entry.kind === "float";
-          const typeLabel = isIn ? "Cash in" : isFloat ? "Starting cash" : "Cash out";
-          const sign = isIn ? "+" : isFloat ? "" : "−";
+          const isCount = entry.kind === "count";
+          const typeLabel = isIn ? "Cash in" : isFloat ? "Starting cash" : isCount ? "Cash count" : "Cash out";
+          const sign = isIn ? "+" : isFloat || isCount ? "" : "−";
+          const kindClass = isIn ? "is-in" : isFloat || isCount ? "is-float" : "is-out";
           const terminalLabel = terminalLabels[entry.terminalId] || (entry.terminalId ? String(entry.terminalId).slice(0, 8) : "—");
           return `<tr>
             <td>${escapeHtml(time)}</td>
-            <td><span class="logs-type ${isIn ? "is-in" : isFloat ? "is-float" : "is-out"}">${escapeHtml(typeLabel)}</span></td>
+            <td><span class="logs-type ${kindClass}">${escapeHtml(typeLabel)}</span></td>
             <td><span class="logs-terminal">${escapeHtml(terminalLabel)}</span></td>
             <td>${escapeHtml(entry.note || "—")}</td>
-            <td class="orders-th-amount logs-amount ${isIn ? "is-in" : isFloat ? "is-float" : "is-out"}">${sign}${logsFormatPeso(entry.amount)}</td>
+            <td class="orders-th-amount logs-amount ${kindClass}">${sign}${logsFormatPeso(entry.amount)}</td>
           </tr>`;
         }).join("")}
       </tbody>

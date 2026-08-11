@@ -5684,6 +5684,10 @@ body[data-cart-density="compact"] .cart-section .checkout-btn {
   color: #b91c1c;
 }
 
+.bb-drawer-history-item.is-neutral .bb-drawer-history-label {
+  color: var(--text-muted);
+}
+
 .bb-drawer-history-time {
   margin-left: auto;
   font-size: 11px;

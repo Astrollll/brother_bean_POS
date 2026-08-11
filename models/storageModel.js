@@ -114,10 +114,11 @@ export async function loadFromStorage() {
   // Try Firestore first for cross-terminal consistency
   const firestore = await loadStatsFromFirestore();
   if (firestore) {
-    // The shared mirror only provides sales-derived stats. The drawer ledger
-    // (opening float, cash in/out) is per-terminal, so it always comes from
-    // THIS device's local storage — one terminal's drawer never leaks into
-    // another's.
+    // The shared mirror only provides sales-derived stats. The drawer state
+    // (opening float, cash in/out, manual count) comes from the shared
+    // drawerLogs collection — the store runs ONE physical drawer that all
+    // terminals read and write. Local storage is only the fallback while
+    // offline or before any drawer activity has synced.
     let localDrawer = {};
     let localHistory = [];
     try {
@@ -128,6 +129,11 @@ export async function loadFromStorage() {
       const raw = localStorage.getItem(localHistoryKey());
       if (raw) localHistory = JSON.parse(raw) || [];
     } catch {}
+    let shared = null;
+    try {
+      shared = await getSharedDrawerState(todayKey());
+    } catch {}
+    const drawer = shared || localDrawer;
     // Merge local history into the mirror's instead of letting the mirror
     // replace it, so orders queued while offline (never mirrored) are not
     // lost from the drawer on the next load.
@@ -135,12 +141,12 @@ export async function loadFromStorage() {
       salesHistory: mergeOrderLists(localHistory, firestore.salesHistory),
       dailyStats: {
         ...firestore.dailyStats,
-        openingFloat: Number(localDrawer.openingFloat || 0),
-        cashIn: Number(localDrawer.cashIn || 0),
-        cashOut: Number(localDrawer.cashOut || 0),
-        actualCash: localDrawer.actualCash ?? null,
-        cashOnHandAuto: localDrawer.cashOnHandAuto !== false,
-        ledgerEntries: Array.isArray(localDrawer.ledgerEntries) ? localDrawer.ledgerEntries : [],
+        openingFloat: Number(drawer.openingFloat || 0),
+        cashIn: Number(drawer.cashIn || 0),
+        cashOut: Number(drawer.cashOut || 0),
+        actualCash: drawer.actualCash ?? null,
+        cashOnHandAuto: drawer.cashOnHandAuto !== false,
+        ledgerEntries: Array.isArray(drawer.ledgerEntries) ? drawer.ledgerEntries : [],
       },
     };
   }
@@ -512,5 +518,48 @@ export async function getDrawerLogsByDate(dateKey) {
   } catch (error) {
     console.warn("[Storage] Firestore drawer log read failed.", error);
     return [];
+  }
+}
+
+// Derive the drawer state for a day from the shared drawerLogs collection.
+// All terminals contribute to the same (single physical) drawer, so the POS
+// drawer is shared across terminals. Returns null when the day has no
+// records (or Firestore is unreachable) so callers fall back to local state.
+export async function getSharedDrawerState(dateKey) {
+  try {
+    const entries = await getDrawerLogsByDate(dateKey);
+    if (!Array.isArray(entries) || entries.length === 0) return null;
+    let openingFloat = 0;
+    let cashIn = 0;
+    let cashOut = 0;
+    let actualCash = null;
+    const ledgerEntries = [];
+    for (const e of entries) {
+      const kind = e?.kind;
+      const amount = Math.round((Number(e?.amount) || 0) * 100) / 100;
+      if (kind === "float") openingFloat = amount;
+      else if (kind === "in") cashIn += amount;
+      else if (kind === "out") cashOut += amount;
+      else if (kind === "count") actualCash = amount;
+      ledgerEntries.push({
+        id: String(e?.id || ""),
+        t: Number(e?.t) || 0,
+        kind: kind || "in",
+        amount,
+        ...(e?.note ? { note: String(e.note) } : {}),
+        ...(e?.terminalId ? { terminalId: String(e.terminalId) } : {}),
+      });
+    }
+    return {
+      openingFloat: Math.round(openingFloat * 100) / 100,
+      cashIn: Math.round(cashIn * 100) / 100,
+      cashOut: Math.round(cashOut * 100) / 100,
+      actualCash,
+      cashOnHandAuto: actualCash === null,
+      ledgerEntries,
+    };
+  } catch (error) {
+    console.warn("[Storage] Shared drawer state read failed.", error);
+    return null;
   }
 }
