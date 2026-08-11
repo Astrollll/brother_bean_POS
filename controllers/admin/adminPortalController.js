@@ -10,7 +10,7 @@ import { getCategories, saveCategory, deleteCategory, getCategoryIconForName, sy
 import { getTodayOrders, getAllSalesOrders, deleteOrder, clearAllOrders, getPendingOrderCount, getQueuedOrders, syncQueuedOrders, getOrderStatus } from "../../models/orderModel.js";
 import { getSavedSalesHistory, getDailyStatsByDate, getDrawerLogsByDate, purgeSavedSale } from "../../models/storageModel.js";
 import { resetDay as archiveResetDay } from "../../models/resetModel.js";
-import { getInventoryItems, saveInventoryItem, deleteInventoryItem, clearInventoryItems, convertQuantityBetweenUnits, normalizeUnit } from "../../models/inventoryModel.js";
+import { getInventoryItems, saveInventoryItem, deleteInventoryItem, clearInventoryItems, convertQuantityBetweenUnits, normalizeUnit, renameInventoryCategory, deleteInventoryCategory, getInventoryCategoryNames, createInventoryCategory } from "../../models/inventoryModel.js";
 import { inventorySeedItems } from "../../models/defaultSeedData.js";
 import { getAllStaff as getStaff, getSchedule, getOnDutyNowFromSchedule, addStaff, removeStaff, removeStaffByName, removeStaffByAccountUid, updateStaffAccountLink, updateStaffNameByUid, saveSchedule, parseShiftRange } from "../../models/staffModel.js";
 import { renderSalesAnalyticsDashboard, renderAdminDashboard, AIR_DATEPICKER_EN_LOCALE, airDatepickerSmartPosition, trackAirDatepickerReposition } from "../../views/dashboardView.js?v=20260806F";
@@ -66,6 +66,7 @@ const state = {
   filteredOrders: [],
   pagedOrders: [],
   inventoryItems: [],
+  inventoryCategories: [],
   lastInventorySyncMs: 0,
   accounts: [],
   lastAccountsSyncMs: 0,
@@ -2665,6 +2666,12 @@ async function loadInventoryPage() {
   try {
     state.inventoryItems = await getInventoryItems();
     state.lastInventorySyncMs = Date.now();
+    try {
+      state.inventoryCategories = await getInventoryCategoryNames();
+    } catch (err) {
+      console.warn("[Inventory] Failed to load stored categories:", err);
+      state.inventoryCategories = [];
+    }
     renderInventorySection();
   } catch (error) {
     console.error("[Inventory] Failed to load inventory items:", error);
@@ -2678,6 +2685,7 @@ async function loadInventoryPage() {
   bindInventoryForm();
   bindInventoryEditForm();
   bindQuickAddStock();
+  bindNewCategoryModal();
   clampDecimalInputs();
   bindInventoryFormToggle();
 
@@ -2703,8 +2711,27 @@ function formatDecimal(value) {
   return num % 1 === 0 ? String(num) : num.toFixed(2);
 }
 
+// Inventory table header sort helpers (mirrors the transactions table sort behavior).
+function invSortPairs(key) {
+  return {
+    item: ["name_desc", "name_asc"],
+    stock: ["stock-desc", "stock-asc"],
+    reorder: ["reorder_desc", "reorder_asc"],
+    price: ["price_desc", "price_asc"],
+    status: ["status_desc", "status_asc"],
+  }[key] || [];
+}
+
+function buildInvSortHeader(key, label) {
+  const [descValue, ascValue] = invSortPairs(key);
+  const active = _invSortBy === descValue || _invSortBy === ascValue;
+  const arrow = active ? (_invSortBy === descValue ? "↓" : "↑") : "";
+  return `<button class="orders-sort-btn ${active ? "active" : ""}" type="button" data-inv-sort="${key}" title="Sort by ${label}">${label}${arrow ? `<span class="orders-sort-arrow" aria-hidden="true">${arrow}</span>` : ""}</button>`;
+}
+
 let _invCategoryFilter = "All";
-let _invSortBy = "name";
+let _invSortBy = "name_asc";
+let _invStatusFilter = "all";
 
 function renderInventorySection() {
   const listWrap = document.getElementById("inventoryListWrap");
@@ -2730,19 +2757,27 @@ function renderInventorySection() {
 
   // Apply category filter
   if (_invCategoryFilter !== "All") {
-    filteredItems = filteredItems.filter((i) => String(i.category || "").toLowerCase() === _invCategoryFilter.toLowerCase());
+    filteredItems = filteredItems.filter((i) => String(i.category || "General").trim().toLowerCase() === _invCategoryFilter.toLowerCase());
+  }
+
+  // Apply status filter
+  if (_invStatusFilter !== "all") {
+    filteredItems = filteredItems.filter((i) => inventoryStatus(i) === _invStatusFilter);
   }
 
   // Apply sort
   const statusOrder = { out: 0, critical: 1, low: 2, good: 3 };
-  if (_invSortBy === "name") {
-    filteredItems.sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")));
-  } else if (_invSortBy === "stock-asc") {
-    filteredItems.sort((a, b) => Number(a.quantity || 0) - Number(b.quantity || 0));
-  } else if (_invSortBy === "stock-desc") {
-    filteredItems.sort((a, b) => Number(b.quantity || 0) - Number(a.quantity || 0));
-  } else if (_invSortBy === "status") {
-    filteredItems.sort((a, b) => (statusOrder[inventoryStatus(a)] ?? 4) - (statusOrder[inventoryStatus(b)] ?? 4));
+  const sortDir = _invSortBy.endsWith("_desc") ? -1 : 1;
+  if (_invSortBy === "name" || _invSortBy === "name_asc" || _invSortBy === "name_desc") {
+    filteredItems.sort((a, b) => sortDir * String(a.name || "").localeCompare(String(b.name || "")));
+  } else if (_invSortBy === "stock-asc" || _invSortBy === "stock-desc") {
+    filteredItems.sort((a, b) => sortDir * (Number(a.quantity || 0) - Number(b.quantity || 0)));
+  } else if (_invSortBy === "reorder_asc" || _invSortBy === "reorder_desc") {
+    filteredItems.sort((a, b) => sortDir * (Number(a.reorderLevel || 0) - Number(b.reorderLevel || 0)));
+  } else if (_invSortBy === "price_asc" || _invSortBy === "price_desc") {
+    filteredItems.sort((a, b) => sortDir * (Number(a.price || 0) - Number(b.price || 0)));
+  } else if (_invSortBy === "status" || _invSortBy === "status_asc" || _invSortBy === "status_desc") {
+    filteredItems.sort((a, b) => sortDir * ((statusOrder[inventoryStatus(a)] ?? 4) - (statusOrder[inventoryStatus(b)] ?? 4)));
   } else if (_invSortBy === "category") {
     filteredItems.sort((a, b) => String(a.category || "").localeCompare(String(b.category || "")));
   }
@@ -2753,29 +2788,15 @@ function renderInventorySection() {
   if (itemCountEl) {
     const total = state.inventoryItems.length;
     const showing = filteredItems.length;
-    if (searchTerm || _invCategoryFilter !== "All") {
+    if (searchTerm || _invCategoryFilter !== "All" || _invStatusFilter !== "all") {
       itemCountEl.textContent = `Showing ${showing} of ${total}`;
     } else {
       itemCountEl.textContent = `${total} item${total === 1 ? "" : "s"}`;
     }
   }
 
-  // Extract unique categories for filter pills
-  const allCategories = [...new Set(state.inventoryItems.map((i) => String(i.category || "General").trim()).filter(Boolean))].sort();
-  if (catPills) {
-    const totalCount = state.inventoryItems.length;
-    catPills.innerHTML = `<button class="inv-cat-pill${_invCategoryFilter === "All" ? " active" : ""}" data-inv-cat="All">All (${totalCount})</button>` +
-      allCategories.map((cat) => {
-        const count = state.inventoryItems.filter((i) => String(i.category || "").toLowerCase() === cat.toLowerCase()).length;
-        return `<button class="inv-cat-pill${_invCategoryFilter === cat ? " active" : ""}" data-inv-cat="${escapeHtml(cat)}">${escapeHtml(cat)} (${count})</button>`;
-      }).join("");
-    catPills.querySelectorAll(".inv-cat-pill").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        _invCategoryFilter = btn.dataset.invCat || "All";
-        renderInventorySection();
-      });
-    });
-  }
+  // Render editable category cards (filter, add-to-category, rename, delete)
+  renderInventoryCategoryCards(catPills);
 
   // Sort select
   if (sortEl && !sortEl.dataset.bound) {
@@ -2795,17 +2816,29 @@ function renderInventorySection() {
         <div class="inv-empty-title">No inventory items yet</div>
         <div class="inv-empty-sub">Add your first item using the form above to start tracking stock levels.</div>
       </div>`;
-    if (catPills) catPills.innerHTML = "";
     if (pageSub) pageSub.textContent = `Track your ingredients and supplies${syncText}`;
     return;
   }
 
-  if (searchTerm && !filteredItems.length) {
+  if (!filteredItems.length) {
+    const statusLabels = { out: "Out of Stock", critical: "Critical", low: "Low Stock", good: "In Stock" };
+    let emptyTitle;
+    let emptySub;
+    if (searchTerm) {
+      emptyTitle = `No results for "${escapeHtml(searchTerm)}"`;
+      emptySub = "Try a different search term or clear the filter.";
+    } else if (_invStatusFilter !== "all") {
+      emptyTitle = `No ${statusLabels[_invStatusFilter] || ""} items${_invCategoryFilter !== "All" ? ` in "${escapeHtml(_invCategoryFilter)}"` : ""}`;
+      emptySub = "Try another status or clear the filter.";
+    } else {
+      emptyTitle = "No items to display";
+      emptySub = "Try clearing the category filter.";
+    }
     listWrap.innerHTML = `
       <div class="inv-empty-state">
         <div class="inv-empty-icon"><i class="ri-search-line"></i></div>
-        <div class="inv-empty-title">No results for "${escapeHtml(searchTerm)}"</div>
-        <div class="inv-empty-sub">Try a different search term or clear the filter.</div>
+        <div class="inv-empty-title">${emptyTitle}</div>
+        <div class="inv-empty-sub">${emptySub}</div>
       </div>`;
     return;
   }
@@ -2820,55 +2853,141 @@ function renderInventorySection() {
 
   if (pageSub) pageSub.textContent = `${totalOut} out, ${totalCritical} critical, ${totalLow} low stock item(s)${syncText}`;
 
+  const statusLabels = { out: "Out", critical: "Critical", low: "Low", good: "Good" };
+  const statusChips = [
+    ["out", totalOut, "inv-stat-out", "ri-error-warning-line"],
+    ["critical", totalCritical, "inv-stat-critical", "ri-alert-line"],
+    ["low", totalLow, "inv-stat-low", "ri-alert-fill"],
+    ["good", allItems.length - needsRestock, "inv-stat-good", "ri-checkbox-circle-line"],
+  ].map(([key, count, cls, icon]) =>
+    `<button type="button" class="inv-stat-chip ${cls}${_invStatusFilter === key ? " active" : ""}" data-inv-status="${key}" title="Show ${statusLabels[key].toLowerCase()} items">` +
+    `<i class="${icon}"></i><span class="inv-stat-num">${count}</span> ${statusLabels[key]}</button>`
+  ).join("");
+
   strip.innerHTML = `
-    <span class="inv-stat-chip inv-stat-out"><i class="ri-error-warning-line"></i><span class="inv-stat-num">${totalOut}</span> Out</span>
-    <span class="inv-stat-chip inv-stat-critical"><i class="ri-alert-line"></i><span class="inv-stat-num">${totalCritical}</span> Critical</span>
-    <span class="inv-stat-chip inv-stat-low"><i class="ri-alert-fill"></i><span class="inv-stat-num">${totalLow}</span> Low</span>
-    <span class="inv-stat-chip inv-stat-good"><i class="ri-checkbox-circle-line"></i><span class="inv-stat-num">${allItems.length - needsRestock}</span> Good</span>
-    <span class="inv-stat-chip inv-stat-value"><i class="ri-money-currency-circle-line"></i><span class="inv-stat-num">₱${totalValue.toFixed(0)}</span> Total</span>
-    <span class="inv-stat-chip inv-stat-restock"><i class="ri-shopping-cart-2-line"></i><span class="inv-stat-num">${needsRestock}</span> Restock</span>
+    <div class="inv-stats-group">
+      ${statusChips}
+      <span class="inv-stat-chip inv-stat-value"><i class="ri-money-currency-circle-line"></i><span class="inv-stat-num">₱${totalValue.toFixed(0)}</span> Total</span>
+    </div>
+    <div class="inv-strip-actions">
+      <button type="button" class="inv-stat-chip inv-stat-restock" data-inv-restock title="Quick add stock"><i class="ri-shopping-cart-2-line"></i><span class="inv-stat-num">${needsRestock}</span> Restock</button>
+      <button type="button" class="inv-reset-filter-chip" id="inventoryResetFiltersBtn" data-inv-reset-filter title="Reset all filters"><i class="ri-filter-off-line"></i> Reset Filter</button>
+    </div>
   `;
 
-  listWrap.innerHTML = filteredItems.map((item) => {
-    const quantity = Number(item.quantity || 0);
-    const reorderLevel = Math.max(1, Number(item.reorderLevel || 1));
-    const price = Number(item.price || 0).toFixed(2);
-    const qtyDisplay = formatDecimal(quantity);
-    const reorderDisplay = formatDecimal(reorderLevel);
-    const percent = Math.max(5, Math.min(100, Math.round((quantity / (reorderLevel * 2)) * 100)));
-    const status = inventoryStatus(item);
-    const statusClass = status === "out" ? "inv-status-out" : status === "critical" ? "inv-status-critical" : status === "low" ? "inv-status-low" : "inv-status-good";
-    const statusLabel = status === "out" ? "Out of Stock" : status === "critical" ? "Critical" : status === "low" ? "Low Stock" : "In Stock";
+  strip.querySelectorAll("[data-inv-status]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const key = btn.dataset.invStatus;
+      _invStatusFilter = _invStatusFilter === key ? "all" : key;
+      renderInventorySection();
+    });
+  });
 
-    return `<div class="inv-row ${status === "out" || status === "critical" ? "inv-row-alert" : ""}">
-      <div class="inv-row-meta">
+  const restockChip = strip.querySelector("[data-inv-restock]");
+  if (restockChip) {
+    restockChip.addEventListener("click", () => {
+      if (typeof window.openRestockModal === "function") window.openRestockModal();
+    });
+  }
+
+  const resetChip = strip.querySelector("[data-inv-reset-filter]");
+  if (resetChip) {
+    const hasFilters = Boolean(searchTerm) || _invCategoryFilter !== "All" || _invStatusFilter !== "all";
+    resetChip.classList.toggle("is-muted", !hasFilters);
+    if (!resetChip.dataset.bound) {
+      resetChip.dataset.bound = "1";
+      resetChip.addEventListener("click", () => {
+        if (searchEl) searchEl.value = "";
+        _invCategoryFilter = "All";
+        _invStatusFilter = "all";
+        _invSortBy = "name_asc";
+        const sortEl = document.getElementById("inventorySortSelect");
+        if (sortEl) sortEl.value = _invSortBy;
+        renderInventorySection();
+        if (searchEl) searchEl.focus();
+      });
+    }
+  }
+
+  // Separate stock into category sections, keeping the applied sort within each category.
+  const groups = new Map();
+  for (const item of filteredItems) {
+    const cat = String(item.category || "General").trim() || "General";
+    const key = cat.toLowerCase();
+    if (!groups.has(key)) groups.set(key, { display: cat, items: [] });
+    groups.get(key).items.push(item);
+  }
+  const groupEntries = [...groups.values()].sort((a, b) => String(a.display).localeCompare(String(b.display)));
+
+  const rows = [];
+  groupEntries.forEach((group) => {
+    rows.push(`<tr class="inv-cat-group"><td colspan="6"><span class="inv-cat-group-label">${escapeHtml(group.display)}</span><span class="inv-cat-group-count">${group.items.length} item${group.items.length === 1 ? "" : "s"}</span></td></tr>`);
+    group.items.forEach((item) => {
+      const quantity = Number(item.quantity || 0);
+      const reorderLevel = Math.max(1, Number(item.reorderLevel || 1));
+      const price = Number(item.price || 0).toFixed(2);
+      const qtyDisplay = formatDecimal(quantity);
+      const reorderDisplay = formatDecimal(reorderLevel);
+      const percent = Math.max(5, Math.min(100, Math.round((quantity / (reorderLevel * 2)) * 100)));
+      const status = inventoryStatus(item);
+      const statusClass = status === "out" ? "inv-status-out" : status === "critical" ? "inv-status-critical" : status === "low" ? "inv-status-low" : "inv-status-good";
+      const statusLabel = status === "out" ? "Out of Stock" : status === "critical" ? "Critical" : status === "low" ? "Low Stock" : "In Stock";
+      const alertClass = status === "out" || status === "critical" ? "inv-row-alert" : "";
+
+      rows.push(`<tr class="inv-main-row ${alertClass}">
+      <td class="inv-item-cell">
         <div class="inv-name">${escapeHtml(item.name)}</div>
         <div class="inv-row-tags">
           <span class="inv-cat-tag">${escapeHtml(item.category)}</span>
           <span class="inv-unit-tag">${escapeHtml(item.unit)}</span>
         </div>
-      </div>
-      <div class="inv-bar-col">
-        <div class="inv-qty-row">
-          <span class="inv-qty-current"><strong>${qtyDisplay}</strong> ${escapeHtml(item.unit)}</span>
-          <span class="inv-qty-divider">/</span>
-          <span class="inv-qty-reorder">alert at ${reorderDisplay}</span>
-        </div>
+      </td>
+      <td class="inv-stock-cell">
+        <div class="inv-qty-row"><span class="inv-qty-current"><strong>${qtyDisplay}</strong> ${escapeHtml(item.unit)}</span></div>
         <div class="inv-bar-bg"><div class="inv-bar ${status === "critical" ? "crit" : status === "low" ? "low" : ""}" style="width:${percent}%"></div></div>
-      </div>
-      <div class="inv-row-right">
-        <span class="inv-price">₱${price}<span class="inv-price-unit">/unit</span></span>
-      </div>
-      <div class="inv-row-status">
-        <span class="inv-status-badge ${statusClass}">${statusLabel}</span>
-      </div>
-      <div class="inventory-row-actions">
-        <button class="row-action-btn" type="button" data-inv-action="restock" data-inv-id="${escapeHtml(item.id)}" title="Quick restock" aria-label="Quick restock"><i class="ri-add-box-line" aria-hidden="true"></i></button>
-        <button class="row-action-btn" type="button" data-inv-action="edit" data-inv-id="${escapeHtml(item.id)}" title="Edit inventory item" aria-label="Edit inventory item"><i class="ri-pencil-line" aria-hidden="true"></i></button>
-        <button class="row-action-btn danger" type="button" data-inv-action="delete" data-inv-id="${escapeHtml(item.id)}" title="Delete inventory item" aria-label="Delete inventory item"><i class="ri-delete-bin-line" aria-hidden="true"></i></button>
-      </div>
+      </td>
+      <td class="inv-reorder-cell">${reorderDisplay} ${escapeHtml(item.unit)}</td>
+      <td class="inv-price-cell"><span class="inv-price">₱${price}</span><span class="inv-price-unit">/unit</span></td>
+      <td class="inv-status-cell"><span class="inv-status-badge ${statusClass}">${statusLabel}</span></td>
+      <td class="inventory-row-actions">
+        <div class="inv-actions-inner">
+          <button class="row-action-btn" type="button" data-inv-action="restock" data-inv-id="${escapeHtml(item.id)}" title="Quick restock" aria-label="Quick restock"><i class="ri-add-box-line" aria-hidden="true"></i></button>
+          <button class="row-action-btn" type="button" data-inv-action="edit" data-inv-id="${escapeHtml(item.id)}" title="Edit inventory item" aria-label="Edit inventory item"><i class="ri-pencil-line" aria-hidden="true"></i></button>
+          <button class="row-action-btn danger" type="button" data-inv-action="delete" data-inv-id="${escapeHtml(item.id)}" title="Delete inventory item" aria-label="Delete inventory item"><i class="ri-delete-bin-line" aria-hidden="true"></i></button>
+        </div>
+      </td>
+    </tr>`);
+    });
+  });
+
+  listWrap.innerHTML = `
+    <div class="inventory-table-scroll">
+      <table class="inv-table">
+        <thead>
+          <tr>
+            <th class="inv-th-item">${buildInvSortHeader("item", "Item")}</th>
+            <th class="inv-th-stock">${buildInvSortHeader("stock", "Stock")}</th>
+            <th class="inv-th-reorder">${buildInvSortHeader("reorder", "Reorder")}</th>
+            <th class="inv-th-price">${buildInvSortHeader("price", "Price")}</th>
+            <th class="inv-th-status">${buildInvSortHeader("status", "Status")}</th>
+            <th class="inv-th-actions">Action</th>
+          </tr>
+        </thead>
+        <tbody>${rows.join("")}</tbody>
+      </table>
     </div>`;
-  }).join("");
+
+  // Bind header sort buttons
+  listWrap.querySelectorAll("button[data-inv-sort]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const key = btn.dataset.invSort;
+      const [descValue, ascValue] = invSortPairs(key);
+      _invSortBy = _invSortBy === descValue ? ascValue : descValue;
+      const sortSelect = document.getElementById("inventorySortSelect");
+      if (sortSelect) sortSelect.value = _invSortBy;
+      renderInventorySection();
+    });
+  });
 
   // Bind row actions
   listWrap.querySelectorAll("button[data-inv-action='restock']").forEach((btn) => {
@@ -2919,6 +3038,7 @@ function renderInventorySection() {
     clearBtn.addEventListener("click", () => {
       if (searchEl) searchEl.value = "";
       _invCategoryFilter = "All";
+      _invStatusFilter = "all";
       renderInventorySection();
       if (searchEl) searchEl.focus();
     });
@@ -2934,6 +3054,206 @@ function ensureInventoryUnitOption(selectEl, unitValue) {
   custom.textContent = unitValue;
   custom.dataset.dynamic = "true";
   selectEl.appendChild(custom);
+}
+
+// ── Editable category cards ──
+
+function buildInvCategoryCard(catName, items, isAll, tone) {
+  const isActive = isAll ? _invCategoryFilter === "All" : _invCategoryFilter === catName;
+  const count = items.length;
+  const alerts = items.filter((i) => inventoryStatus(i) !== "good").length;
+  const safeName = escapeHtml(catName);
+  const dataCat = isAll ? "All" : safeName;
+  const countText = `${count} item${count === 1 ? "" : "s"}${alerts ? ` · <span class="inv-cat-card-alerts">${alerts} need restock</span>` : ""}`;
+
+  if (isAll) {
+    return `<div class="inv-cat-card${isActive ? " active" : ""}" data-inv-cat="All">
+      <button type="button" class="inv-cat-card-main" data-inv-cat-filter="All" title="Show all items">
+        <span class="inv-cat-card-icon"><i class="ri-layout-grid-line"></i></span>
+        <span class="inv-cat-card-info"><span class="inv-cat-card-name">All Items</span></span>
+      </button>
+      <div class="inv-cat-card-foot">
+        <span class="inv-cat-card-count">${countText}</span>
+      </div>
+    </div>`;
+  }
+
+  return `<div class="inv-cat-card${isActive ? " active" : ""}" data-inv-cat="${safeName}">
+    <button type="button" class="inv-cat-card-main" data-inv-cat-filter="${safeName}" title="Filter by ${safeName}">
+      <span class="inv-cat-card-icon tone-${tone}"><i class="ri-price-tag-3-line"></i></span>
+      <span class="inv-cat-card-info"><span class="inv-cat-card-name">${safeName}</span></span>
+    </button>
+    <div class="inv-cat-card-foot">
+      <span class="inv-cat-card-count">${countText}</span>
+      <div class="inv-cat-card-actions">
+        <button type="button" class="inv-cat-card-btn" data-inv-cat-add="${safeName}" title="Add item to ${safeName}"><i class="ri-add-line"></i></button>
+        <button type="button" class="inv-cat-card-btn" data-inv-cat-rename="${safeName}" title="Rename category"><i class="ri-edit-line"></i></button>
+        <button type="button" class="inv-cat-card-btn danger" data-inv-cat-delete="${safeName}" title="Delete category"><i class="ri-delete-bin-line"></i></button>
+      </div>
+    </div>
+  </div>`;
+}
+
+function getMergedInventoryCategoryNames() {
+  const derived = state.inventoryItems.map((i) => String(i.category || "General").trim()).filter(Boolean);
+  const stored = Array.isArray(state.inventoryCategories) ? state.inventoryCategories : [];
+  return [...new Set([...derived, ...stored])].sort();
+}
+
+function renderInventoryCategoryCards(catPills) {
+  if (!catPills) return;
+
+  const allItems = state.inventoryItems;
+  const allCategories = getMergedInventoryCategoryNames();
+
+  let html = buildInvCategoryCard("All", allItems, true);
+  html += allCategories.map((cat, index) => buildInvCategoryCard(cat, allItems.filter((i) => String(i.category || "General").trim().toLowerCase() === cat.toLowerCase()), false, (index % 5) + 1)).join("");
+  html += `<button type="button" class="inv-cat-card inv-cat-card-new" data-inv-cat-add="" title="Create a new category">
+    <span class="inv-cat-card-icon"><i class="ri-add-circle-line"></i></span>
+    <span class="inv-cat-card-name">New Category</span>
+    <span class="inv-cat-card-count">Add a new stock category</span>
+  </button>`;
+
+  catPills.innerHTML = html;
+
+  catPills.querySelectorAll("[data-inv-cat-filter]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      _invCategoryFilter = btn.dataset.invCatFilter || "All";
+      renderInventorySection();
+    });
+  });
+
+  catPills.querySelectorAll("[data-inv-cat-add]").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const category = btn.dataset.invCatAdd || "";
+      if (!category) {
+        openNewCategoryModal();
+        return;
+      }
+      openInventoryAddForm(category);
+    });
+  });
+
+  catPills.querySelectorAll("[data-inv-cat-rename]").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      startCategoryRename(btn.dataset.invCatRename);
+    });
+  });
+
+  catPills.querySelectorAll("[data-inv-cat-delete]").forEach((btn) => {
+    btn.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      const catName = btn.dataset.invCatDelete;
+      const itemCount = state.inventoryItems.filter(
+        (i) => String(i.category || "General").trim().toLowerCase() === catName.toLowerCase()
+      ).length;
+      const message = itemCount > 0
+        ? `Delete the category "<strong>${escapeHtml(catName)}</strong>" and its ${itemCount} item${itemCount === 1 ? "" : "s"}? This action cannot be undone.`
+        : `Delete the empty category "<strong>${escapeHtml(catName)}</strong>"?`;
+      const choice = await ModalUtils.confirm("Delete Category", message, { html: true });
+      if (choice !== 1) return;
+      try {
+        await deleteInventoryCategory(catName, { keepItems: false });
+        await ModalUtils.success("Category Deleted", itemCount > 0 ? `Category "${catName}" and its items have been removed.` : `Category "${catName}" has been removed.`);
+        if (_invCategoryFilter === catName) _invCategoryFilter = "All";
+        await loadInventoryPage();
+      } catch (error) {
+        await ModalUtils.error("Delete Failed", error?.message || "Unable to delete category right now.");
+      }
+    });
+  });
+}
+
+function findInvCatCard(catName) {
+  const pills = document.getElementById("inventoryCategoryPills");
+  if (!pills) return null;
+  for (const card of pills.querySelectorAll(".inv-cat-card")) {
+    if (card.dataset.invCat === catName) return card;
+  }
+  return null;
+}
+
+function startCategoryRename(catName) {
+  const card = findInvCatCard(catName);
+  if (!card) return;
+  const main = card.querySelector(".inv-cat-card-main");
+  const infoEl = card.querySelector(".inv-cat-card-info");
+  const nameEl = card.querySelector(".inv-cat-card-name");
+  const actions = card.querySelector(".inv-cat-card-actions");
+  if (!main || !infoEl || !nameEl) return;
+
+  const originalName = nameEl.textContent;
+  const input = document.createElement("input");
+  input.className = "inv-cat-card-rename-input";
+  input.value = originalName;
+  input.maxLength = 40;
+  input.setAttribute("aria-label", "Rename category");
+
+  // Swap the whole filter button for a neutral wrapper while renaming so
+  // clicks/keys (space/enter) inside the input can never activate the button.
+  const wrapper = document.createElement("div");
+  wrapper.className = "inv-cat-card-main inv-cat-card-renaming";
+  const icon = main.querySelector(".inv-cat-card-icon");
+  if (icon) wrapper.appendChild(icon.cloneNode(true));
+  wrapper.appendChild(input);
+  main.replaceWith(wrapper);
+
+  let done = false;
+  const finish = () => {
+    if (done) return;
+    done = true;
+    if (!wrapper.isConnected) return;
+    wrapper.replaceWith(main);
+    if (actions) actions.style.display = "";
+  };
+
+  const commit = async () => {
+    const next = input.value.trim();
+    if (!next || next.toLowerCase() === originalName.toLowerCase()) {
+      finish();
+      return;
+    }
+    try {
+      await renameInventoryCategory(originalName, next);
+      await ModalUtils.success("Category Renamed", `Category renamed to "${next}".`);
+      if (_invCategoryFilter === originalName) _invCategoryFilter = next;
+      await loadInventoryPage();
+    } catch (error) {
+      await ModalUtils.error("Rename Failed", error?.message || "Unable to rename category right now.");
+      finish();
+    }
+  };
+
+  input.focus();
+  input.select();
+  input.addEventListener("mousedown", (e) => e.stopPropagation());
+  input.addEventListener("click", (e) => e.stopPropagation());
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") input.blur();
+    if (e.key === "Escape") finish();
+  });
+  input.addEventListener("blur", () => commit());
+}
+
+function openInventoryAddForm(category) {
+  clearInventoryForm();
+  const catEl = document.getElementById("invCategory");
+  if (catEl && category) catEl.value = category;
+
+  const body = document.getElementById("inventoryForm");
+  const chevron = document.getElementById("invFormChevron");
+  if (body && body.classList.contains("inv-form-collapsed")) {
+    body.classList.remove("inv-form-collapsed");
+    if (chevron) chevron.classList.remove("inv-form-collapsed");
+  }
+
+  const nameEl = document.getElementById("invName");
+  if (nameEl) nameEl.focus();
+
+  const formCard = document.getElementById("invFormCard");
+  if (formCard) formCard.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 function clearInventoryForm() {
@@ -3181,6 +3501,74 @@ function closeQuickAddStock() {
   quickAddSelectedItem = null;
 }
 
+function openNewCategoryModal() {
+  const modal = document.getElementById("newCategoryModal");
+  const input = document.getElementById("newCategoryNameInput");
+  const createBtn = document.getElementById("newCategoryCreateBtn");
+  if (!modal) return;
+
+  if (input) input.value = "";
+  if (createBtn) createBtn.disabled = true;
+
+  modal.style.display = "flex";
+  modal.setAttribute("aria-hidden", "false");
+  window.setTimeout(() => { if (input) input.focus(); }, 0);
+}
+
+function closeNewCategoryModal() {
+  const modal = document.getElementById("newCategoryModal");
+  if (!modal) return;
+  modal.style.display = "none";
+  modal.setAttribute("aria-hidden", "true");
+}
+
+function submitNewCategoryModal() {
+  const input = document.getElementById("newCategoryNameInput");
+  const name = (input?.value || "").trim();
+  if (!name) return;
+
+  const existing = getMergedInventoryCategoryNames().some((c) => c.toLowerCase() === name.toLowerCase());
+  if (existing) {
+    ModalUtils.warning("Duplicate Category", `A category named "${name}" already exists.`);
+    return;
+  }
+
+  (async () => {
+    try {
+      await createInventoryCategory(name);
+      state.inventoryCategories = [...(state.inventoryCategories || []), name].sort((a, b) => a.localeCompare(b));
+      closeNewCategoryModal();
+      renderInventorySection();
+      await ModalUtils.success("Category Created", `Category "${name}" has been created.`);
+    } catch (error) {
+      await ModalUtils.error("Create Failed", error?.message || "Unable to create the category right now.");
+    }
+  })();
+}
+
+function bindNewCategoryModal() {
+  const modal = document.getElementById("newCategoryModal");
+  if (!modal) return;
+
+  const input = document.getElementById("newCategoryNameInput");
+  const createBtn = document.getElementById("newCategoryCreateBtn");
+  const cancelBtn = document.getElementById("newCategoryCancelBtn");
+
+  input?.addEventListener("input", () => {
+    if (createBtn) createBtn.disabled = !input.value.trim();
+  });
+  input?.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      submitNewCategoryModal();
+    } else if (e.key === "Escape") {
+      closeNewCategoryModal();
+    }
+  });
+  createBtn?.addEventListener("click", submitNewCategoryModal);
+  cancelBtn?.addEventListener("click", closeNewCategoryModal);
+}
+
 function renderQuickAddSearchResults(term) {
   const resultsEl = document.getElementById("quickAddSearchResults");
   if (!resultsEl) return;
@@ -3366,10 +3754,76 @@ function bindQuickAddStock() {
     changeBtn.dataset.bound = "1";
     changeBtn.addEventListener("click", quickAddChangeItem);
   }
+
+  const restockCloseBtn = document.getElementById("restockCloseBtn");
+  if (restockCloseBtn && !restockCloseBtn.dataset.bound) {
+    restockCloseBtn.dataset.bound = "1";
+    restockCloseBtn.addEventListener("click", closeRestockModal);
+  }
 }
 
 window.openQuickAddStock = openQuickAddStock;
 window.closeQuickAddStock = closeQuickAddStock;
+window.openNewCategoryModal = openNewCategoryModal;
+window.closeNewCategoryModal = closeNewCategoryModal;
+
+function openRestockModal() {
+  const modal = document.getElementById("restockModal");
+  const listEl = document.getElementById("restockItemsList");
+  const emptyEl = document.getElementById("restockEmpty");
+  const subEl = document.getElementById("restockModalSub");
+  if (!modal || !listEl) return;
+
+  const items = (state.inventoryItems || []).filter((i) => inventoryStatus(i) !== "good");
+  const statusLabels = { out: "Out of Stock", critical: "Critical", low: "Low Stock" };
+
+  if (emptyEl) emptyEl.style.display = items.length ? "none" : "block";
+
+  listEl.innerHTML = items.map((item) => {
+    const qty = Number(item.quantity || 0);
+    const reorderLevel = Number(item.reorderLevel || 0);
+    const status = inventoryStatus(item);
+    const statusClass = status === "out" ? "inv-status-out" : status === "critical" ? "inv-status-critical" : "inv-status-low";
+    return `<div class="restock-item">
+      <div class="restock-item-info">
+        <span class="restock-item-name">${escapeHtml(item.name)}</span>
+        <span class="restock-item-tags"><span class="inv-cat-tag">${escapeHtml(item.category)}</span><span class="inv-unit-tag">${escapeHtml(item.unit)}</span></span>
+      </div>
+      <div class="restock-item-stock">
+        <span class="restock-qty"><strong>${formatDecimal(qty)}</strong> ${escapeHtml(item.unit)}</span>
+        <span class="restock-reorder">Reorder: ${formatDecimal(reorderLevel)} ${escapeHtml(item.unit)}</span>
+      </div>
+      <span class="inv-status-badge ${statusClass}">${statusLabels[status] || "Low Stock"}</span>
+      <button class="restock-item-btn" type="button" data-restock-id="${escapeHtml(item.id)}" title="Add stock for ${escapeHtml(item.name)}"><i class="ri-add-box-line"></i> Restock</button>
+    </div>`;
+  }).join("");
+
+  if (subEl) subEl.textContent = `${items.length} item${items.length === 1 ? "" : "s"} at or below the restock level`;
+
+  listEl.querySelectorAll(".restock-item-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const item = state.inventoryItems.find((i) => i.id === btn.dataset.restockId);
+      closeRestockModal();
+      if (item) {
+        openQuickAddStock();
+        selectQuickAddItem(item);
+      }
+    });
+  });
+
+  modal.style.display = "flex";
+  modal.setAttribute("aria-hidden", "false");
+}
+
+function closeRestockModal() {
+  const modal = document.getElementById("restockModal");
+  if (!modal) return;
+  modal.style.display = "none";
+  modal.setAttribute("aria-hidden", "true");
+}
+
+window.openRestockModal = openRestockModal;
+window.closeRestockModal = closeRestockModal;
 
 async function loadAccountsPage() {
   const host = document.getElementById("accountsContent");

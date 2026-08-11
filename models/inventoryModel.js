@@ -1,10 +1,21 @@
 import { db } from "../controllers/firebase.js";
 import {
-  collection, getDocs, doc, deleteDoc, getDoc, runTransaction
+  collection, getDocs, doc, setDoc, deleteDoc, getDoc, runTransaction, updateDoc
 } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js";
 
 const INVENTORY_COLLECTION = "inventory";
 const ORDERS_COLLECTION = "orders";
+// Stores empty inventory categories so a category can exist before it has any
+// items. Item-derived categories are still derived live; this collection only
+// holds categories created from the "New Category" modal.
+const INVENTORY_CATEGORIES_COLLECTION = "inventoryCategories";
+
+function inventoryCategoryKey(name) {
+  return String(name || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+}
 
 const UNIT_ALIASES = {
   pcs: "pcs",
@@ -122,6 +133,27 @@ export async function getInventoryItems() {
   return snap.docs
     .map((d) => ({ id: d.id, ...d.data() }))
     .sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")));
+}
+
+export async function getInventoryCategoryNames() {
+  const snap = await getDocs(collection(db, INVENTORY_CATEGORIES_COLLECTION));
+  return snap.docs
+    .map((d) => String(d.data()?.name || d.id || "").trim())
+    .filter(Boolean)
+    .sort((a, b) => a.localeCompare(b));
+}
+
+export async function createInventoryCategory(name) {
+  const cleanName = String(name || "").trim();
+  if (!cleanName) return { success: false, reason: "invalid-name" };
+
+  const id = inventoryCategoryKey(cleanName);
+  await setDoc(doc(db, INVENTORY_CATEGORIES_COLLECTION, id), {
+    id,
+    name: cleanName,
+    createdAtMs: Date.now(),
+  });
+  return { success: true, name: cleanName };
 }
 
 export async function saveInventoryItem(item, options = {}) {
@@ -588,6 +620,70 @@ async function readOrderInventoryAudit(sale) {
 
 export async function deleteInventoryItem(id) {
   await deleteDoc(doc(db, INVENTORY_COLLECTION, String(id)));
+}
+
+function inventoryCategoryMatches(itemCategory, target) {
+  return String(itemCategory || "General").trim().toLowerCase() === String(target || "").trim().toLowerCase();
+}
+
+export async function renameInventoryCategory(oldName, newName) {
+  const from = String(oldName || "").trim();
+  const to = String(newName || "").trim();
+  if (!from || !to) return { success: false, updated: 0, reason: "invalid-name" };
+  if (from.toLowerCase() === to.toLowerCase()) return { success: true, updated: 0 };
+
+  const snap = await getDocs(collection(db, INVENTORY_COLLECTION));
+  const targets = snap.docs.filter((d) => inventoryCategoryMatches(d.data()?.category, from));
+  const updates = targets.map((d) =>
+    updateDoc(doc(db, INVENTORY_COLLECTION, d.id), { category: to, updatedAtMs: Date.now() })
+  );
+  await Promise.all(updates);
+
+  // Also rename a stored (possibly empty) category doc so it keeps existing.
+  const storedRef = doc(db, INVENTORY_CATEGORIES_COLLECTION, inventoryCategoryKey(from));
+  const storedSnap = await getDoc(storedRef);
+  if (storedSnap.exists()) {
+    const createdAtMs = Number(storedSnap.data()?.createdAtMs || Date.now());
+    await setDoc(doc(db, INVENTORY_CATEGORIES_COLLECTION, inventoryCategoryKey(to)), {
+      id: inventoryCategoryKey(to),
+      name: to,
+      createdAtMs,
+    });
+    await deleteDoc(storedRef);
+  }
+
+  return { success: true, updated: targets.length };
+}
+
+// Delete a category and its items, or keep the items by reassigning them to "General".
+export async function deleteInventoryCategory(name, options = {}) {
+  const keepItems = options.keepItems === true;
+  const target = String(name || "").trim();
+  if (!target) return { success: false, affected: 0, reason: "invalid-name" };
+
+  const snap = await getDocs(collection(db, INVENTORY_COLLECTION));
+  const targets = snap.docs.filter((d) => inventoryCategoryMatches(d.data()?.category, target));
+
+  if (keepItems) {
+    const updates = targets.map((d) =>
+      updateDoc(doc(db, INVENTORY_COLLECTION, d.id), { category: "General", updatedAtMs: Date.now() })
+    );
+    await Promise.all(updates);
+  } else {
+    const deletes = targets.map((d) => deleteDoc(doc(db, INVENTORY_COLLECTION, d.id)));
+    await Promise.all(deletes);
+  }
+
+  // Remove a stored (possibly empty) category doc too, if present.
+  const storedRef = doc(db, INVENTORY_CATEGORIES_COLLECTION, inventoryCategoryKey(target));
+  try {
+    const storedSnap = await getDoc(storedRef);
+    if (storedSnap.exists()) await deleteDoc(storedRef);
+  } catch {
+    // No-op: an empty stored doc is not required for the delete to succeed.
+  }
+
+  return { success: true, affected: targets.length };
 }
 
 export async function clearInventoryItems() {

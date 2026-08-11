@@ -478,113 +478,132 @@
               <div class="card-head inv-form-head" id="invFormToggle">
                 <div class="inv-form-head-left">
                   <span class="inv-form-head-icon"><i class="ri-add-circle-line"></i></span>
-                  <span class="card-title">Add New Item</span>
+                  <div class="inv-form-head-text">
+                    <span class="card-title">Add New Item</span>
+                    <span class="inv-form-head-sub">Create a stock item to start tracking inventory.</span>
+                  </div>
                 </div>
                 <i class="ri-arrow-up-s-line inv-form-chevron" id="invFormChevron"></i>
               </div>
-              <form id="inventoryForm" class="inventory-form-grid inv-form-body">
+              <form id="inventoryForm" class="inv-form-body">
                 <input id="invId" type="hidden" />
-                <div class="inv-form-field">
-                  <div class="ls-label">Item Name</div>
-                  <input
-                    id="invName"
-                    class="ls-input"
-                    placeholder="e.g. Espresso Beans"
-                    required
-                  />
-                </div>
-                <div class="inv-form-field">
-                  <div class="ls-label">Category</div>
-                  <input
-                    id="invCategory"
-                    class="ls-input"
-                    placeholder="Coffee"
-                    required
-                  />
-                </div>
-                <div class="inv-form-field">
-                  <div class="ls-label">Unit</div>
-                  <select
-                    id="invUnit"
-                    class="ls-input"
-                    required
-                  >
-                    <option value="" disabled selected>
-                      Select unit of measure
-                    </option>
-                    <optgroup label="Count">
-                      <option value="pcs">pcs - pieces</option>
-                      <option value="pack">pack - package</option>
-                      <option value="box">box - boxed item</option>
-                      <option value="tray">tray - tray unit</option>
-                      <option value="bottle">bottle - bottled item</option>
-                      <option value="can">can - canned item</option>
-                      <option value="jar">jar - jar unit</option>
-                      <option value="sachet">sachet - single-use packet</option>
-                    </optgroup>
-                    <optgroup label="Weight">
-                      <option value="g">g - grams</option>
-                      <option value="kg">kg - kilograms</option>
-                      <option value="oz">oz - ounces</option>
-                      <option value="lb">lb - pounds</option>
-                    </optgroup>
-                    <optgroup label="Volume">
-                      <option value="ml">ml - milliliters</option>
-                      <option value="L">L - liters</option>
-                      <option value="fl oz">fl oz - fluid ounces</option>
-                      <option value="gal">gal - gallons</option>
-                    </optgroup>
-                    <optgroup label="Preparation / Service">
-                      <option value="shot">shot - espresso shot</option>
-                      <option value="cup">cup - cup serving</option>
-                      <option value="serving">serving - serving size</option>
-                      <option value="portion">portion - portion size</option>
-                      <option value="slice">slice - sliced serving</option>
-                      <option value="set">set - grouped set</option>
-                    </optgroup>
-                  </select>
-                </div>
-                <div class="inv-form-field">
-                  <div class="ls-label">Current Stock</div>
-                  <input
-                    id="invQuantity"
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    max="99999.99"
-                    class="ls-input inv-decimal-input"
-                    placeholder="0"
-                    required
-                  />
-                </div>
-                <div class="inv-form-field">
-                  <div class="ls-label">Restock Alert Level</div>
-                  <input
-                    id="invReorder"
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    max="99999.99"
-                    class="ls-input inv-decimal-input"
-                    placeholder="0"
-                    required
-                  />
-                  <div class="inventory-field-note">
-                    Alerts when stock reaches this number.
+                <div class="inv-form-section">
+                  <div class="inv-form-section-title"><i class="ri-price-tag-3-line"></i> Item Details</div>
+                  <div class="inv-form-section-grid">
+                    <div class="inv-form-field">
+                      <label class="ls-label inv-form-label" for="invName">Item Name</label>
+                      <input
+                        id="invName"
+                        class="ls-input inv-form-input"
+                        placeholder="e.g. Espresso Beans"
+                        required
+                      />
+                    </div>
+                    <div class="inv-form-field">
+                      <label class="ls-label inv-form-label" for="invCategory">Category</label>
+                      <input
+                        id="invCategory"
+                        class="ls-input inv-form-input"
+                        placeholder="e.g. Coffee"
+                        required
+                      />
+                    </div>
+                    <div class="inv-form-field">
+                      <label class="ls-label inv-form-label" for="invUnit">Unit</label>
+                      <div class="inv-select-wrap">
+                        <select
+                          id="invUnit"
+                          class="ls-input inv-form-input inv-unit-select"
+                          required
+                        >
+                          <option value="" disabled selected>
+                            Select unit of measure
+                          </option>
+                          <optgroup label="Count">
+                            <option value="pcs">pcs - pieces</option>
+                            <option value="pack">pack - package</option>
+                            <option value="box">box - boxed item</option>
+                            <option value="tray">tray - tray unit</option>
+                            <option value="bottle">bottle - bottled item</option>
+                            <option value="can">can - canned item</option>
+                            <option value="jar">jar - jar unit</option>
+                            <option value="sachet">sachet - single-use packet</option>
+                          </optgroup>
+                          <optgroup label="Weight">
+                            <option value="g">g - grams</option>
+                            <option value="kg">kg - kilograms</option>
+                            <option value="oz">oz - ounces</option>
+                            <option value="lb">lb - pounds</option>
+                          </optgroup>
+                          <optgroup label="Volume">
+                            <option value="ml">ml - milliliters</option>
+                            <option value="L">L - liters</option>
+                            <option value="fl oz">fl oz - fluid ounces</option>
+                            <option value="gal">gal - gallons</option>
+                          </optgroup>
+                          <optgroup label="Preparation / Service">
+                            <option value="shot">shot - espresso shot</option>
+                            <option value="cup">cup - cup serving</option>
+                            <option value="serving">serving - serving size</option>
+                            <option value="portion">portion - portion size</option>
+                            <option value="slice">slice - sliced serving</option>
+                            <option value="set">set - grouped set</option>
+                          </optgroup>
+                        </select>
+                        <i class="ri-arrow-down-s-line inv-select-arrow"></i>
+                      </div>
+                    </div>
                   </div>
                 </div>
-                <div class="inv-form-field">
-                  <div class="ls-label">Price (Per Unit)</div>
-                  <input
-                    id="invPrice"
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    max="99999.99"
-                    class="ls-input inv-decimal-input"
-                    placeholder="0.00"
-                    required
-                  />
+                <div class="inv-form-section">
+                  <div class="inv-form-section-title"><i class="ri-line-chart-line"></i> Stock &amp; Pricing</div>
+                  <div class="inv-form-section-grid">
+                    <div class="inv-form-field">
+                      <label class="ls-label inv-form-label" for="invQuantity">Current Stock</label>
+                      <input
+                        id="invQuantity"
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        max="99999.99"
+                        class="ls-input inv-form-input inv-decimal-input"
+                        placeholder="0"
+                        required
+                      />
+                    </div>
+                    <div class="inv-form-field">
+                      <label class="ls-label inv-form-label" for="invReorder">Restock Alert Level</label>
+                      <input
+                        id="invReorder"
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        max="99999.99"
+                        class="ls-input inv-form-input inv-decimal-input"
+                        placeholder="0"
+                        required
+                      />
+                      <div class="inventory-field-note">
+                        <i class="ri-information-line"></i> Alerts when stock reaches this number.
+                      </div>
+                    </div>
+                    <div class="inv-form-field">
+                      <label class="ls-label inv-form-label" for="invPrice">Price (Per Unit)</label>
+                      <div class="inv-input-wrap">
+                        <span class="inv-currency-symbol">₱</span>
+                        <input
+                          id="invPrice"
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          max="99999.99"
+                          class="ls-input inv-form-input inv-decimal-input inv-currency-input"
+                          placeholder="0.00"
+                          required
+                        />
+                      </div>
+                    </div>
+                  </div>
                 </div>
                 <div class="inventory-form-actions">
                   <button class="orders-btn ghost" type="button" id="invCancelBtn">
@@ -604,16 +623,24 @@
                   <span class="inv-item-count" id="invItemCount"></span>
                 </div>
                 <div class="inventory-card-head-actions">
-                  <select id="inventorySortSelect" class="ls-input inventory-sort-select">
-                    <option value="name">Sort: Name</option>
-                    <option value="status">Sort: Status</option>
-                    <option value="stock-asc">Sort: Stock ↑</option>
-                    <option value="stock-desc">Sort: Stock ↓</option>
-                    <option value="category">Sort: Category</option>
-                  </select>
+                  <div class="inv-sort-wrap">
+                    <select id="inventorySortSelect" class="inventory-sort-select">
+                      <option value="name_asc">Sort: Name ↑</option>
+                      <option value="name_desc">Sort: Name ↓</option>
+                      <option value="status">Sort: Status</option>
+                      <option value="stock-asc">Sort: Stock ↑</option>
+                      <option value="stock-desc">Sort: Stock ↓</option>
+                      <option value="reorder_asc">Sort: Reorder ↑</option>
+                      <option value="reorder_desc">Sort: Reorder ↓</option>
+                      <option value="price_asc">Sort: Price ↑</option>
+                      <option value="price_desc">Sort: Price ↓</option>
+                      <option value="category">Sort: Category</option>
+                    </select>
+                    <i class="ri-arrow-down-s-line inv-sort-chevron"></i>
+                  </div>
                   <button class="orders-btn ghost inv-toolbar-btn" type="button"
                     onclick="window.refreshInventory && window.refreshInventory()"
-                    title="Refresh inventory">
+                    title="Refresh inventory" aria-label="Refresh inventory">
                     <i class="ri-refresh-line"></i>
                   </button>
                   <button class="orders-btn inv-toolbar-btn inv-toolbar-danger" type="button"
@@ -624,6 +651,7 @@
                   </button>
                 </div>
               </div>
+              <div class="inv-categories-label"><i class="ri-price-tag-3-line"></i> Categories</div>
               <div id="inventoryCategoryPills" class="inv-category-pills"></div>
               <div class="inventory-search-row">
                 <div class="inventory-search-wrap">
@@ -1301,6 +1329,107 @@
             disabled
           >
             <i class="ri-add-line" aria-hidden="true"></i> Add Stock
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div
+      class="modal-overlay-custom quick-add-overlay"
+      id="restockModal"
+      aria-hidden="true"
+      style="display: none"
+      onclick="if (event.target === this) window.closeRestockModal && window.closeRestockModal();"
+    >
+      <div
+        class="modal-custom restock-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="restockModalTitle"
+      >
+        <div class="modal-custom-header quick-add-header">
+          <div class="modal-custom-icon warning" aria-hidden="true">
+            <i class="ri-shopping-cart-2-line" aria-hidden="true"></i>
+          </div>
+          <div class="modal-custom-title-wrap">
+            <div class="modal-custom-title" id="restockModalTitle">
+              Items Needing Restock
+            </div>
+            <div class="quick-add-subtitle" id="restockModalSub"></div>
+          </div>
+          <button class="quick-add-close-btn" type="button" onclick="window.closeRestockModal && window.closeRestockModal()" title="Close">
+            <i class="ri-close-line" aria-hidden="true"></i>
+          </button>
+        </div>
+
+        <div class="modal-custom-body restock-modal-body">
+          <div id="restockItemsList" class="restock-list"></div>
+          <div id="restockEmpty" class="restock-empty" style="display: none;">
+            <i class="ri-checkbox-circle-line" aria-hidden="true"></i>
+            <div>All items are well stocked!</div>
+          </div>
+        </div>
+
+        <div class="modal-custom-footer quick-add-footer">
+          <button class="modal-custom-btn secondary" type="button" id="restockCloseBtn">
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div
+      class="modal-overlay-custom quick-add-overlay"
+      id="newCategoryModal"
+      aria-hidden="true"
+      style="display: none"
+      onclick="if (event.target === this) window.closeNewCategoryModal && window.closeNewCategoryModal();"
+    >
+      <div
+        class="modal-custom quick-add-modal new-category-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="newCategoryTitle"
+      >
+        <div class="modal-custom-header quick-add-header">
+          <div class="modal-custom-icon info" aria-hidden="true">
+            <i class="ri-price-tag-3-line" aria-hidden="true"></i>
+          </div>
+          <div class="modal-custom-title-wrap">
+            <div class="modal-custom-title" id="newCategoryTitle">
+              New Category
+            </div>
+            <div class="quick-add-subtitle">Name your new inventory category</div>
+          </div>
+          <button class="quick-add-close-btn" type="button" onclick="window.closeNewCategoryModal && window.closeNewCategoryModal()" title="Close">
+            <i class="ri-close-line" aria-hidden="true"></i>
+          </button>
+        </div>
+
+        <div class="modal-custom-body quick-add-body">
+          <div class="quick-add-section">
+            <div class="quick-add-section-label">
+              <i class="ri-price-tag-3-line" aria-hidden="true"></i> Category Name
+            </div>
+            <input
+              id="newCategoryNameInput"
+              class="ls-input quick-add-cat-input"
+              placeholder="e.g. Beans, Syrups, Cups..."
+              maxlength="40"
+              autocomplete="off"
+            />
+            <div class="new-category-hint">
+              The category is added to your list right away.
+            </div>
+          </div>
+        </div>
+
+        <div class="modal-custom-footer quick-add-footer">
+          <button class="modal-custom-btn secondary" type="button" id="newCategoryCancelBtn">
+            Cancel
+          </button>
+          <button class="modal-custom-btn primary" type="button" id="newCategoryCreateBtn" disabled>
+            <i class="ri-add-line" aria-hidden="true"></i> Create Category
           </button>
         </div>
       </div>
