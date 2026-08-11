@@ -661,15 +661,16 @@
                     class="ls-input inventory-search-input"
                     placeholder="Search stock item..."
                   />
+                  <button
+                    id="inventorySearchClear"
+                    class="inventory-search-clear"
+                    type="button"
+                    title="Clear search"
+                    aria-label="Clear search"
+                  >
+                    <i class="ri-close-line"></i>
+                  </button>
                 </div>
-                <button
-                  id="inventorySearchClear"
-                  class="orders-btn ghost"
-                  type="button"
-                  title="Clear search"
-                >
-                  <i class="ri-close-line"></i>
-                </button>
                 <button
                   id="quickAddStockBtn"
                   class="orders-btn quick-add-stock-btn"
@@ -677,7 +678,7 @@
                   onclick="window.openQuickAddStock && window.openQuickAddStock()"
                   title="Quick add stock to an existing item"
                 >
-                  <i class="ri-add-circle-line" aria-hidden="true"></i> Quick Add Stock
+                  <i class="ri-add-circle-line" aria-hidden="true"></i><span>Quick Add Stock</span>
                 </button>
               </div>
               <div id="inventoryAlertStrip" class="inventory-alert-strip"></div>

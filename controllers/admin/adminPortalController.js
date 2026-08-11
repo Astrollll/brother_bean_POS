@@ -2748,6 +2748,10 @@ function renderInventorySection() {
   // Read search input
   const searchEl = document.getElementById("inventorySearchInput");
   const searchTerm = (searchEl && String(searchEl.value || "").trim().toLowerCase()) || "";
+
+  const searchClearBtn = document.getElementById("inventorySearchClear");
+  if (searchClearBtn) searchClearBtn.style.visibility = searchTerm ? "visible" : "hidden";
+
   let filteredItems = searchTerm
     ? state.inventoryItems.filter((i) => {
         const hay = (String(i.name || "") + " " + String(i.category || "") + " " + String(i.id || "")).toLowerCase();

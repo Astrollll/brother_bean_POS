@@ -3694,50 +3694,71 @@ button,
 .inventory-search-row {
   margin: 12px 0 0 0;
   display: flex;
-  gap: 8px;
+  gap: 10px;
   align-items: center;
-  flex-wrap: wrap;
 }
 
 .inventory-search-wrap {
   position: relative;
-  flex: 1 1 260px;
+  flex: 1 1 auto;
   min-width: 0;
-  max-width: 480px;
   display: flex;
   align-items: center;
 }
 
 .inventory-search-icon {
   position: absolute;
-  left: 12px;
+  left: 14px;
   top: 0;
   bottom: 0;
   display: flex;
   align-items: center;
-  font-size: 15px;
+  font-size: 16px;
   color: var(--text-muted);
   pointer-events: none;
   z-index: 1;
 }
 
 .inventory-search-input {
-  padding-left: 36px !important;
+  padding-left: 40px !important;
+  padding-right: 44px !important;
   width: 100%;
+  height: 44px;
   margin-bottom: 0 !important;
 }
 
-.inventory-search-row .orders-btn.ghost {
-  flex-shrink: 0;
-  width: 34px;
-  height: 34px;
-  min-width: 34px;
-  min-height: 34px;
-  padding: 0;
+.inventory-search-wrap:focus-within .inventory-search-icon {
+  color: var(--primary);
+}
+
+.inventory-search-wrap:focus-within .inventory-search-input {
+  border-color: var(--primary-light);
+  box-shadow: 0 0 0 3px rgba(107, 68, 35, 0.1);
+}
+
+.inventory-search-clear {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 16px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 16px;
+  cursor: pointer;
+  visibility: hidden;
+  transition: background 0.15s ease, color 0.15s ease, visibility 0s;
+}
+
+.inventory-search-clear:hover {
+  background: rgba(107, 68, 35, 0.08);
+  color: var(--text-primary);
 }
 
 .inv-empty-state {
@@ -3881,11 +3902,28 @@ button,
   white-space: nowrap;
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 8px;
+  height: 44px;
+  padding: 0 18px 0 6px;
+  border-radius: 12px;
+  font-size: 13px;
+  flex-shrink: 0;
 }
 
 .quick-add-stock-btn i {
-  font-size: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.22);
+  color: #fff;
+  font-size: 17px;
+}
+
+.quick-add-stock-btn:hover i {
+  background: rgba(255, 255, 255, 0.3);
 }
 
 .modal-custom.quick-add-modal {
@@ -4530,6 +4568,13 @@ button,
 
   .quick-add-stock-btn span {
     display: none;
+  }
+
+  .quick-add-stock-btn {
+    flex: 0 0 auto;
+    width: 44px;
+    padding: 0;
+    justify-content: center;
   }
 }
 
@@ -6599,9 +6644,9 @@ input:checked + .tslider::before {
     max-width: 100%;
   }
 
-  .inventory-search-row .orders-btn {
+  .inventory-search-row .quick-add-stock-btn {
     flex: 1;
-    text-align: center;
+    justify-content: center;
   }
 
   .orders-filters {
