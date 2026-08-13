@@ -2154,7 +2154,7 @@ button,
   margin-top: 16px;
   padding: 0 16px 16px;
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   gap: 14px;
 }
 
@@ -2176,6 +2176,38 @@ button,
 
 .logs-kpi-row .orders-kpi-card:nth-child(3) {
   animation-delay: 0.32s;
+}
+
+.logs-kpi-row .orders-kpi-card:nth-child(4) {
+  animation-delay: 0.4s;
+}
+
+.logs-kpi-row .orders-kpi-card:nth-child(5) {
+  animation-delay: 0.48s;
+}
+
+.logs-kpi-row .orders-kpi-card:nth-child(6) {
+  animation-delay: 0.56s;
+}
+
+.logs-kpi-row .orders-kpi-card:nth-child(7) {
+  animation-delay: 0.64s;
+}
+
+.logs-variance {
+  font-weight: 700;
+}
+
+.logs-variance.is-balanced {
+  color: #15803d;
+}
+
+.logs-variance.is-over {
+  color: #b45309;
+}
+
+.logs-variance.is-short {
+  color: #b91c1c;
 }
 
 .logs-type {

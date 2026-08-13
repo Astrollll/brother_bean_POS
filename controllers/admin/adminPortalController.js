@@ -2541,10 +2541,31 @@ async function loadLogsPage() {
   const cashOutTotal = drawerLogs.length > 0
     ? logsSumKind(entries, "out")
     : (legacyStats ? Number(legacyStats.cashOut || 0) : 0);
+  // End-of-day reconciliation: expected cash on hand = starting cash + cash
+  // sales + cash in − cash out. Counted cash and the variance come from the
+  // latest manual "count" entry (if any).
+  const cashSales = legacyStats ? Number(legacyStats.cashReceived || 0) : 0;
+  const cashOnHand = Math.round((floatTotal + cashSales + cashInTotal - cashOutTotal) * 100) / 100;
+  const countEntries = (entries || []).filter((e) => e?.kind === "count");
+  const countedCash = countEntries.length
+    ? Number(countEntries[countEntries.length - 1].amount) || 0
+    : null;
+  const variance = countedCash === null ? null : Math.round((countedCash - cashOnHand) * 100) / 100;
 
   setLogsKpi("logsFloatValue", hasRecord ? logsFormatPeso(floatTotal) : "—");
   setLogsKpi("logsCashInValue", hasRecord ? logsFormatPeso(cashInTotal) : "—");
   setLogsKpi("logsCashOutValue", hasRecord ? logsFormatPeso(cashOutTotal) : "—");
+  setLogsKpi("logsCashSalesValue", hasRecord ? logsFormatPeso(cashSales) : "—");
+  setLogsKpi("logsCashOnHandValue", hasRecord ? logsFormatPeso(cashOnHand) : "—");
+  setLogsKpi("logsCountedValue", hasRecord ? (countedCash === null ? "—" : logsFormatPeso(countedCash)) : "—");
+
+  const varianceEl = document.getElementById("logsVarianceValue");
+  if (varianceEl) {
+    varianceEl.innerHTML = variance === null ? "—"
+      : variance === 0 ? `<span class="logs-variance is-balanced">Balanced</span>`
+      : variance > 0 ? `<span class="logs-variance is-over">Over ${logsFormatPeso(variance)}</span>`
+      : `<span class="logs-variance is-short">Short ${logsFormatPeso(Math.abs(variance))}</span>`;
+  }
 
   if (!hasRecord) {
     renderLogsEmptyState(
