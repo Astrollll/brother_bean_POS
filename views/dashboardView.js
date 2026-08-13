@@ -688,6 +688,14 @@ function setContainerHTML(container, html) {
   return true;
 }
 
+// Shorten long order IDs (e.g. Firestore UUIDs) so the dashboard card stays
+// tidy. The full ID is kept in the title attribute for reference.
+function shortOrderId(id) {
+  const raw = String(id || "").trim();
+  if (!raw) return "—";
+  return raw.length > 8 ? raw.slice(0, 8) : raw;
+}
+
 function renderRecentOrders(orders) {
   const container = document.getElementById("dashboardRecentOrders");
   if (!container) return;
@@ -706,10 +714,11 @@ function renderRecentOrders(orders) {
             .map((item) => `${escapeHtml(item.name || "Item")} × ${toNumber(item.quantity || 1) || 1}`)
             .join(", ");
           const createdAt = formatDateTime(getOrderDate(order));
+          const orderId = String(order.orderId || order.id || "—");
           return `
             <div class="list-group-item px-0 py-3 d-flex justify-content-between align-items-start gap-3">
               <div class="min-w-0">
-                <div class="fw-semibold text-truncate">#${escapeHtml(String(order.orderId || order.id || "—"))}</div>
+                <div class="fw-semibold text-truncate" title="#${escapeHtml(orderId)}">#${escapeHtml(shortOrderId(orderId))}</div>
                 <div class="text-muted small text-truncate">${itemsText || "No items"}</div>
                 <div class="text-muted small">${createdAt} • ${escapeHtml(String(order.paymentMethod || "—").toUpperCase())}</div>
               </div>
