@@ -2557,7 +2557,6 @@ async function loadLogsPage() {
   setLogsKpi("logsCashOutValue", hasRecord ? logsFormatPeso(cashOutTotal) : "—");
   setLogsKpi("logsCashSalesValue", hasRecord ? logsFormatPeso(cashSales) : "—");
   setLogsKpi("logsCashOnHandValue", hasRecord ? logsFormatPeso(cashOnHand) : "—");
-  setLogsKpi("logsCountedValue", hasRecord ? (countedCash === null ? "—" : logsFormatPeso(countedCash)) : "—");
 
   const varianceEl = document.getElementById("logsVarianceValue");
   if (varianceEl) {
