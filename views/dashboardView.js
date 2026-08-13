@@ -542,10 +542,46 @@ function buildDashboardTemplate() {
         <span class="card-title">Quick actions</span>
       </div>
       <div class="quick-actions-grid">
-        <button class="qa-btn" type="button" data-action="orders">View Transactions</button>
-        <button class="qa-btn" type="button" data-action="inventory">Manage Inventory</button>
-        <button class="qa-btn" type="button" data-action="add-menu">Add Menu Item</button>
-        <button class="qa-btn" type="button" data-action="add-staff">Add Staff Member</button>
+        <button class="qa-btn" type="button" data-action="orders" title="View today's transactions">
+          <span class="qa-icon qa-tone-brown"><i class="ri-receipt-line" aria-hidden="true"></i></span>
+          <span class="qa-label">Transactions</span>
+          <span class="qa-sub">Today's sales</span>
+        </button>
+        <button class="qa-btn" type="button" data-action="analytics" title="Open sales analytics">
+          <span class="qa-icon qa-tone-amber"><i class="ri-bar-chart-box-line" aria-hidden="true"></i></span>
+          <span class="qa-label">Analytics</span>
+          <span class="qa-sub">Trends & charts</span>
+        </button>
+        <button class="qa-btn" type="button" data-action="quick-stock" title="Restock an item quickly">
+          <span class="qa-icon qa-tone-green"><i class="ri-add-circle-line" aria-hidden="true"></i></span>
+          <span class="qa-label">Quick Stock</span>
+          <span class="qa-sub">Restock an item</span>
+        </button>
+        <button class="qa-btn" type="button" data-action="inventory" title="Manage inventory">
+          <span class="qa-icon qa-tone-brown"><i class="ri-box-3-line" aria-hidden="true"></i></span>
+          <span class="qa-label">Inventory</span>
+          <span class="qa-sub">Stock levels</span>
+        </button>
+        <button class="qa-btn" type="button" data-action="add-menu" title="Add a new menu item">
+          <span class="qa-icon qa-tone-amber"><i class="ri-cup-line" aria-hidden="true"></i></span>
+          <span class="qa-label">Add Menu</span>
+          <span class="qa-sub">New menu item</span>
+        </button>
+        <button class="qa-btn" type="button" data-action="add-staff" title="Add a staff member">
+          <span class="qa-icon qa-tone-green"><i class="ri-team-line" aria-hidden="true"></i></span>
+          <span class="qa-label">Add Staff</span>
+          <span class="qa-sub">New member</span>
+        </button>
+        <button class="qa-btn" type="button" data-action="logs" title="Open cash drawer logs">
+          <span class="qa-icon qa-tone-brown"><i class="ri-file-list-3-line" aria-hidden="true"></i></span>
+          <span class="qa-label">Drawer Logs</span>
+          <span class="qa-sub">End-of-day check</span>
+        </button>
+        <button class="qa-btn" type="button" data-action="pos" title="Open the POS register">
+          <span class="qa-icon qa-tone-amber"><i class="ri-store-2-line" aria-hidden="true"></i></span>
+          <span class="qa-label">Open POS</span>
+          <span class="qa-sub">Take an order</span>
+        </button>
       </div>
     </div>
 
@@ -593,14 +629,23 @@ function bindDashboardQuickActions() {
       try {
         if (action === 'orders') {
           if (window.showPage) window.showPage('orders', document.getElementById('nav-orders'), 'Transactions');
+        } else if (action === 'analytics') {
+          if (window.showPage) window.showPage('salesAnalytics', document.querySelector('.nav-item[onclick*="salesAnalytics"]'), 'Sales Analytics');
+        } else if (action === 'quick-stock') {
+          if (window.showPage) window.showPage('inventory', document.querySelector('.nav-item[onclick*="inventory"]'), 'Inventory');
+          if (window.openQuickAddStock) window.openQuickAddStock();
         } else if (action === 'inventory') {
-          if (window.showPage) window.showPage('inventory', document.querySelector('.nav-item[onclick*=\"inventory\"]'), 'Inventory');
+          if (window.showPage) window.showPage('inventory', document.querySelector('.nav-item[onclick*="inventory"]'), 'Inventory');
         } else if (action === 'add-menu') {
-          if (window.showPage) window.showPage('menu', document.querySelector('.nav-item[onclick*=\"menu\"]'), 'Menu');
+          if (window.showPage) window.showPage('menu', document.querySelector('.nav-item[onclick*="menu"]'), 'Menu');
           if (window.openMenuEditor) window.openMenuEditor(null);
         } else if (action === 'add-staff') {
-          if (window.showPage) window.showPage('staff', document.querySelector('.nav-item[onclick*=\"staff\"]'), 'Staff');
+          if (window.showPage) window.showPage('staff', document.querySelector('.nav-item[onclick*="staff"]'), 'Staff');
           if (window.showAddStaff) window.showAddStaff();
+        } else if (action === 'logs') {
+          if (window.showPage) window.showPage('logs', document.querySelector('.nav-item[onclick*="logs"]'), 'Logs');
+        } else if (action === 'pos') {
+          window.location.href = "/views/pages/pos.html";
         }
       } catch (err) {
         console.warn('[Dashboard] quick action failed', action, err);
