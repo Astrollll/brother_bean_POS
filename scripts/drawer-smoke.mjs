@@ -245,13 +245,13 @@ async function main() {
   varianceStats.cashOnHandAuto = false;
   let varianceCtx = call(varianceStats);
   varianceCtx.renderDrawerVariance(2500);
-  assert.equal(elements["drawerVarianceBadge"].textContent, "Overage ₱100.00", "drawer: overage badge computed");
+  assert.equal(elements["drawerVarianceBadge"].textContent, "Over ₱100.00", "drawer: overage badge computed");
   assert.ok(elements["drawerVarianceBadge"].className.includes("is-over"), "drawer: overage class applied");
 
   varianceStats.actualCash = 2400;
   varianceCtx = call(varianceStats);
   varianceCtx.renderDrawerVariance(2500);
-  assert.equal(elements["drawerVarianceBadge"].textContent, "Shortage ₱100.00", "drawer: shortage badge computed");
+  assert.equal(elements["drawerVarianceBadge"].textContent, "Short ₱100.00", "drawer: shortage badge computed");
   assert.ok(elements["drawerVarianceBadge"].className.includes("is-short"), "drawer: shortage class applied");
 
   varianceStats.actualCash = 2500;
@@ -267,8 +267,8 @@ async function main() {
   persistCalls = 0;
   let autoCtx = call(autoStats, [todayOrder({ paymentMethod: "cash", total: 1500 })]);
   autoCtx.renderDrawerModal();
-  assert.equal(elements["drawerVarianceBadge"].textContent, "Auto-tracked", "drawer: auto-tracked badge state");
-  assert.ok(elements["drawerVarianceBadge"].className.includes("is-neutral"), "drawer: auto-tracked badge class");
+  assert.equal(elements["drawerVarianceBadge"].textContent, "Balanced", "drawer: auto-tracked badge state");
+  assert.ok(elements["drawerVarianceBadge"].className.includes("is-balanced"), "drawer: auto-tracked badge class");
   assert.equal(actualInput.value, "2500", "drawer: cash on hand auto-tracks start cash + cash orders");
   assert.equal(autoStats.actualCash, 2500, "drawer: auto-tracked value persisted into stats");
   assert.ok(persistCalls > 0, "drawer: auto-track persist called");

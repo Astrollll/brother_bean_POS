@@ -2530,11 +2530,12 @@ function renderDrawerVariance(expected) {
     if (canWriteInput) input.value = value;
   };
 
-  // Auto-tracking active: cash on hand follows the orders automatically.
+  // Auto-tracking active: cash on hand follows the orders automatically, so the
+  // drawer shows as Balanced without staff needing to press "Record count".
   if (dailyStats.cashOnHandAuto !== false) {
-    badge.textContent = "Auto-tracked";
-    badge.className = "bb-drawer-actual-variance is-neutral";
-    if (note) note.textContent = `Cash on hand follows today's orders automatically (${formatPeso(expectedCash)}). Edit and press "Record count" for a manual count.`;
+    badge.textContent = "Balanced";
+    badge.className = "bb-drawer-actual-variance is-balanced";
+    if (note) note.textContent = `Cash on hand follows today's orders automatically (${formatPeso(expectedCash)}). Record a manual count anytime to compare the physical cash.`;
     writeInput(String(Math.round(expectedCash * 100) / 100));
     return;
   }
@@ -2552,10 +2553,10 @@ function renderDrawerVariance(expected) {
     badge.textContent = "Balanced";
     badge.className = "bb-drawer-actual-variance is-balanced";
   } else if (variance > 0) {
-    badge.textContent = `Overage ${formatPeso(variance)}`;
+    badge.textContent = `Over ${formatPeso(variance)}`;
     badge.className = "bb-drawer-actual-variance is-over";
   } else {
-    badge.textContent = `Shortage ${formatPeso(Math.abs(variance))}`;
+    badge.textContent = `Short ${formatPeso(Math.abs(variance))}`;
     badge.className = "bb-drawer-actual-variance is-short";
   }
   if (note) note.textContent = `Expected ${formatPeso(expectedCash)} · Counted ${formatPeso(actual)}`;

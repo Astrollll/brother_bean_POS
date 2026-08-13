@@ -446,14 +446,14 @@ const server = app.listen(PORT, async () => {
       check("stale deleted order pruned at init", String(initial?.stats?.orders?.text) === "0" && !String(initial?.stats?.total?.text).includes("999"));
       check("popup opened for record count", popup?.open === true);
       check("popup message shows amount", String(popup?.msg || "").includes("₱3500.00"));
-      check("badge updated immediately after confirm", String(afterCount?.badge?.text || "").startsWith("Overage"));
+      check("badge updated immediately after confirm", String(afterCount?.badge?.text || "").startsWith("Over"));
       check("variance note updated immediately", String(afterCount?.note?.text || "").includes("Counted ₱3500.00"));
       check("popup closed after confirm", afterCount?.popupOpen === false);
       check("ledger note updated immediately after cash in", String(afterIn?.ledgerNote?.text || "").includes("Cash in ₱500.00"));
       check("history shows cash in entry immediately", String(afterIn?.history?.html || "").includes("+₱500.00") && String(afterIn?.history?.html || "").includes("Change top-up"));
       check("ledger note updated immediately after cash out", String(afterOut?.ledgerNote?.text || "").includes("Cash out ₱200.00"));
       check("history shows cash out entry immediately", String(afterOut?.history?.html || "").includes("−₱200.00"));
-      check("badge re-rendered after cash out", String(afterOut?.badge?.text || "").startsWith("Overage"));
+      check("badge re-rendered after cash out", String(afterOut?.badge?.text || "").startsWith("Over"));
       check("cancel leaves state untouched", afterCancel?.popupOpen === false && String(afterCancel?.ledgerNote?.text || "").includes("Cash out ₱200.00"));
       check("mirror write persisted ledger", Array.isArray(lastWrite?.ledgerEntries) && lastWrite.ledgerEntries.length === 2);
       check("mirror write persisted manual mode", lastWrite?.cashOnHandAuto === false && lastWrite?.actualCash === 3500);
