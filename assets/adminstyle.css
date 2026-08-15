@@ -744,9 +744,15 @@ button,
 }
 
 .ls-logo {
-  width: 96px;
-  height: 96px;
-  background: transparent;
+  width: 112px;
+  height: 112px;
+  padding: 8px;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  box-shadow: 0 8px 24px rgba(79, 47, 16, 0.18);
+  border-radius: 26%;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -7324,8 +7330,9 @@ input:checked + .tslider::before {
   }
 
   .ls-logo {
-    width: 72px;
-    height: 72px;
+    width: 88px;
+    height: 88px;
+    padding: 8px;
     margin-bottom: 0.8rem;
   }
 
