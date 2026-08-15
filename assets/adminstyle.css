@@ -752,7 +752,7 @@ button,
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
   box-shadow: 0 8px 24px rgba(79, 47, 16, 0.18);
-  border-radius: 26%;
+  border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
