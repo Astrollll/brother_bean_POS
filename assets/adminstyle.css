@@ -1191,35 +1191,58 @@ button,
 }
 
 .topbar-icon {
-  width: 34px;
-  height: 34px;
-  padding: 4px;
-  border-radius: var(--radius-md);
-  background: var(--bg-tertiary);
+  width: 48px;
+  height: 48px;
+  padding: 0;
+  border-radius: 16px;
+  background: #fff;
+  border: 1px solid rgba(107, 68, 35, 0.16);
+  box-shadow: 0 4px 14px -4px rgba(107, 68, 35, 0.28);
   display: inline-flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+  overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .topbar-icon img {
   width: 100%;
   height: 100%;
-  object-fit: contain;
+  object-fit: cover;
+  user-select: none;
+  -webkit-user-select: none;
+  pointer-events: none;
+}
+
+.topbar-brand-text {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  line-height: 1.15;
 }
 
 .topbar-name {
-  font-size: 1.05rem;
+  font-size: 1.2rem;
   color: var(--text-primary);
-  font-weight: 600;
+  font-weight: 700;
+  letter-spacing: -0.2px;
+  white-space: nowrap;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .topbar-sub {
-  font-size: 9px;
-  letter-spacing: 2px;
-  color: var(--accent);
+  font-size: 10px;
+  letter-spacing: 2.2px;
+  color: var(--primary);
+  font-weight: 600;
   text-transform: uppercase;
-  margin-top: 2px;
+  margin-top: 3px;
+  white-space: nowrap;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .topbar-sep {
@@ -1233,6 +1256,8 @@ button,
   color: var(--text-primary);
   flex: 1;
   font-weight: 600;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .topbar-right {
@@ -1245,6 +1270,8 @@ button,
 .topbar-date {
   font-size: 12px;
   color: var(--text-secondary);
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .topbar-notif {
@@ -1341,6 +1368,8 @@ button,
   font-size: 13px;
   color: var(--text-primary);
   font-weight: 600;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .topbar-logout {
@@ -7180,17 +7209,17 @@ input:checked + .tslider::before {
   }
 
   .topbar-icon {
-    width: 26px;
-    height: 26px;
-    padding: 3px;
+    width: 38px;
+    height: 38px;
+    border-radius: 13px;
   }
 
   .topbar-name {
-    font-size: 0.9rem;
+    font-size: 1rem;
   }
 
   .topbar-sub {
-    font-size: 8px;
+    font-size: 8.5px;
   }
 
   .topbar-sep {
@@ -8450,9 +8479,9 @@ input:checked + .tslider::before {
   content: '';
   position: absolute;
   top: 50%;
-  left: 18px;
-  width: 32px;
-  height: 32px;
+  left: 24px;
+  width: 48px;
+  height: 48px;
   border-radius: 50%;
   background: radial-gradient(circle, rgba(107,68,35,0.14) 0%, transparent 70%);
   transform: translateY(-50%) scale(0.8);
