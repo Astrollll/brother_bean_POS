@@ -1388,6 +1388,7 @@ function buildUnpaidOrderFromCart() {
     amountTendered: summary.total,
     change: 0,
     items: cloneValue(cart) || [],
+    cashierUid: getCurrentUser()?.uid || "",
     cashierName,
     customerName: (document.getElementById("orderNameInput")?.value || "").trim(),
     unpaid: true,
