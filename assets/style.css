@@ -219,6 +219,7 @@ button,
   border-right: 1px solid var(--border-color);
   display: flex;
   flex-direction: column;
+  gap: var(--spacing-md);
   overflow-y: auto;
   z-index: 100;
   flex-shrink: 0;
@@ -381,7 +382,6 @@ button,
   font-weight: 700;
   font-size: 12px;
   text-align: center;
-  margin-bottom: var(--spacing-lg);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -433,7 +433,6 @@ button,
 .sidebar-divider {
   height: 1px;
   background: var(--border-color);
-  margin: var(--spacing-md) 0;
 }
 
 .nav-btn {
@@ -444,7 +443,6 @@ button,
   padding: var(--spacing-md) var(--spacing-lg);
   font-weight: 700;
   font-size: 13px;
-  margin-bottom: var(--spacing-sm);
   display: flex;
   align-items: center;
   justify-content: flex-start;
@@ -466,7 +464,6 @@ button,
 }
 
 .sidebar-stats {
-  margin-top: var(--spacing-sm);
   padding: var(--spacing-md) var(--spacing-lg);
   background: var(--bg-secondary);
   border: 1px solid var(--border-color);
@@ -495,7 +492,6 @@ button,
 }
 
 .sidebar-sales-chart {
-  margin-top: var(--spacing-sm);
   padding: var(--spacing-md) var(--spacing-lg);
   border-radius: var(--radius-lg);
   border: 1px solid var(--border-color);
@@ -583,7 +579,6 @@ button,
 }
 
 .sidebar-pending-box {
-  margin-top: var(--spacing-sm);
   padding: var(--spacing-md);
   border-radius: var(--radius-lg);
   border: 1px solid var(--border-color);
@@ -1079,8 +1074,6 @@ button,
 }
 
 .nav-btn-logout {
-  margin-top: var(--spacing-sm);
-  margin-bottom: 0;
   border-color: transparent;
   color: var(--danger);
   background: transparent;
@@ -4556,7 +4549,11 @@ button,
 
 /* Final UI controls and theme modes */
 .sidebar-tools {
-  margin-top: var(--spacing-sm);
+  min-height: 0;
+}
+
+.sidebar-tools:empty {
+  display: none;
 }
 
 .sidebar-tool-btn {
@@ -8627,7 +8624,6 @@ body[data-cart-density="compact"] .cart-section .checkout-btn {
   .sidebar-brand {
     padding: 10px 12px !important;
     gap: 10px !important;
-    margin-bottom: 4px !important;
   }
 
   .logo-icon {
@@ -9183,7 +9179,6 @@ body[data-cart-density="compact"] .cart-section .checkout-btn {
   .sidebar-brand {
     gap: 14px !important;
     padding: 14px !important;
-    margin-bottom: 12px !important;
   }
 
   .logo-icon {
@@ -9213,7 +9208,7 @@ body[data-cart-density="compact"] .cart-section .checkout-btn {
   }
 
   .storage-indicator {
-    margin-top: 8px !important;
+    margin-top: 0 !important;
   }
 }
 
@@ -9715,7 +9710,7 @@ body[data-cart-density="compact"] .cart-section .checkout-btn {
 @media (min-width: 1200px) {
   .sidebar-nav {
     padding: 20px 18px;
-    gap: 0;
+    gap: var(--spacing-md);
   }
 
   .sidebar-brand {
@@ -9741,13 +9736,8 @@ body[data-cart-density="compact"] .cart-section .checkout-btn {
   }
 
   .storage-indicator {
-    margin-bottom: 12px;
     padding: 10px 12px;
     font-size: 12px;
-  }
-
-  .sidebar-tools {
-    margin-bottom: 10px;
   }
 
   .sidebar-tool-btn,
@@ -9759,18 +9749,12 @@ body[data-cart-density="compact"] .cart-section .checkout-btn {
 
   .nav-btn,
   .nav-btn-logout {
-    margin-bottom: 8px;
     gap: 10px;
     padding: 10px 12px;
     border-radius: 12px;
   }
 
-  .sidebar-divider {
-    margin: 10px 0;
-  }
-
   .sidebar-stats {
-    margin-top: 10px;
     padding: 10px 12px;
     gap: 6px;
   }
@@ -9780,7 +9764,6 @@ body[data-cart-density="compact"] .cart-section .checkout-btn {
   }
 
   .sidebar-sales-chart {
-    margin-top: 10px;
     padding: 10px 12px;
     border-radius: 12px;
   }
@@ -10227,7 +10210,6 @@ body[data-cart-density="compact"] .cart-section .checkout-btn {
 /* ── Thermal Printer (sidebar status) ── */
 .printer-status {
   width: 100%;
-  margin-bottom: var(--spacing-sm);
   padding: var(--spacing-md) var(--spacing-lg);
   display: flex;
   align-items: center;
