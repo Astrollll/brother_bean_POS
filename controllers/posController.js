@@ -1345,6 +1345,8 @@ window.clearCart = function() {
   cart = [];
   isPwdSenior = false;
   isEmployeeOrder = false;
+  const nameInput = document.getElementById("orderNameInput");
+  if (nameInput) nameInput.value = "";
   const pwdCheck = document.getElementById("pwdSeniorCheck");
   const discountToggle = document.getElementById("discountToggle");
   if (pwdCheck) { pwdCheck.checked = false; pwdCheck.disabled = false; }
@@ -1387,6 +1389,7 @@ function buildUnpaidOrderFromCart() {
     change: 0,
     items: cloneValue(cart) || [],
     cashierName,
+    customerName: (document.getElementById("orderNameInput")?.value || "").trim(),
     unpaid: true,
   };
 }
@@ -1399,6 +1402,8 @@ window.moveCurrentOrderToUnpaid = async function() {
   isPwdSenior = false;
   isEmployeeOrder = false;
   enteredAmount = "";
+  const nameInput = document.getElementById("orderNameInput");
+  if (nameInput) nameInput.value = "";
   const pwdCheck = document.getElementById("pwdSeniorCheck");
   const discountToggle = document.getElementById("discountToggle");
   if (pwdCheck) { pwdCheck.checked = false; pwdCheck.disabled = false; }
@@ -1448,7 +1453,7 @@ function renderUnpaidOrdersList() {
     return `
       <div class="sidebar-pending-item">
         <div onclick="openUnpaidOrderReceipt('${order.id}')">
-          <div class="sidebar-pending-order">${order.orderId || order.id}</div>
+          <div class="sidebar-pending-order">#${String(order.orderId || order.id || "").slice(-6) || "—"}</div>
           <div class="sidebar-pending-meta">${timestamp} · ${itemNames}</div>
           <div class="sidebar-pending-meta">Total: ₱${total.toFixed(2)}</div>
         </div>
@@ -1504,6 +1509,8 @@ window.restoreUnpaidOrderToCart = async function(orderId) {
   isPwdSenior = !!unpaid.isPwdSenior;
   isEmployeeOrder = !!unpaid.isEmployeeOrder;
   currentPayMethod = unpaid.paymentMethod || currentPayMethod;
+  const nameInput = document.getElementById("orderNameInput");
+  if (nameInput) nameInput.value = String(unpaid.customerName || "");
   const pwdCheck = document.getElementById("pwdSeniorCheck");
   const discountToggle = document.getElementById("discountToggle");
   const empCheck = document.getElementById("employeeOrderCheck");
@@ -1784,6 +1791,8 @@ window.completePayment = async function() {
   const { subtotal } = getCartSummary(cart);
   const noteEl = document.getElementById("orderNoteInput");
   const orderNote = noteEl ? noteEl.value.trim() : "";
+  const nameEl = document.getElementById("orderNameInput");
+  const customerName = nameEl ? nameEl.value.trim() : "";
 
   let amountTendered;
   let cashAmount = null;
@@ -1807,7 +1816,7 @@ window.completePayment = async function() {
   try {
     // Save to Firebase via model
     const user = getCurrentUser();
-    const sale = await saveOrder(cart, total, subtotal, paymentMethod, isPwdSenior, amountTendered, user?.uid || null, cashierName, cashAmount, gcashAmount, { orderType: isEmployeeOrder ? "employee" : "regular", note: orderNote });
+    const sale = await saveOrder(cart, total, subtotal, paymentMethod, isPwdSenior, amountTendered, user?.uid || null, cashierName, cashAmount, gcashAmount, { orderType: isEmployeeOrder ? "employee" : "regular", note: orderNote, customerName });
 
     // Add to kitchen pending queue so the order appears in the sidebar
     await saveKitchenOrder(sale);
@@ -1832,6 +1841,7 @@ window.completePayment = async function() {
     enteredAmount = "";
     currentPayMethod = "cash";
     if (noteEl) noteEl.value = "";
+    if (nameEl) nameEl.value = "";
     document.getElementById("pwdSeniorCheck").checked = false;
     document.getElementById("pwdSeniorCheck").disabled = false;
     document.getElementById("discountToggle").classList.remove("active");
@@ -1979,6 +1989,7 @@ function generateReceipt(sale) {
 
         <div class="meta-row"><span class="label">Date</span><span class="value">${sale.timestamp || "—"}</span></div>
         <div class="meta-row"><span class="label">Order #</span><span class="value">${orderShort}</span></div>
+        ${sale.customerName ? `<div class="meta-row"><span class="label">Order for</span><span class="value">${escapeHtml(sale.customerName)}</span></div>` : ""}
         <div class="meta-row"><span class="label">Payment</span><span class="value">${(sale.paymentMethod || "—").toUpperCase()}</span></div>
         ${sale.paymentMethod === "split" ? `
         <div class="meta-row"><span class="label">Cash</span><span class="value">${formatMoney(sale.cashAmount || 0)}</span></div>
@@ -2057,6 +2068,7 @@ window.openPendingOrder = async function(orderId) {
     change: payload.change || 0,
     items: Array.isArray(payload.items) ? payload.items : [],
     cashierName: payload.cashierName || "Staff",
+    customerName: String(payload.customerName || "").trim(),
     queued: true,
   };
 
@@ -3289,6 +3301,7 @@ async function renderPendingOrdersList() {
     const createdAt = order.createdAt ? new Date(order.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "--";
     const total = Number(order.payload?.total) || 0;
     const note = order.payload?.note || "";
+    const customerName = String(order.payload?.customerName || "").trim();
     const noteId = `note_${order.id}`.replace(/[^a-zA-Z0-9_-]/g, "_");
     const maxNoteLen = 100;
     const noteTruncated = note.length > maxNoteLen;
@@ -3297,7 +3310,8 @@ async function renderPendingOrdersList() {
     return `
       <div class="sidebar-pending-item">
         <div>
-          <div class="sidebar-pending-order">#${String(order.id).replace(/^q_/, "")}</div>
+          ${customerName ? `<div class="sidebar-pending-name">${escapeHtml(customerName)}</div>` : ""}
+          <div class="sidebar-pending-order">#${String(order.id).replace(/^q_/, "").slice(-6)}</div>
           <div class="sidebar-pending-meta">${createdAt} · ${itemNames}</div>
           <div class="sidebar-pending-meta">Total: ₱${total.toFixed(2)}</div>
           ${note ? `<div class="sidebar-pending-note" id="${noteId}" data-full="${noteEscaped.replace(/"/g, "&quot;")}" data-short="${noteDisplay.replace(/"/g, "&quot;")}">Note: ${noteDisplay}</div>${noteTruncated ? `<button class="sidebar-pending-note-toggle" type="button" onclick="togglePendingNote('${noteId}')">See more</button>` : ""}` : ""}

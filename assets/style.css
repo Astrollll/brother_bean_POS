@@ -660,6 +660,17 @@ button,
   white-space: nowrap;
 }
 
+.sidebar-pending-name {
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--primary);
+  letter-spacing: -0.3px;
+  margin-bottom: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .sidebar-pending-meta {
   font-size: 11px;
   color: var(--text-muted);
@@ -10186,7 +10197,8 @@ body[data-cart-density="compact"] .cart-section .checkout-btn {
   pointer-events: none;
 }
 
-/* ── Order Note Input ── */
+/* ── Order Name + Note Input ── */
+.bb-name-wrap,
 .bb-note-wrap {
   margin-top: 12px;
 }

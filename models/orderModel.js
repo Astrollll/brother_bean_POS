@@ -351,6 +351,7 @@ export async function saveOrder(cart, total, subtotal, paymentMethod, isPwdSenio
   const orderId = crypto.randomUUID();
   const orderType = options.orderType || "regular";
   const note = options.note || "";
+  const customerName = String(options.customerName || "").trim();
 
   const orderData = {
     orderId:        orderId,
@@ -368,6 +369,7 @@ export async function saveOrder(cart, total, subtotal, paymentMethod, isPwdSenio
     amountTendered,
     change,
     ...(note ? { note } : {}),
+    ...(customerName ? { customerName } : {}),
     ...(paymentMethod === "split" ? { cashAmount: cashAmount || 0, gcashAmount: gcashAmount || 0 } : {}),
     items: cart.map(item => ({
       menuItemId:  item.id,

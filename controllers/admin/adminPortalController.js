@@ -1611,6 +1611,7 @@ function buildSortHeader(key, label) {
 function buildOrderMainRow(order) {
   const orderKey = String(order.id || order.orderId || "");
   const shortId = orderKey.slice(-6) || "—";
+  const customerName = String(order.customerName || "").trim();
   const items = Array.isArray(order.items) ? order.items : [];
   const itemCount = items.reduce((sum, item) => sum + (Number(item.quantity) || 1), 0);
   const itemChips = items.slice(0, 2)
@@ -1650,6 +1651,7 @@ function buildOrderMainRow(order) {
       <td class="orders-ref-cell">
         <button class="orders-expand-btn ${expanded ? "active" : ""}" type="button" data-order-action="toggle" data-order-id="${escapeHtml(orderKey)}" aria-expanded="${expanded}" aria-label="${expanded ? "Collapse details" : "Expand details"}" title="${expanded ? "Collapse details" : "Expand details"}"><i class="ri-arrow-down-s-line" aria-hidden="true"></i></button>
         <span class="orders-ref">#${escapeHtml(shortId)}</span>
+        ${customerName ? `<span class="orders-customer">${escapeHtml(customerName)}</span>` : ""}
         <span class="orders-count">${itemCount} item${itemCount === 1 ? "" : "s"}</span>
       </td>
       <td class="orders-items-cell"><span class="orders-item-chips">${itemChips || `<span class="orders-items-empty">—</span>`}${moreLabel}</span>${noteInline}${cancelNote}</td>
@@ -1723,6 +1725,7 @@ function buildOrderDetailRow(order, expanded) {
   const payment = String(order.paymentMethod || "cash").toUpperCase();
   const isEmployee = String(order.orderType || "regular").toLowerCase() === "employee";
   const note = String(order.note || "").trim();
+  const customerName = String(order.customerName || "").trim();
 
   let paymentBlock = "";
   if (order.paymentMethod === "split") {
@@ -1753,7 +1756,7 @@ function buildOrderDetailRow(order, expanded) {
           <section class="od-section">
             <h4 class="od-section-title"><i class="ri-money-dollar-circle-line" aria-hidden="true"></i> Payment</h4>
             <div class="od-pay-method"><span class="badge b-green">${escapeHtml(payment)}</span></div>
-            <div class="od-pay-lines">${paymentBlock}</div>
+            <div class="od-pay-lines">${customerName ? `<div class="od-pay-line"><span>Customer</span><span>${escapeHtml(customerName)}</span></div>` : ""}${paymentBlock}</div>
             ${note ? `<h4 class="od-section-title od-note-title"><i class="ri-chat-1-line" aria-hidden="true"></i> Note</h4>${buildNoteBlock(note)}` : ""}
           </section>
         </div>
@@ -1872,6 +1875,7 @@ function buildAdminReceiptHTML(order) {
 
         <div class="meta-row"><span class="label">Date</span><span class="value">${escapeHtml(timestamp)}</span></div>
         <div class="meta-row"><span class="label">Order #</span><span class="value">${escapeHtml(orderShort)}</span></div>
+        ${order.customerName ? `<div class="meta-row"><span class="label">Order for</span><span class="value">${escapeHtml(String(order.customerName).trim())}</span></div>` : ""}
         <div class="meta-row"><span class="label">Payment</span><span class="value">${escapeHtml(payment)}</span></div>
         ${order.paymentMethod === "split" ? `
         <div class="meta-row"><span class="label">Cash</span><span class="value">${formatMoney(order.cashAmount || 0)}</span></div>

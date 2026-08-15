@@ -654,15 +654,15 @@ function bindDashboardQuickActions() {
   });
 }
 
-function buildStatCard({ icon, value, label, trend, trendClass }) {
+function buildStatCard({ icon, value, label, trend, trendClass, tone = "stat-tone-brown", valueClass = "" }) {
   return `
     <div class="col-12 col-sm-6 col-xl-3">
       <div class="stat-card">
         <div class="stat-top">
-          <div class="stat-icon-wrap"><i class="ti ${icon}" aria-hidden="true"></i></div>
+          <div class="stat-icon-wrap ${tone}"><i class="ti ${icon}" aria-hidden="true"></i></div>
           <span class="stat-trend ${trendClass || "trend-neutral"}">${trend}</span>
         </div>
-        <div class="stat-val">${value}</div>
+        <div class="stat-val ${valueClass}">${value}</div>
         <div class="stat-label">${label}</div>
       </div>
     </div>
@@ -674,10 +674,10 @@ function renderStats(summary) {
   if (!container) return;
 
   container.innerHTML = `
-    ${buildStatCard({ icon: "ti-currency-peso", value: formatPeso(summary.totalSales), label: "Total Sales Today", trend: summary.salesTrend, trendClass: summary.salesTrendClass })}
-    ${buildStatCard({ icon: "ti-receipt", value: String(summary.totalOrders || 0), label: "Orders Today", trend: summary.orderTrend, trendClass: summary.orderTrendClass })}
-    ${buildStatCard({ icon: "ti-cup", value: escapeHtml(summary.bestSeller || "—"), label: `Best Seller • ${summary.bestSellerCount || 0} sold`, trend: "Top item", trendClass: "trend-neutral" })}
-    ${buildStatCard({ icon: "ti-users", value: `${summary.staffOnDuty || 0}/${summary.totalStaff || 0}`, label: "Staff On Duty", trend: summary.staffTrend, trendClass: summary.staffTrendClass })}
+    ${buildStatCard({ icon: "ti-currency-peso", value: formatPeso(summary.totalSales), label: "Total Sales Today", trend: summary.salesTrend, trendClass: summary.salesTrendClass, tone: "stat-tone-brown" })}
+    ${buildStatCard({ icon: "ti-receipt", value: String(summary.totalOrders || 0), label: "Orders Today", trend: summary.orderTrend, trendClass: summary.orderTrendClass, tone: "stat-tone-amber" })}
+    ${buildStatCard({ icon: "ti-cup", value: escapeHtml(summary.bestSeller || "—"), label: `Best Seller • ${summary.bestSellerCount || 0} sold`, trend: "Top item", trendClass: "trend-neutral", tone: "stat-tone-green", valueClass: "stat-val-text" })}
+    ${buildStatCard({ icon: "ti-users", value: `${summary.staffOnDuty || 0}/${summary.totalStaff || 0}`, label: "Staff On Duty", trend: summary.staffTrend, trendClass: summary.staffTrendClass, tone: "stat-tone-blue" })}
   `;
 }
 

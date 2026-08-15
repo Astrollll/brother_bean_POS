@@ -628,6 +628,9 @@ export function buildEscReceipt(sale, paperWidth = 58) {
   // Metadata
   lines.push([textLine(alignRow("Date", formatDate(sale), width))]);
   lines.push([textLine(alignRow("Order #", String(sale.orderId || "").slice(-6) || "-", width))]);
+  if (String(sale.customerName || "").trim()) {
+    lines.push([textLine(alignRow("Order for", truncate(String(sale.customerName).trim(), width - 10), width))]);
+  }
   lines.push([textLine(alignRow("Payment", String(sale.paymentMethod || "-").toUpperCase(), width))]);
   if (String(sale.paymentMethod || "").toLowerCase() === "split") {
     lines.push([textLine(alignRow("Cash", formatMoney(sale.cashAmount || 0), width))]);
