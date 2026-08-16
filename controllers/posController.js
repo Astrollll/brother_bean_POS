@@ -1964,7 +1964,7 @@ function generateReceipt(sale) {
       : "";
   }
 
-  const paidStamp = sale.unpaid ? "UNPAID" : sale.queued ? "PENDING" : "PAID";
+  const paidStamp = sale.unpaid ? "UNPAID" : sale.cancelled ? "CANCELLED" : "PAID";
 
   const receiptHTML = `
     <div class="receipt-wrap">
@@ -2257,7 +2257,7 @@ window.cancelPendingOrder = async function(orderId) {
 
   const confirmed = await window.askConfirm({
     title: "Cancel pending order",
-    message: `Cancel pending order #${String(orderId).replace(/^q_/, "")} and return the items to the cart?`,
+    message: `Cancel pending order #${String(sale.orderId).replace(/^q_/, "").slice(-6)} and return the items to the cart?`,
     hint: "The order will be removed from the queue and sales records, deducted stock will be restored, and the payment must be returned to the customer.",
     okText: "Cancel order",
     danger: true,
@@ -3041,28 +3041,14 @@ function formatHourLabelCompact(hour24) {
   return `${hour12}${period}`;
 }
 
-function getTwoHourWindowLabel(slotIndex) {
-  const startHour = slotIndex * 2;
-  const endHour = (startHour + 2) % 24;
-  return `${formatHourLabel24To12(startHour)} - ${formatHourLabel24To12(endHour)}`;
+function getHourlySlotLabel(slotIndex) {
+  return formatHourLabel24To12(slotIndex);
 }
 
-function getTwoHourWindowCompactLabel(slotIndex) {
-  const startHour = slotIndex * 2;
-  const endHour = (startHour + 2) % 24;
-  return `${formatHourLabelCompact(startHour)}-${formatHourLabelCompact(endHour)}`;
-}
-
-function formatPesoSummary(value) {
-  const n = Number(value) || 0;
-  if (n >= 1000) return `₱${(n / 1000).toFixed(1)}K`;
-  return `₱${n.toFixed(0)}`;
-}
-
-function getSalesByTwoHourSlots() {
-  const slots = Array.from({ length: 12 }, (_, i) => ({
+function getSalesByHourlySlots() {
+  const slots = Array.from({ length: 24 }, (_, i) => ({
     slot: i,
-    label: getTwoHourWindowLabel(i),
+    label: getHourlySlotLabel(i),
     total: 0,
     orders: 0,
   }));
@@ -3075,7 +3061,7 @@ function getSalesByTwoHourSlots() {
     const ts = getSaleTimestampMs(sale);
     if (!ts || ts < startOfDay || ts >= endOfDay) continue;
     const hour = new Date(ts).getHours();
-    const idx = Math.floor(hour / 2);
+    const idx = hour;
     if (!slots[idx]) continue;
     slots[idx].total += Number(sale.total) || 0;
     slots[idx].orders += 1;
@@ -3089,9 +3075,8 @@ function renderSalesBars(barsId, axisId) {
   const axisEl = document.getElementById(axisId);
   if (!barsEl || !axisEl) return;
 
-  const slots = getSalesByTwoHourSlots();
+  const slots = getSalesByHourlySlots();
   const maxTotal = Math.max(...slots.map(s => s.total), 1);
-  const bucketLabels = ["12A", "2A", "4A", "6A", "8A", "10A", "12P", "2P", "4P", "6P", "8P", "10P"];
   const isLarge = barsId === "salesDashboardBars";
 
   barsEl.innerHTML = slots
@@ -3107,11 +3092,12 @@ function renderSalesBars(barsId, axisId) {
     })
     .join("");
 
-  axisEl.innerHTML = bucketLabels.map(label => `<span>${label}</span>`).join("");
+  const hourLabels = Array.from({ length: 24 }, (_, i) => formatHourLabelCompact(i));
+  axisEl.innerHTML = hourLabels.map((label, i) => `<span${i % 2 === 1 ? ' class="axis-muted"' : ""}>${label}</span>`).join("");
 }
 
 function renderSalesDashboardDetails() {
-  const slots = getSalesByTwoHourSlots();
+  const slots = getSalesByHourlySlots();
   const total = dailyStats.totalSales;
   const orders = dailyStats.orders;
   const avg = orders > 0 ? total / orders : 0;
@@ -3145,18 +3131,9 @@ function renderSalesDashboardDetails() {
 }
 
 function renderSidebarSalesSummary() {
-  const slots = getSalesByTwoHourSlots();
   const total = dailyStats.totalSales;
-  const orders = dailyStats.orders;
-  const peak = slots.reduce((best, cur) => (cur.total > best.total ? cur : best), { slot: -1, label: "N/A", total: 0 });
-
   const totalEl = document.getElementById("salesSummaryTotal");
-  const ordersEl = document.getElementById("salesSummaryOrders");
-  const peakEl = document.getElementById("salesSummaryPeak");
-
-  if (totalEl) totalEl.textContent = formatPesoSummary(total);
-  if (ordersEl) ordersEl.textContent = String(orders);
-  if (peakEl) peakEl.textContent = peak.total > 0 ? getTwoHourWindowCompactLabel(peak.slot) : "N/A";
+  if (totalEl) totalEl.textContent = `₱${total.toFixed(2)}`;
 }
 
 function refreshSalesVisuals() {

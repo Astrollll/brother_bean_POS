@@ -1770,11 +1770,7 @@ function buildAdminReceiptHTML(order) {
   const payment = String(order.paymentMethod || "cash").toUpperCase();
   const cashier = String(order.cashierName || order.cashierUid || order.staffName || order.staff || "Staff");
   const lifecycleStatus = getOrderStatus(order);
-  const paidStamp = lifecycleStatus === "cancelled"
-    ? "CANCELLED"
-    : lifecycleStatus === "pending"
-    ? "PENDING"
-    : "PAID";
+  const paidStamp = lifecycleStatus === "cancelled" ? "CANCELLED" : "PAID";
   const items = Array.isArray(order.items) ? order.items : [];
 
   const itemRows = items.map((item) => {

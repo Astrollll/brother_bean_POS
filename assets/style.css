@@ -228,18 +228,22 @@ button,
 .sidebar-brand {
   display: flex;
   align-items: center;
-  gap: 14px;
-  padding: 14px;
-  background: #FFFFFF;
+  gap: 12px;
+  padding: 12px 14px;
+  min-height: 92px;
+  background:
+    radial-gradient(120% 100% at 18% 0%, rgba(255, 255, 255, 0.14), transparent 55%),
+    linear-gradient(135deg, var(--primary-dark) 0%, var(--primary) 55%, var(--primary-light) 135%);
   border-radius: var(--radius-xl);
-  border: 1px solid var(--border-color);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 8px 20px -10px rgba(74, 44, 23, 0.55);
   position: relative;
   transition: all var(--transition-normal);
 }
 
 .sidebar-brand:hover {
-  transform: translateY(-1px);
-  box-shadow: var(--shadow-sm);
+  transform: translateY(-2px);
+  box-shadow: 0 12px 24px -10px rgba(74, 44, 23, 0.65);
 }
 
 .logo-icon {
@@ -249,6 +253,8 @@ button,
   border-radius: 26%;
   overflow: hidden;
   background: #FFFFFF;
+  border: 2px solid rgba(255, 255, 255, 0.85);
+  box-shadow: 0 4px 12px -2px rgba(0, 0, 0, 0.35);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -263,23 +269,40 @@ button,
 
 .logo-text {
   flex: 1;
-  color: var(--text-primary);
+  min-width: 0;
+  color: #FFFFFF;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  transform: translateY(6px);
 }
 
 .logo-text h1 {
-  font-size: 17px;
-  font-weight: 800;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 20px;
+  font-weight: 700;
   margin: 0;
-  letter-spacing: -0.3px;
+  letter-spacing: 0.2px;
+  line-height: 1.05;
+  text-align: left;
+  color: #FFFFFF;
+}
+
+.logo-text h1 span {
+  display: block;
 }
 
 .logo-text p {
+  font-family: 'Courier New', Courier, monospace;
   font-size: 11px;
-  color: var(--text-muted);
-  margin-top: 2px;
-  font-weight: 600;
-  letter-spacing: 0.4px;
+  color: var(--accent);
+  margin-top: 3px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
   text-transform: uppercase;
+  line-height: 1;
+  white-space: nowrap;
+  text-align: left;
 }
 
 .app-container {
@@ -391,6 +414,7 @@ button,
   white-space: normal;
   overflow: visible;
   text-overflow: clip;
+  margin-bottom: -4px;
 }
 
 .storage-indicator .storage-dot {
@@ -432,6 +456,7 @@ button,
 
 .sidebar-divider {
   height: 1px;
+  flex: 0 0 auto;
   background: var(--border-color);
 }
 
@@ -492,20 +517,35 @@ button,
 }
 
 .sidebar-sales-chart {
-  padding: var(--spacing-md) var(--spacing-lg);
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--border-color);
-  background: #FFFFFF;
   width: 100%;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-md) var(--spacing-lg);
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: var(--spacing-md);
+  transition: all var(--transition-fast);
+  color: var(--text-primary);
   text-align: left;
   cursor: pointer;
-  transition: transform var(--transition-fast), box-shadow var(--transition-fast), border-color var(--transition-fast);
+}
+
+.sidebar-sales-chart > i {
+  font-size: 18px;
+  color: var(--primary);
+  flex-shrink: 0;
 }
 
 .sidebar-sales-chart:hover {
-  transform: translateY(-1px);
-  border-color: var(--primary);
-  box-shadow: var(--shadow-md);
+  border-color: var(--border-color);
+  background: var(--bg-secondary);
+  color: var(--primary);
+}
+
+.sidebar-sales-chart:active {
+  transform: translateY(1px);
 }
 
 .sidebar-sales-chart:focus-visible {
@@ -513,69 +553,28 @@ button,
   outline-offset: 2px;
 }
 
-.sidebar-sales-chart-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: var(--spacing-sm);
-}
-
 .sidebar-sales-chart-title {
-  font-size: 12px;
-  font-weight: 800;
-  letter-spacing: 0.4px;
-  color: var(--text-primary);
-  text-transform: uppercase;
-}
-
-.sidebar-sales-chart-range {
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 700;
-  color: var(--text-muted);
+  color: inherit;
+  text-transform: none;
+  letter-spacing: normal;
 }
 
-.sidebar-sales-summary {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-}
-
-.sidebar-sales-summary .sidebar-sales-pill:first-child {
-  grid-column: 1 / -1;
-}
-
-.sidebar-sales-pill {
-  border: 1px solid var(--border-color);
-  border-radius: 10px;
-  background: var(--bg-secondary);
-  padding: 8px 10px;
-  display: grid;
-  gap: 4px;
-}
-
-.sidebar-sales-pill-label {
-  font-size: 10px;
-  font-weight: 800;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.3px;
-}
-
-.sidebar-sales-pill-value {
+.sidebar-sales-total {
+  margin-left: auto;
   font-size: 13px;
   font-weight: 900;
   color: var(--text-primary);
-  line-height: 1.2;
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  font-variant-numeric: tabular-nums;
 }
 
-.sidebar-sales-note {
-  margin-top: 8px;
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--text-muted);
+.sidebar-sales-chevron {
+  margin-left: 2px;
+  font-size: 18px !important;
+  color: var(--text-muted) !important;
+  opacity: 0.7;
 }
 
 .sidebar-pending-box {
@@ -833,7 +832,7 @@ button,
 .sales-chart-bars {
   height: 104px;
   display: grid;
-  grid-template-columns: repeat(12, minmax(0, 1fr));
+  grid-template-columns: repeat(24, minmax(0, 1fr));
   align-items: end;
   gap: 5px;
   padding: 8px 0 6px;
@@ -903,6 +902,10 @@ button,
   letter-spacing: 0.2px;
 }
 
+.sales-chart-axis .axis-muted {
+  opacity: 0.45;
+}
+
 @keyframes sales-bar-rise {
   from {
     transform: scaleY(0.1);
@@ -924,15 +927,15 @@ button,
 }
 
 #salesDashboardModal .bb-sales-dashboard {
-  width: min(1040px, 100%);
-  max-width: 1040px;
-  max-height: min(860px, calc(100vh - 44px));
+  width: min(1440px, 100%);
+  max-width: 1440px;
+  max-height: min(920px, calc(100vh - 44px));
   border-radius: 24px;
 }
 
 .sales-dashboard-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.65fr) minmax(280px, 1fr);
+  grid-template-columns: minmax(0, 2.1fr) minmax(280px, 1fr);
   gap: 18px;
 }
 
@@ -961,7 +964,7 @@ button,
 .sales-chart-bars-lg {
   margin-top: 12px;
   height: 250px;
-  gap: 8px;
+  gap: 6px;
   background-image: repeating-linear-gradient(
     to top,
     transparent,
@@ -977,7 +980,17 @@ button,
 
 .sales-chart-axis-lg {
   margin-top: 4px;
+  display: grid;
+  grid-template-columns: repeat(24, minmax(0, 1fr));
+  gap: 6px;
   font-size: 11px;
+  text-align: center;
+}
+
+.sales-chart-axis-lg span {
+  min-width: 0;
+  overflow: visible;
+  white-space: nowrap;
 }
 
 .sales-dashboard-side {
@@ -3550,9 +3563,11 @@ button,
     margin-bottom: 0;
     gap: 10px;
     border-left: 3px solid var(--secondary);
-    background: white;
+    background:
+      radial-gradient(120% 100% at 18% 0%, rgba(255, 255, 255, 0.14), transparent 55%),
+      linear-gradient(135deg, var(--primary-dark) 0%, var(--primary) 55%, var(--primary-light) 135%);
     border-radius: 10px;
-    box-shadow: none;
+    box-shadow: 0 6px 14px -8px rgba(74, 44, 23, 0.5);
     flex-shrink: 0;
   }
 
@@ -3569,11 +3584,13 @@ button,
   }
 
   .logo-text h1 {
-    font-size: 15px;
+    font-size: 14px;
+    line-height: 1.15;
   }
 
   .logo-text p {
-    font-size: 10px;
+    font-size: 8px;
+    line-height: 1.15;
   }
 
   .sidebar-nav .btn-primary {
@@ -4052,6 +4069,10 @@ button,
     border-bottom: 1px solid var(--border-color) !important;
   }
 
+  .storage-indicator {
+    margin-bottom: 0;
+  }
+
   .main-grid {
     display: flex !important;
     flex-direction: column !important;
@@ -4075,6 +4096,10 @@ button,
     max-height: none !important;
     padding: 10px !important;
     gap: 8px !important;
+  }
+
+  .storage-indicator {
+    margin-bottom: 0;
   }
 
   .sidebar-sales-chart {
@@ -4109,6 +4134,10 @@ button,
     max-height: none !important;
     gap: 6px !important;
     padding: 8px !important;
+  }
+
+  .storage-indicator {
+    margin-bottom: 0;
   }
 
   .categories-toolbar {
@@ -4201,6 +4230,10 @@ button,
     border-bottom: 1px solid var(--border-color) !important;
     overflow-x: auto !important;
     overflow-y: hidden !important;
+  }
+
+  .storage-indicator {
+    margin-bottom: 0;
   }
 
   .sidebar-brand {
@@ -4360,6 +4393,10 @@ button,
     overflow-y: hidden;
   }
 
+  .storage-indicator {
+    margin-bottom: 0;
+  }
+
   .sidebar-brand {
     margin-bottom: 0 !important;
     padding: 8px 10px;
@@ -4464,10 +4501,6 @@ button,
   .sidebar-sales-chart {
     width: 100%;
     min-width: 0;
-  }
-
-  .sidebar-sales-chart-range {
-    font-size: 10px;
   }
 
   .main-grid {
@@ -7869,9 +7902,11 @@ body[data-cart-density="compact"] .cart-section .checkout-btn {
     margin-bottom: 0;
     gap: 10px;
     border-left: 3px solid var(--secondary);
-    background: white;
+    background:
+      radial-gradient(120% 100% at 18% 0%, rgba(255, 255, 255, 0.14), transparent 55%),
+      linear-gradient(135deg, var(--primary-dark) 0%, var(--primary) 55%, var(--primary-light) 135%);
     border-radius: 10px;
-    box-shadow: none;
+    box-shadow: 0 6px 14px -8px rgba(74, 44, 23, 0.5);
     flex-shrink: 0;
   }
 
@@ -7888,11 +7923,13 @@ body[data-cart-density="compact"] .cart-section .checkout-btn {
   }
 
   .logo-text h1 {
-    font-size: 15px;
+    font-size: 14px;
+    line-height: 1.15;
   }
 
   .logo-text p {
-    font-size: 10px;
+    font-size: 8px;
+    line-height: 1.15;
   }
 
   .sidebar-nav .btn-primary {
@@ -8494,18 +8531,20 @@ body[data-cart-density="compact"] .cart-section .checkout-btn {
   }
 
   .mobile-brand-text strong {
+    font-family: Georgia, 'Times New Roman', serif;
     font-size: 13px;
     color: var(--text-primary);
-    font-weight: 900;
+    font-weight: 700;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
 
   .mobile-brand-text span {
+    font-family: 'Courier New', Courier, monospace;
     font-size: 10px;
     color: var(--text-secondary);
-    font-weight: 800;
+    font-weight: 700;
     white-space: nowrap;
   }
 
@@ -8632,11 +8671,13 @@ body[data-cart-density="compact"] .cart-section .checkout-btn {
   }
 
   .logo-text h1 {
-    font-size: 15px;
+    font-size: 14px;
+    line-height: 1.15;
   }
 
   .logo-text p {
-    font-size: 10px;
+    font-size: 8px;
+    line-height: 1.15;
   }
 
   .app-container {
@@ -9178,31 +9219,33 @@ body[data-cart-density="compact"] .cart-section .checkout-btn {
 @media (min-width: 481px) {
   .sidebar-brand {
     gap: 14px !important;
-    padding: 14px !important;
+    padding: 16px 16px !important;
+    min-height: 102px !important;
   }
 
   .logo-icon {
-    width: 64px !important;
-    height: 64px !important;
-    flex-basis: 64px !important;
+    width: 68px !important;
+    height: 68px !important;
+    flex-basis: 68px !important;
   }
 
   .logo-text {
     display: flex;
     flex-direction: column;
     gap: 2px;
+    padding-top: 4px;
   }
 
   .logo-text h1 {
-    font-size: 17px !important;
-    line-height: 1.1;
-    letter-spacing: -0.3px;
+    font-size: 20px !important;
+    line-height: 1.05;
+    letter-spacing: 0.2px;
   }
 
   .logo-text p {
     font-size: 11px !important;
-    line-height: 1.1;
-    letter-spacing: 0.4px;
+    line-height: 1;
+    letter-spacing: 1.5px;
     text-transform: uppercase;
     opacity: 1;
   }
@@ -9714,25 +9757,30 @@ body[data-cart-density="compact"] .cart-section .checkout-btn {
   }
 
   .sidebar-brand {
-    padding: 12px;
-    gap: 12px;
-    border-radius: 14px;
+    padding: 16px 16px;
+    gap: 14px;
+    border-radius: 16px;
+    min-height: 106px;
   }
 
   .logo-icon {
-    width: 62px;
-    height: 62px;
-    flex: 0 0 62px;
+    width: 68px;
+    height: 68px;
+    flex: 0 0 68px;
+  }
+
+  .logo-text {
+    padding-top: 5px;
   }
 
   .logo-text h1 {
-    font-size: 16px;
-    line-height: 1.1;
+    font-size: 20px;
+    line-height: 1.05;
   }
 
   .logo-text p {
     font-size: 10px;
-    line-height: 1.2;
+    line-height: 1;
   }
 
   .storage-indicator {
@@ -9769,46 +9817,7 @@ body[data-cart-density="compact"] .cart-section .checkout-btn {
   }
 
   .sidebar-sales-chart-title {
-    font-size: 11px;
-    letter-spacing: 0.3px;
-  }
-
-  .sidebar-sales-chart-range {
-    font-size: 10px;
-  }
-
-  .sidebar-sales-summary {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 6px;
-  }
-
-  .sidebar-sales-summary .sidebar-sales-pill:first-child {
-    grid-column: auto;
-  }
-
-  .sidebar-sales-pill {
-    padding: 7px 8px;
-    gap: 3px;
-    border-radius: 9px;
-  }
-
-  .sidebar-sales-pill-label {
-    font-size: 9px;
-    letter-spacing: 0.25px;
-    line-height: 1.1;
-  }
-
-  .sidebar-sales-pill-value {
     font-size: 12px;
-    line-height: 1.15;
-    text-align: left;
-    font-variant-numeric: tabular-nums;
-  }
-
-  .sidebar-sales-note {
-    margin-top: 7px;
-    font-size: 10px;
-    line-height: 1.25;
   }
 }
 

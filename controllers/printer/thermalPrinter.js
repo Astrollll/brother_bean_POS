@@ -740,7 +740,7 @@ export function buildEscReceipt(sale, paperWidth = 58) {
   lines.push([textLine("")]);
 
   // Stamp
-  const stamp = sale.unpaid ? "UNPAID" : sale.cancelled ? "CANCELLED" : sale.queued ? "PENDING" : "PAID";
+  const stamp = sale.unpaid ? "UNPAID" : sale.cancelled ? "CANCELLED" : "PAID";
   lines.push([textLine(center(`<< ${stamp} >>`, width))]);
   lines.push([textLine("")]);
 

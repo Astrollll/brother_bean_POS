@@ -46,7 +46,7 @@
             />
           </div>
           <div class="logo-text">
-            <h1>Brother Bean</h1>
+            <h1><span>Brother</span><span>Bean</span></h1>
             <p>Cafe POS</p>
           </div>
         </div>
@@ -103,33 +103,13 @@
           onclick="openSalesDashboard()"
           aria-label="Open today's sales dashboard"
         >
-          <div class="sidebar-sales-chart-head">
-            <span class="sidebar-sales-chart-title">Sales Trend</span>
-            <span class="sidebar-sales-chart-range">Today summary</span>
-          </div>
-          <div class="sidebar-sales-summary" aria-label="Sales summary">
-            <div class="sidebar-sales-pill">
-              <span class="sidebar-sales-pill-label">Total</span>
-              <span class="sidebar-sales-pill-value" id="salesSummaryTotal"
-                >₱0.00</span
-              >
-            </div>
-            <div class="sidebar-sales-pill">
-              <span class="sidebar-sales-pill-label">Orders</span>
-              <span class="sidebar-sales-pill-value" id="salesSummaryOrders"
-                >0</span
-              >
-            </div>
-            <div class="sidebar-sales-pill">
-              <span class="sidebar-sales-pill-label">Peak</span>
-              <span class="sidebar-sales-pill-value" id="salesSummaryPeak"
-                >N/A</span
-              >
-            </div>
-          </div>
-          <div class="sidebar-sales-note">
-            Tap to view full chart and time breakdown
-          </div>
+          <i class="ri-bar-chart-box-line" aria-hidden="true"></i>
+          <span class="sidebar-sales-chart-title">Sales Trend</span>
+          <span class="sidebar-sales-total" id="salesSummaryTotal">₱0.00</span>
+          <i
+            class="ri-arrow-right-s-line sidebar-sales-chevron"
+            aria-hidden="true"
+          ></i>
         </button>
 
         <div class="sidebar-pending-box">
@@ -1160,7 +1140,7 @@
           <div class="sales-dashboard-grid">
             <div class="sales-dashboard-main">
               <div class="sales-dashboard-chart-head">
-                <h3>Sales by 2-hour windows</h3>
+                <h3>Sales by hour</h3>
                 <p id="salesDashboardSubhead">
                   Live updates as orders complete
                 </p>
