@@ -7789,8 +7789,8 @@ input:checked + .tslider::before {
   width: 34px;
   height: 34px;
   margin: 4px auto 8px;
-  border: 2px solid #2b2620;
-  border-radius: 6px;
+  border: none;
+  border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;

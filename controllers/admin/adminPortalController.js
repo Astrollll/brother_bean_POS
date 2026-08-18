@@ -1860,7 +1860,7 @@ function buildAdminReceiptHTML(order) {
       <div class="receipt">
         <div class="center">
           <div class="brand-mark">
-            <img src="/assets/icons/brother-bean-logo.jpg" alt="Brother Bean Coffeehouse logo" />
+            <img src="/assets/icons/brother-bean-logo-rounded.png" alt="Brother Bean Coffeehouse logo" />
           </div>
           <div class="brand-name">Brother Bean Coffee House</div>
           <div class="brand-tag">anytime is coffee time.</div>

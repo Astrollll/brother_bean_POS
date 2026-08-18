@@ -239,6 +239,7 @@ button,
   box-shadow: 0 8px 20px -10px rgba(74, 44, 23, 0.55);
   position: relative;
   transition: all var(--transition-normal);
+  user-select: none;
 }
 
 .sidebar-brand:hover {
@@ -2944,13 +2945,14 @@ button,
   width: 34px;
   height: 34px;
   margin: 4px auto 8px;
-  border: 2px solid #2b2620;
-  border-radius: 6px;
+  border: none;
+  border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
   font-weight: bold;
   font-size: 15px;
+  overflow: hidden;
 }
 
 .brand-mark img {
@@ -8482,6 +8484,7 @@ body[data-cart-density="compact"] .cart-section .checkout-btn {
 
 .mobile-brand {
   display: none;
+  user-select: none;
 }
 
 @media (max-width: 1199px) {
