@@ -1271,6 +1271,7 @@ button,
   padding-bottom: 14px;
   border-bottom: 1px solid rgba(229, 224, 215, 0.9);
   flex-shrink: 0;
+  user-select: none;
 }
 
 .section-title {
@@ -1288,6 +1289,7 @@ button,
   position: relative;
   margin-bottom: var(--spacing-lg);
   flex-shrink: 0;
+  user-select: none;
 }
 
 .search-bar input {
@@ -5962,6 +5964,7 @@ body[data-cart-density="compact"] .cart-section .checkout-btn {
   position: relative;
   margin-bottom: var(--spacing-lg);
   flex-shrink: 0;
+  user-select: none;
 }
 
 .search-bar input {
