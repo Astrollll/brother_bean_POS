@@ -90,7 +90,7 @@ export function renderStaffList(staff, onRemove) {
         <td><span class="badge b-blue">${escapeHtml(role)}</span></td>
         <td class="staff-action-cell">
           <button class="orders-btn ghost inventory-mini-btn danger row-action-btn" type="button"
-            onclick="window._onRemoveStaff && window._onRemoveStaff('${s.id}')"
+            onclick='window._onRemoveStaff && window._onRemoveStaff(${JSON.stringify(s.id)})'
             title="Remove staff" aria-label="Remove staff">
             <i class="ri-user-unfollow-line" aria-hidden="true"></i>
           </button>

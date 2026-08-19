@@ -15,7 +15,6 @@ export const firebaseConfig = {
 export const DEFAULT_ADMIN_ACCOUNTS = [
   {
     email: "admin@yourdomain.com",
-    password: "CHANGE_THIS_PASSWORD",
     fullName: "Default Admin",
   },
 ];
@@ -24,7 +23,6 @@ export const DEFAULT_ADMIN_ACCOUNTS = [
 export const DEFAULT_STAFF_ACCOUNTS = [
   {
     email: "staff@yourdomain.com",
-    password: "CHANGE_THIS_PASSWORD",
     fullName: "Staff",
   },
 ];

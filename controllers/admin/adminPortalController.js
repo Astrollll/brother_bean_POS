@@ -1194,7 +1194,7 @@ async function loadOrdersPage() {
     bindOrdersControls();
     applyOrderFilters();
   } catch (error) {
-    wrap.innerHTML = `<div style="color:var(--red);font-size:13px;padding:10px 0;">Failed to load transactions: ${error?.message || "Unknown error"}</div>`;
+    wrap.innerHTML = `<div style="color:var(--red);font-size:13px;padding:10px 0;">Failed to load transactions: ${escapeHtml(error?.message || "Unknown error")}</div>`;
   } finally {
     showApp();
   }
@@ -6221,9 +6221,9 @@ async function renderAdminCategories() {
               '<div class="admin-category-addons">' + escapeHtml(addonSummaryText) + '</div>' +
             '</div>' +
             '<div class="admin-category-actions">' +
-              '<button class="admin-category-action addons" onclick="window._adminEditCategoryAddons(\'' + String(cat.id).replace(/'/g, "\\\'") + '\')" title="Edit add-ons"><i class="ri-list-settings-line"></i></button>' +
-              '<button class="admin-category-action edit" onclick="window._adminEditCategory(\'' + String(cat.id).replace(/'/g, "\\\'") + '\')" title="Edit category"><i class="ri-pencil-line"></i></button>' +
-              '<button class="admin-category-action delete" onclick="window._adminDeleteCategory(\'' + String(cat.id).replace(/'/g, "\\\'") + '\')" title="Delete category"><i class="ri-delete-bin-line"></i></button>' +
+              '<button class="admin-category-action addons" onclick=\'window._adminEditCategoryAddons(' + JSON.stringify(String(cat.id || "")) + ')\' title="Edit add-ons"><i class="ri-list-settings-line"></i></button>' +
+              '<button class="admin-category-action edit" onclick=\'window._adminEditCategory(' + JSON.stringify(String(cat.id || "")) + ')\' title="Edit category"><i class="ri-pencil-line"></i></button>' +
+              '<button class="admin-category-action delete" onclick=\'window._adminDeleteCategory(' + JSON.stringify(String(cat.id || "")) + ')\' title="Delete category"><i class="ri-delete-bin-line"></i></button>' +
             '</div>' +
           '</div>';
   });

@@ -4,6 +4,15 @@
 import { convertQuantityBetweenUnits } from "../models/inventoryModel.js";
 import { getCategoryIconForName } from "../models/categoryModel.js";
 
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 // Admin menu view — shows name, price, sold today, and base cost
 export function renderAdminMenu(menuItems, soldMap = {}, inventoryItems = [], globalCategories = []) {
   const grouped = groupByCategory(menuItems, globalCategories);
@@ -40,13 +49,13 @@ export function renderAdminMenu(menuItems, soldMap = {}, inventoryItems = [], gl
   for (const [categoryId, items] of sortedGroupedEntries) {
     const normalizedCategoryId = normalizeCategoryKey(categoryId);
     const catData = catMap[categoryId] || catMap[normalizedCategoryId] || { name: categoryId, icon: getCategoryIconForName(categoryId) };
-    const titleIconHtml = '<span style="margin-right: 8px;">' + catData.icon + '</span>';
-    const cardIconHtml = '<span style="font-size: 24px; display: block; margin-bottom: 8px;">' + catData.icon + '</span>';
+    const titleIconHtml = '<span style="margin-right: 8px;">' + escapeHtml(catData.icon) + '</span>';
+    const cardIconHtml = '<span style="font-size: 24px; display: block; margin-bottom: 8px;">' + escapeHtml(catData.icon) + '</span>';
     const itemCount = items.length;
     
     html += '<div class="card admin-menu-category-shell">' +
       '<div class="card-head">' +
-        '<span class="card-title">' + titleIconHtml + ' ' + catData.name + '</span>' +
+        '<span class="card-title">' + titleIconHtml + ' ' + escapeHtml(catData.name) + '</span>' +
         '<span class="admin-menu-cat-count">' + itemCount + ' item' + (itemCount === 1 ? '' : 's') + '</span>' +
       '</div>' +
       '<div class="menu-grid">' +
@@ -80,12 +89,12 @@ export function renderAdminMenu(menuItems, soldMap = {}, inventoryItems = [], gl
           const addons = categoryHasAddonConfig
             ? normalizeAddons(matchedCategory?.addons || [], `addon-cat-${matchedCategory?.id || matchedCategory?.name || "category"}`)
             : normalizeAddons(item.addons || [], `addon-item-${item?.id || "item"}`);
-          const addonPreview = addons.slice(0, 2).map((addon) => `${addon.name} (+₱${Number(addon.price || 0).toFixed(2)})`).join(', ');
+          const addonPreview = addons.slice(0, 2).map((addon) => `${escapeHtml(addon.name)} (+₱${Number(addon.price || 0).toFixed(2)})`).join(', ');
           const addonSummary = addons.length > 2 ? `${addonPreview}, ...` : addonPreview;
           const minAddonPrice = addons.length ? Math.min(...addons.map((addon) => addon.price)) : 0;
           return '<div class="menu-card menu-card-admin">' +
             '<div class="menu-icon">' + cardIconHtml + '</div>' +
-            '<div class="menu-name" style="flex:1;">' + (item.name || '') + '</div>' +
+            '<div class="menu-name" style="flex:1;">' + escapeHtml(item.name || '') + '</div>' +
             (addons.length
               ? '<div class="menu-addon-summary">Add-ons: ' + addonSummary + (categoryHasAddonConfig ? ' <span class="menu-addon-tag">category</span>' : '') + '</div>'
               : '<div class="menu-addon-summary muted">No add-ons</div>') +
@@ -111,11 +120,11 @@ export function renderAdminMenu(menuItems, soldMap = {}, inventoryItems = [], gl
                 : '<span class="menu-sold-pill empty">none sold today</span>') +
             '</div>' +
             '<div class="menu-card-actions">' +
-              '<button onclick="window._adminEditMenuItem && window._adminEditMenuItem(\'' + String(item.id).replace(/'/g, '\\\'') + '\')" ' +
+              '<button onclick=\'window._adminEditMenuItem && window._adminEditMenuItem(' + JSON.stringify(String(item.id || "")) + ')\' ' +
                 'class="menu-card-action edit" title="Edit item">' +
                 '<i class="ri-pencil-line" style="font-size:12px;vertical-align:middle;margin-right:3px;"></i>Edit' +
               '</button>' +
-              '<button onclick="window._adminDeleteMenuItem && window._adminDeleteMenuItem(\'' + String(item.id).replace(/'/g, '\\\'') + '\')" ' +
+              '<button onclick=\'window._adminDeleteMenuItem && window._adminDeleteMenuItem(' + JSON.stringify(String(item.id || "")) + ')\' ' +
                 'class="menu-card-action delete" title="Delete item">' +
                 '<i class="ri-delete-bin-line" style="font-size:12px;vertical-align:middle;margin-right:3px;"></i>Delete' +
               '</button>' +

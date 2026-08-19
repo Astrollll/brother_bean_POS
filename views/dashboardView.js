@@ -1075,8 +1075,8 @@ function renderTopSellers(periodData) {
         <div class="sales-top-seller-row">
           <div class="sales-top-seller-rank ${index === 0 ? "is-gold" : ""}">${index + 1}</div>
           <div class="sales-top-seller-name">
-            <div>${item.name}</div>
-            <div class="sales-top-seller-meta">${item.quantity} sold • ${item.category || "Uncategorized"}</div>
+            <div>${escapeHtml(item.name)}</div>
+            <div class="sales-top-seller-meta">${item.quantity} sold • ${escapeHtml(item.category || "Uncategorized")}</div>
           </div>
           <div class="sales-top-seller-bar"><span style="width:0%"></span></div>
           <div class="sales-top-seller-value">${formatPeso(item.revenue)}</div>
@@ -1108,7 +1108,7 @@ function renderCategories(periodData) {
       <div class="sales-category-card">
         <div class="sales-category-head">
           <i class="ti ti-chart-donut-2" aria-hidden="true"></i>
-          <span>${category.name}</span>
+          <span>${escapeHtml(category.name)}</span>
         </div>
         <div class="sales-category-value">${formatPeso(category.value)}</div>
         <div class="sales-category-percent">${category.percent}% of sales</div>

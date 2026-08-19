@@ -11,7 +11,6 @@ export const firebaseConfig = {
 export const DEFAULT_ADMIN_ACCOUNTS = [
   {
     email: "admin2@brotherbean.com",
-    password: "admin123",
     fullName: "Admin",
   },
 ];
@@ -19,7 +18,6 @@ export const DEFAULT_ADMIN_ACCOUNTS = [
 export const DEFAULT_STAFF_ACCOUNTS = [
   {
     email: "staff2@brotherbean.com",
-    password: "staff123",
     fullName: "Staff",
   },
 ];

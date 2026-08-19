@@ -577,7 +577,7 @@ function getCategoryDisplay(catParam) {
   const c = getCategoryMeta(catParam);
   const icon = c.icon;
   const name = c.name;
-  return `<span class="category-chip-icon-wrap"><span class="category-chip-icon">${icon}</span></span><span class="category-chip-label">${name}</span>`;
+  return `<span class="category-chip-icon-wrap"><span class="category-chip-icon">${escapeHtml(icon)}</span></span><span class="category-chip-label">${escapeHtml(name)}</span>`;
 }
 
 function getCategoryOptionLabel(catParam) {
@@ -732,12 +732,12 @@ function renderCategoryControls() {
   currentCategory = canonicalizeCategorySelection(currentCategory, categories);
 
   categoriesHost.innerHTML = ["all", ...categories]
-    .map(cat => `<button type="button" class="category-chip ${isSameCategory(cat, currentCategory) ? "active" : ""}" data-category="${cat}" onclick="selectCategory('${cat}', this)">${getCategoryDisplay(cat)}</button>`)
+    .map(cat => `<button type="button" class="category-chip ${isSameCategory(cat, currentCategory) ? "active" : ""}" data-category="${escapeHtml(cat)}" onclick='selectCategory(${JSON.stringify(cat)}, this)'>${getCategoryDisplay(cat)}</button>`)
     .join("");
 
   quickButton.innerHTML = getCategoryDisplay(currentCategory);
   quickMenu.innerHTML = ["all", ...categories]
-    .map(cat => `<button type="button" class="category-quick-menu-item${isSameCategory(cat, currentCategory) ? " is-selected" : ""}" onclick="selectCategory('${cat}')">${getCategoryDisplay(cat)}</button>`)
+    .map(cat => `<button type="button" class="category-quick-menu-item${isSameCategory(cat, currentCategory) ? " is-selected" : ""}" onclick='selectCategory(${JSON.stringify(cat)})'>${getCategoryDisplay(cat)}</button>`)
     .join("");
 }
 
@@ -921,8 +921,8 @@ function renderMenuItemModal() {
       <div class="bb-choice-grid">
         ${product.variants.map(v => `
           <button class="bb-choice ${selectedVariant?.name === v.name ? "is-selected" : ""}" type="button"
-            onclick="selectMenuVariant('${v.name}', ${v.price})">
-            <span class="bb-choice-main">${v.name}</span>
+            onclick='selectMenuVariant(${JSON.stringify(v.name)}, ${v.price})'>
+            <span class="bb-choice-main">${escapeHtml(v.name)}</span>
             <span class="bb-choice-sub">₱${Number(v.price).toFixed(2)}</span>
           </button>
         `).join("")}
@@ -949,7 +949,7 @@ function renderMenuItemModal() {
           return `
           <button class="bb-addon ${selectedAddons.some(x => String(x.id ?? "") === String(a.id ?? "")) ? "is-selected" : ""}" type="button"
             onclick='toggleMenuAddon(${addonIdLiteral})'>
-            <span class="bb-addon-name">${a.name}</span>
+            <span class="bb-addon-name">${escapeHtml(a.name)}</span>
             <span class="bb-addon-price">+₱${Number(a.price).toFixed(2)}</span>
           </button>
         `;
@@ -973,7 +973,7 @@ function renderMenuItemModal() {
             <div class="bb-step-value">${selectedQty}</div>
             <button class="bb-step" type="button" onclick="changeMenuQty(1)">+</button>
           </div>
-          <div class="bb-mini-note">${product.category || ""}</div>
+          <div class="bb-mini-note">${escapeHtml(product.category || "")}</div>
         </div>
 
         <div class="bb-recap">
@@ -1110,10 +1110,10 @@ export function updateCart() {
     const lineTotal  = discountedUnit * item.quantity;
     return `<div class="cart-item">
       <div class="cart-item-details">
-        <div class="cart-item-name">${item.name}</div>
-        ${item.variant ? `<div class="cart-item-variant">${item.variant}</div>` : ""}
-        ${item.temperature && item.temperature !== "N/A" ? `<div class="cart-item-variant">${item.temperature}</div>` : ""}
-        ${(item.addons||[]).length ? `<div class="cart-item-addons">${item.addons.map(a=>`<span class="cart-addon-tag">+${a.name}</span>`).join("")}</div>` : ""}
+        <div class="cart-item-name">${escapeHtml(item.name)}</div>
+        ${item.variant ? `<div class="cart-item-variant">${escapeHtml(item.variant)}</div>` : ""}
+        ${item.temperature && item.temperature !== "N/A" ? `<div class="cart-item-variant">${escapeHtml(item.temperature)}</div>` : ""}
+        ${(item.addons||[]).length ? `<div class="cart-item-addons">${item.addons.map(a=>`<span class="cart-addon-tag">+${escapeHtml(a.name)}</span>`).join("")}</div>` : ""}
         ${item.discountPercent > 0 ? `<div class="cart-item-discount">-${Math.round(item.discountPercent * 100)}% OFF</div>` : ''}
         <div class="cart-item-price">₱${lineTotal.toFixed(2)}</div>
       </div>
@@ -1447,20 +1447,20 @@ function renderUnpaidOrdersList() {
 
   listEl.innerHTML = orders.map((order) => {
     const itemNames = Array.isArray(order.items)
-      ? order.items.slice(0, 2).map(i => i.name).join(", ") + (order.items.length > 2 ? ", ..." : "")
+      ? order.items.slice(0, 2).map(i => escapeHtml(i.name)).join(", ") + (order.items.length > 2 ? ", ..." : "")
       : "No items";
     const timestamp = order.timestamp || "--";
     const total = Number(order.total) || 0;
     return `
       <div class="sidebar-pending-item">
-        <div onclick="openUnpaidOrderReceipt('${order.id}')">
+        <div onclick='openUnpaidOrderReceipt(${JSON.stringify(order.id)})'>
           <div class="sidebar-pending-order">#${String(order.orderId || order.id || "").slice(-6) || "—"}</div>
           <div class="sidebar-pending-meta">${timestamp} · ${itemNames}</div>
           <div class="sidebar-pending-meta">Total: ₱${total.toFixed(2)}</div>
         </div>
         <div class="unpaid-item-actions">
-          <button class="sidebar-pending-button" type="button" onclick="event.stopPropagation(); restoreUnpaidOrderToCart('${order.id}')">Restore</button>
-          <button class="sidebar-pending-button unpaid-delete-btn" type="button" onclick="event.stopPropagation(); deleteUnpaidOrder('${order.id}')">Delete</button>
+          <button class="sidebar-pending-button" type="button" onclick='event.stopPropagation(); restoreUnpaidOrderToCart(${JSON.stringify(order.id)})'>Restore</button>
+          <button class="sidebar-pending-button unpaid-delete-btn" type="button" onclick='event.stopPropagation(); deleteUnpaidOrder(${JSON.stringify(order.id)})'>Delete</button>
         </div>
       </div>
     `;
@@ -3274,7 +3274,7 @@ async function renderPendingOrdersList() {
 
   listEl.innerHTML = pending.map((order) => {
     const itemNames = Array.isArray(order.payload?.items)
-      ? order.payload.items.slice(0, 2).map(i => i.name).join(", ") + (order.payload.items.length > 2 ? ", ..." : "")
+      ? order.payload.items.slice(0, 2).map(i => escapeHtml(i.name)).join(", ") + (order.payload.items.length > 2 ? ", ..." : "")
       : "No items";
     const createdAt = order.createdAt ? new Date(order.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "--";
     const total = Number(order.payload?.total) || 0;
@@ -3295,9 +3295,9 @@ async function renderPendingOrdersList() {
           ${note ? `<div class="sidebar-pending-note" id="${noteId}" data-full="${noteEscaped.replace(/"/g, "&quot;")}" data-short="${noteDisplay.replace(/"/g, "&quot;")}">Note: ${noteDisplay}</div>${noteTruncated ? `<button class="sidebar-pending-note-toggle" type="button" onclick="togglePendingNote('${noteId}')">See more</button>` : ""}` : ""}
         </div>
         <div class="pending-item-actions">
-          <button class="sidebar-pending-button" type="button" onclick="event.stopPropagation(); openPendingOrder('${order.id}')">View Receipt</button>
-          <button class="sidebar-pending-button" type="button" onclick="event.stopPropagation(); markPendingOrderPrepared('${order.id}')">Done preparing</button>
-          <button class="sidebar-pending-button pending-cancel-btn" type="button" onclick="event.stopPropagation(); cancelPendingOrder('${order.id}')">Cancel order</button>
+          <button class="sidebar-pending-button" type="button" onclick='event.stopPropagation(); openPendingOrder(${JSON.stringify(order.id)})'>View Receipt</button>
+          <button class="sidebar-pending-button" type="button" onclick='event.stopPropagation(); markPendingOrderPrepared(${JSON.stringify(order.id)})'>Done preparing</button>
+          <button class="sidebar-pending-button pending-cancel-btn" type="button" onclick='event.stopPropagation(); cancelPendingOrder(${JSON.stringify(order.id)})'>Cancel order</button>
         </div>
       </div>
     `;
