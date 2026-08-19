@@ -13,7 +13,8 @@
       "CHANGELOG.md",
       "README.md",
       "scripts/**",
-      "config/app.config.example.js"
+      "config/app.config.example.js",
+      "OJT_Daily_Journal.txt"
     ],
     "redirects": [
       {
