@@ -1,16 +1,16 @@
 import { logout as authLogout, watchAuth, createAuthUserByAdmin, updatePasswordByAdmin, getCurrentUser } from "../auth/firebaseAuth.js";
 import { db } from "../firebase.js";
 import {
-  doc, setDoc, getDoc, collection, getDocs, serverTimestamp
+  doc, setDoc, getDoc, updateDoc, collection, getDocs, serverTimestamp
 } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js";
 import { getAdminSettings, saveAdminSettings, getDefaultSettings, syncPendingAdminSettings } from "../../models/settingsModel.js";
 import { getUserRole, getUserProfile, listUsers, setUserRole, setUserProfile, ensureAdminAccessProfile } from "../../models/userModel.js";
 import { getMenuItems, saveMenuItem, deleteMenuItem, clearMenuItems, syncPendingMenuOps } from "../../models/menuModel.js";
 import { getCategories, saveCategory, deleteCategory, getCategoryIconForName, syncCategoryLocalChanges } from "../../models/categoryModel.js";
-import { getTodayOrders, getAllSalesOrders, deleteOrder, clearAllOrders, getPendingOrderCount, getQueuedOrders, syncQueuedOrders, getOrderStatus } from "../../models/orderModel.js";
-import { getSavedSalesHistory, getDailyStatsByDate, getDrawerLogsByDate, purgeSavedSale } from "../../models/storageModel.js";
+import { getTodayOrders, getAllSalesOrders, deleteOrder, clearAllOrders, getPendingOrderCount, getQueuedOrders, syncQueuedOrders, getOrderStatus, voidOrder } from "../../models/orderModel.js";
+import { getSavedSalesHistory, getDailyStatsByDate, getDrawerLogsByDate, purgeSavedSale, removeKitchenOrder } from "../../models/storageModel.js";
 import { resetDay as archiveResetDay } from "../../models/resetModel.js";
-import { getInventoryItems, saveInventoryItem, deleteInventoryItem, clearInventoryItems, convertQuantityBetweenUnits, normalizeUnit, renameInventoryCategory, deleteInventoryCategory, getInventoryCategoryNames, createInventoryCategory } from "../../models/inventoryModel.js";
+import { getInventoryItems, saveInventoryItem, deleteInventoryItem, clearInventoryItems, convertQuantityBetweenUnits, normalizeUnit, renameInventoryCategory, deleteInventoryCategory, getInventoryCategoryNames, createInventoryCategory, restoreInventoryForOrder } from "../../models/inventoryModel.js";
 import { inventorySeedItems } from "../../models/defaultSeedData.js";
 import { getAllStaff as getStaff, getSchedule, getOnDutyNowFromSchedule, addStaff, removeStaff, removeStaffByName, removeStaffByAccountUid, updateStaffAccountLink, updateStaffNameByUid, saveSchedule, parseShiftRange } from "../../models/staffModel.js";
 import { renderSalesAnalyticsDashboard, renderAdminDashboard, AIR_DATEPICKER_EN_LOCALE, airDatepickerSmartPosition, trackAirDatepickerReposition } from "../../views/dashboardView.js?v=20260806F";
@@ -1608,6 +1608,17 @@ function buildSortHeader(key, label) {
   return `<button class="orders-sort-btn ${active ? "active" : ""}" type="button" data-sort="${key}" title="Sort by ${label}">${label}${arrow ? `<span class="orders-sort-arrow" aria-hidden="true">${arrow}</span>` : ""}</button>`;
 }
 
+async function getAdminActorName() {
+  try {
+    const currentUser = getCurrentUser();
+    if (!currentUser) return "Admin";
+    const profile = await getUserProfile(currentUser.uid);
+    return profile?.fullName || currentUser.displayName || currentUser.email || "Admin";
+  } catch {
+    return "Admin";
+  }
+}
+
 function buildOrderMainRow(order) {
   const orderKey = String(order.id || order.orderId || "");
   const shortId = orderKey.slice(-6) || "—";
@@ -1646,6 +1657,12 @@ function buildOrderMainRow(order) {
     ? `<span class="orders-amount-strike" title="Sales not recorded (order cancelled)">₱${total}</span>`
     : `₱${total}`;
   const expanded = !!state.orderStockExpanded?.[orderKey];
+  const isPending = lifecycle === "pending";
+  const pendingActions = isPending
+    ? `
+        <button class="orders-btn ghost inventory-mini-btn order-complete-btn" type="button" data-order-action="complete" data-order-id="${escapeHtml(orderKey)}" title="Mark as done / prepared" aria-label="Mark as done"><i class="ri-check-double-line" aria-hidden="true"></i></button>
+        <button class="orders-btn ghost inventory-mini-btn danger order-cancel-btn" type="button" data-order-action="cancel" data-order-id="${escapeHtml(orderKey)}" title="Cancel order (void)" aria-label="Cancel order"><i class="ri-close-circle-line" aria-hidden="true"></i></button>`
+    : "";
   return `
     <tr class="orders-main-row" data-order-id="${escapeHtml(orderKey)}">
       <td class="orders-ref-cell">
@@ -1660,6 +1677,7 @@ function buildOrderMainRow(order) {
       <td class="orders-amount-cell">${amountCell}</td>
       <td>${status}</td>
       <td class="orders-actions-cell">
+        ${pendingActions}
         <button class="orders-btn ghost inventory-mini-btn order-view-btn" type="button" data-order-action="view" data-order-id="${escapeHtml(orderKey)}" title="View receipt" aria-label="View receipt"><i class="ri-receipt-line" aria-hidden="true"></i></button>
         <button class="orders-btn ghost inventory-mini-btn danger order-delete-btn" type="button" data-order-action="delete" data-order-id="${escapeHtml(orderKey)}" title="Delete transaction" aria-label="Delete transaction"><i class="ri-delete-bin-line" aria-hidden="true"></i></button>
       </td>
@@ -2251,6 +2269,62 @@ function bindOrdersTableEvents(wrap) {
         } catch (error) {
           await ModalUtils.error("Delete Failed", error?.message || "Unable to delete transaction.");
         }
+        return;
+      }
+
+      if (action === "complete") {
+        try {
+          const actorName = await getAdminActorName();
+          await updateDoc(doc(db, "orders", orderId), {
+            status: "done",
+            preparedAtMs: Date.now(),
+            preparedBy: actorName,
+          });
+          try { await removeKitchenOrder(orderId); } catch (e) {
+            console.warn("[Admin] Mark prepared: kitchen order removal failed.", e);
+          }
+          purgeSavedSale(orderId);
+          await ModalUtils.success("Order Completed", "The order has been marked as done/prepared.");
+          await loadOrdersPage();
+        } catch (error) {
+          await ModalUtils.error("Complete Failed", error?.message || "Unable to mark the order as done.");
+        }
+        return;
+      }
+
+      if (action === "cancel") {
+        const confirmed = await ModalUtils.confirm(
+          "Cancel Order",
+          "Cancel this order? The order will be voided, the deducted stock will be restored, and it will no longer be counted in sales."
+        );
+        if (confirmed !== 1) return;
+
+        try {
+          const actorName = await getAdminActorName();
+          await voidOrder(orderId, {
+            voidedBy: actorName,
+            voidReason: "Cancelled from admin transactions",
+          });
+          try { await removeKitchenOrder(orderId); } catch (e) {
+            console.warn("[Admin] Cancel: kitchen order removal failed.", e);
+          }
+          purgeSavedSale(orderId);
+
+          const restored = await restoreInventoryForOrder(order).catch((e) => {
+            console.warn("[Admin] Cancel: inventory restore failed.", e);
+            return { success: false };
+          });
+          if (restored?.success === false) {
+            await ModalUtils.warning("Order Cancelled", "The order was cancelled, but stock could not be restored automatically. Please check inventory.");
+          } else {
+            await ModalUtils.success("Order Cancelled", "The order was cancelled and stock was restored.");
+          }
+          await loadOrdersPage();
+        } catch (error) {
+          const denied = /permission|denied|permission-denied/i.test(String(error?.message || error?.code || ""));
+          await ModalUtils.error("Cancel Failed", denied ? "Unable to cancel the order — cancel requires permission (rules may need redeploy)." : (error?.message || "Unable to cancel the order."));
+        }
+        return;
       }
     });
   });
