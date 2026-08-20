@@ -19,9 +19,14 @@ function resolveOrderDate(data) {
   return new Date();
 }
 
-// Archive all orders currently in the `orders` collection, each under its own
+// Archive orders in the live `orders` collection, each under its own
 // date (resets/{yyyy-mm-dd}/orders), and delete them from `orders`.
-// Every doc in `orders` is archived — not just today's range — so an offline
+//
+// Pass `{ onlyBeforeMs }` to limit the archive to orders created strictly
+// before that timestamp (e.g. the start of today). This lets the app roll
+// over previous days automatically without ever touching today's live orders.
+//
+// Every doc that matches is archived — not just today's range — so an offline
 // order that is synced back AFTER its day's reset (syncQueuedOrders preserves
 // the original createdAt) still gets archived on the next reset instead of
 // being orphaned in `orders` forever.
@@ -29,13 +34,25 @@ function resolveOrderDate(data) {
 // Pending orders (status "pending") are archived as "done" so they never stack
 // up as Pending on the admin transactions page when staff forget to mark them
 // prepared. Their kitchen queue entries are removed afterwards (best-effort).
-export async function resetDay() {
+export async function resetDay({ onlyBeforeMs = null } = {}) {
   const now = new Date();
   const todayKey = toDateKey(now);
 
   const snap = await getDocs(collection(db, ORDERS_COLLECTION));
 
-  if (snap.empty) return { success: false, reason: "No orders to archive." };
+  let docs = snap.docs;
+  if (onlyBeforeMs != null) {
+    docs = snap.docs.filter((d) => {
+      const data = d.data() || {};
+      const dated = data?.createdAt?.toDate || Number(data?.createdAtMs) > 0 || data?.timestamp?.toDate;
+      // Undated legacy orders carry no usable timestamp, so they clearly were
+      // not created today (today's orders always have one) — archive them.
+      if (!dated) return true;
+      return resolveOrderDate(data).getTime() < onlyBeforeMs;
+    });
+  }
+
+  if (!docs.length) return { success: false, reason: "No orders to archive." };
 
   const perDateCount = new Map();
   const kitchenIds = [];
@@ -52,7 +69,7 @@ export async function resetDay() {
     ops = 0;
   };
 
-  snap.docs.forEach((d) => {
+  docs.forEach((d) => {
     const data = d.data() || {};
     const dateKey = toDateKey(resolveOrderDate(data));
     perDateCount.set(dateKey, (perDateCount.get(dateKey) || 0) + 1);
@@ -115,5 +132,5 @@ export async function resetDay() {
     }
   }
 
-  return { success: true, totalArchived: snap.size, date: todayKey, autoCompleted };
+  return { success: true, totalArchived: docs.length, date: todayKey, autoCompleted };
 }

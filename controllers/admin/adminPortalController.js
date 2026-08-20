@@ -1192,6 +1192,7 @@ async function loadOrdersPage() {
     state.allOrders = await getAllSalesOrders(null, null, { includeVoided: true });
     state.orderStockExpanded = {};
     await autoCompleteStalePendingOrders();
+    await autoArchivePreviousDayOrders();
     bindOrdersControls();
     applyOrderFilters();
   } catch (error) {
@@ -1264,6 +1265,64 @@ async function autoCompleteStalePendingOrders() {
   }
 
   return updated;
+}
+
+// Auto-archive previous-day orders so the transactions feed rolls over each
+// morning without anyone pressing "Archive Transactions". Only orders created
+// strictly before today are moved to resets/{date}/orders (pending ones become
+// done); today's orders stay live so KPIs, the POS feed, and the reset-marker
+// prune guard are all unaffected. Idempotent — it no-ops when there is nothing
+// before today. The manual Archive button still works for a full end-of-day
+// close. Best-effort: a failure here must never block the page.
+async function autoArchivePreviousDayOrders() {
+  try {
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+    const result = await archiveResetDay({ onlyBeforeMs: startOfToday.getTime() });
+    if (result && result.success) {
+      console.log(`[Admin] Auto-archived ${result.totalArchived} previous-day order(s).`);
+      if (Number(result.autoCompleted) > 0) {
+        console.log(`[Admin] ${result.autoCompleted} pending order(s) were marked done.`);
+      }
+      showAutoArchiveToast(result);
+      return result;
+    }
+  } catch (error) {
+    console.warn("[Admin] Auto-archive previous-day orders failed (best-effort).", error);
+  }
+  return null;
+}
+
+function showAutoArchiveToast(result) {
+  try {
+    const parts = [`Auto-archived ${result.totalArchived} previous-day transaction(s).`];
+    if (Number(result.autoCompleted) > 0) {
+      parts.push(`${result.autoCompleted} pending order(s) were marked done.`);
+    }
+    const el = document.createElement("div");
+    el.textContent = parts.join(" ");
+    Object.assign(el.style, {
+      position: "fixed",
+      top: "18px",
+      right: "18px",
+      zIndex: "99999",
+      background: "#0f7b3e",
+      color: "#fff",
+      padding: "12px 18px",
+      borderRadius: "10px",
+      font: "14px/1.4 system-ui, sans-serif",
+      boxShadow: "0 6px 18px rgba(0,0,0,.25)",
+      maxWidth: "340px",
+    });
+    document.body.appendChild(el);
+    setTimeout(() => {
+      el.style.transition = "opacity .4s ease";
+      el.style.opacity = "0";
+      setTimeout(() => el.remove(), 420);
+    }, 6000);
+  } catch (e) {
+    // The toast is purely cosmetic; never let it break anything.
+  }
 }
 
 function getOrderDate(order) {
@@ -5354,6 +5413,9 @@ document.addEventListener("DOMContentLoaded", async () => {
       // after the dashboard (and its queued-order sync), best-effort and
       // idempotent; it also runs again when the transactions tab is opened.
       await autoCompleteStalePendingOrders();
+      // Then roll previous-day orders into the resets archive automatically,
+      // so no one has to press "Archive Transactions" each morning.
+      await autoArchivePreviousDayOrders();
 
       // Pre-load inventory in background so nav badge shows count immediately
       getInventoryItems().then((items) => {
