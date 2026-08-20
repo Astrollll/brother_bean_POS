@@ -1,7 +1,7 @@
 import { logout as authLogout, watchAuth, createAuthUserByAdmin, updatePasswordByAdmin, getCurrentUser } from "../auth/firebaseAuth.js";
 import { db } from "../firebase.js";
 import {
-  doc, setDoc, getDoc, updateDoc, collection, getDocs, serverTimestamp
+  doc, setDoc, getDoc, updateDoc, collection, getDocs, serverTimestamp, writeBatch
 } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js";
 import { getAdminSettings, saveAdminSettings, getDefaultSettings, syncPendingAdminSettings } from "../../models/settingsModel.js";
 import { getUserRole, getUserProfile, listUsers, setUserRole, setUserProfile, ensureAdminAccessProfile } from "../../models/userModel.js";
@@ -1191,6 +1191,7 @@ async function loadOrdersPage() {
   try {
     state.allOrders = await getAllSalesOrders(null, null, { includeVoided: true });
     state.orderStockExpanded = {};
+    await autoCompleteStalePendingOrders();
     bindOrdersControls();
     applyOrderFilters();
   } catch (error) {
@@ -1198,6 +1199,60 @@ async function loadOrdersPage() {
   } finally {
     showApp();
   }
+}
+
+// Auto-record stale pending orders (from a previous day) as "done" so they stop
+// stacking as Pending on the transactions page when staff forget to mark them
+// prepared. Covers both live `orders` docs and archived `resets/{date}/orders`
+// docs (archived copies carry `archivedFrom`). Best-effort and idempotent — it
+// only ever sets status to "done" and never blocks or fails the page load.
+async function autoCompleteStalePendingOrders() {
+  const startOfToday = new Date();
+  startOfToday.setHours(0, 0, 0, 0);
+  const startMs = startOfToday.getTime();
+
+  const stale = (state.allOrders || []).filter((order) => {
+    if (getOrderStatus(order) !== "pending") return false;
+    const date = getOrderDate(order);
+    return date ? date.getTime() < startMs : false;
+  });
+
+  if (!stale.length) return 0;
+
+  const preparedAtMs = Date.now();
+  const preparedBy = "Auto (stale cleanup)";
+  let updated = 0;
+
+  try {
+    const writes = [];
+    for (const order of stale) {
+      const orderKey = String(order.id || order.orderId || "");
+      if (!orderKey) continue;
+      const ref = order.archivedFrom
+        ? doc(db, "resets", order.archivedFrom, "orders", orderKey)
+        : doc(db, "orders", orderKey);
+      writes.push({ ref, data: { status: "done", preparedAtMs, preparedBy } });
+    }
+
+    for (let i = 0; i < writes.length; i += 450) {
+      const batch = writeBatch(db);
+      writes.slice(i, i + 450).forEach((w) => batch.update(w.ref, w.data));
+      await batch.commit();
+      updated += Math.min(450, writes.length - i);
+    }
+
+    if (updated > 0) {
+      try {
+        state.allOrders = await getAllSalesOrders(null, null, { includeVoided: true });
+      } catch (refreshError) {
+        console.warn("[Admin] Refresh after auto-complete failed.", refreshError);
+      }
+    }
+  } catch (error) {
+    console.warn("[Admin] Auto-complete stale pending orders failed (best-effort).", error);
+  }
+
+  return updated;
 }
 
 function getOrderDate(order) {
@@ -5112,7 +5167,10 @@ window.resetDay = async function () {
     await ModalUtils.warning("Reset Failed", result.reason || "Nothing to reset.");
     return;
   }
-  await ModalUtils.success("Transactions Archived", `Archived ${result.totalArchived} transactions for ${result.date}.`);
+  const autoNote = Number(result.autoCompleted) > 0
+    ? ` ${result.autoCompleted} pending order${Number(result.autoCompleted) === 1 ? "" : "s"} were auto-marked as done.`
+    : "";
+  await ModalUtils.success("Transactions Archived", `Archived ${result.totalArchived} transactions for ${result.date}.${autoNote}`);
   await loadDashboard();
 };
 

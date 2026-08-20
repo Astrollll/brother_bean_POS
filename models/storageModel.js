@@ -322,13 +322,14 @@ function writeLocalKitchenOrders(orders) {
 }
 
 export async function getKitchenOrders() {
+  const startOfDay = new Date();
+  startOfDay.setHours(0, 0, 0, 0);
+  const startMs = startOfDay.getTime();
   try {
-    const startOfDay = new Date();
-    startOfDay.setHours(0, 0, 0, 0);
     const snap = await getDocs(
       query(
         collection(db, KITCHEN_COLLECTION),
-        where("createdAt", ">=", startOfDay.getTime())
+        where("createdAt", ">=", startMs)
       )
     );
     const remote = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
@@ -339,7 +340,12 @@ export async function getKitchenOrders() {
   } catch (error) {
     console.warn("[Storage] Firestore kitchen read failed, using local.", error);
   }
-  return readLocalKitchenOrders();
+  // The Firestore query is day-filtered, so keep the local fallback consistent:
+  // never resurrect yesterday's cleared kitchen orders from cache.
+  return readLocalKitchenOrders().filter((o) => {
+    const created = Number(o?.createdAt);
+    return !Number.isFinite(created) || created >= startMs;
+  });
 }
 
 export async function saveKitchenOrder(orderData) {
