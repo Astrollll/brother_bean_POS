@@ -166,6 +166,23 @@ export async function loadFromStorage() {
   }
 }
 
+// Synchronous snapshot of the persisted local POS state (no network). Used to
+// paint the sidebar/stats instantly on load while the Firestore sync runs.
+// Returns the same shape as loadFromStorage().
+export function readLocalPosState() {
+  const empty = { orders: 0, totalSales: 0, discountsApplied: 0, cashReceived: 0, gcashReceived: 0, openingFloat: 0, cashIn: 0, cashOut: 0, actualCash: null, cashOnHandAuto: true, ledgerEntries: [] };
+  try {
+    const history = localStorage.getItem(localHistoryKey());
+    const stats = localStorage.getItem(localStatsKey());
+    return {
+      salesHistory: history ? JSON.parse(history) : [],
+      dailyStats: stats ? JSON.parse(stats) : empty,
+    };
+  } catch (e) {
+    return { salesHistory: [], dailyStats: empty };
+  }
+}
+
 export async function loadStatsFromFirestore() {
   try {
     const statsId = todayKey();

@@ -37,7 +37,8 @@ import {
   purgeSavedSale,
   recordDrawerLogEntry,
   syncDrawerLogOutbox,
-  getSharedDrawerState
+  getSharedDrawerState,
+  readLocalPosState
 } from "../models/storageModel.js";
 
 // ── STATE ──
@@ -284,6 +285,28 @@ document.addEventListener("DOMContentLoaded", async () => {
       menuItems = sanitizePosMenuItems(cachedMenu);
       renderCategoryControls();
       renderProducts();
+    }
+
+    // Instant sidebar paint: render the persisted local stats/orders right away
+    // (no network) so the stats bar, sales trend, and drawer summary are never
+    // blank while the Firestore sync below runs. The authoritative merge a few
+    // lines down overwrites these moments later.
+    try {
+      const localState = readLocalPosState();
+      if (localState) {
+        const nowMs = Date.now();
+        const dayStart = new Date(new Date(nowMs).getFullYear(), new Date(nowMs).getMonth(), new Date(nowMs).getDate()).getTime();
+        const dayEnd = dayStart + 86400000;
+        salesHistory = (localState.salesHistory || []).filter((o) => {
+          const ts = getSaleTimestampMs(o);
+          return ts >= dayStart && ts < dayEnd;
+        });
+        dailyStats = recomputeDailyStats(salesHistory, localState.dailyStats || {});
+        updateStats();
+        updateUnpaidOrderSidebar();
+      }
+    } catch (error) {
+      console.warn("[POS] Instant sidebar paint skipped.", error);
     }
 
     // Load from storage first
