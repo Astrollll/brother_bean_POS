@@ -65,6 +65,14 @@ function applyPendingMenuOps(items, ops) {
   return result;
 }
 
+// Read the last known menu synchronously from local cache (plus any pending
+// offline ops). Safe for an instant first paint so the grid is never blank
+// while getMenuItems() waits on the network. Always call getMenuItems() (or
+// watchMenuItems()) afterwards for authoritative Firestore data.
+export function getCachedMenuItems() {
+  return applyPendingMenuOps(readLocalCache(), readPendingOps());
+}
+
 // Fetch all menu items from Firestore, fallback to local cache
 export async function getMenuItems() {
   let items = [];

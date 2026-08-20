@@ -1,4 +1,8 @@
 export function getFirestore() { return { type: "itest-db" }; }
+export function initializeFirestore() { return { type: "itest-db" }; }
+export function persistentLocalCache() { return { type: "itest-persistent-cache" }; }
+export function persistentSingleTabManager() { return { type: "itest-single-tab" }; }
+export function persistentMultipleTabManager() { return { type: "itest-multi-tab" }; }
 export const db = { type: "itest-db" };
 
 export function collection(parent, name) { return { path: `${parent.path ?? ""}/${name}` }; }

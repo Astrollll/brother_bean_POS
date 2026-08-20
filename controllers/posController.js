@@ -1,7 +1,7 @@
 // ── POS CONTROLLER ──
 // Connects models (data) to views (UI) for the POS/cashier page
 
-import { getMenuItems, watchMenuItems }  from "../models/menuModel.js";
+import { getMenuItems, watchMenuItems, getCachedMenuItems }  from "../models/menuModel.js";
 import { getCategories } from "../models/categoryModel.js";
 import { getCategoryIconForName } from "../models/categoryModel.js";
 import { isDefaultTemplateMenuItem } from "../models/defaultSeedData.js";
@@ -274,6 +274,17 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     if (initialized) return;
     initialized = true;
+
+    // Instant first paint: render the last known menu from the local cache
+    // right away instead of waiting for the network below, so the grid never
+    // sits blank during refresh/login. The fresh Firestore fetch and the
+    // watchMenuItems() listener below replace it with current data moments later.
+    const cachedMenu = getCachedMenuItems();
+    if (Array.isArray(cachedMenu) && cachedMenu.length) {
+      menuItems = sanitizePosMenuItems(cachedMenu);
+      renderCategoryControls();
+      renderProducts();
+    }
 
     // Load from storage first
     const storageData = await loadFromStorage().catch(() => ({
