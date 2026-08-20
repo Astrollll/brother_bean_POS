@@ -145,6 +145,25 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* Early density shim: read from html[data-cart-density] set by inline loader
+   so the UI uses saved density before JS initialisation (prevents layout
+   shift where the discount block and separators jump after load). */
+html[data-cart-density="regular"] .cart-section { padding: 16px !important; min-height: 0 !important; }
+html[data-cart-density="regular"] .cart-section .section-header { margin-bottom: 10px !important; padding-bottom: 10px !important; }
+html[data-cart-density="regular"] .cart-section .discount-section { padding: 10px !important; margin-bottom: 10px !important; }
+html[data-cart-density="regular"] .cart-section .discount-header { margin-bottom: 6px !important; font-size: 12px !important; }
+html[data-cart-density="regular"] .cart-section .discount-toggle { padding: 8px 10px !important; }
+
+html[data-cart-density="regular"] .cart-section .cart-items { display: grid !important; gap: 8px !important; min-height: 0 !important; padding-right: 2px !important; }
+
+html[data-cart-density="compact"] .cart-section { padding: 12px !important; min-height: 0 !important; }
+html[data-cart-density="compact"] .cart-section .section-header { margin-bottom: 8px !important; padding-bottom: 8px !important; }
+html[data-cart-density="compact"] .cart-section .discount-section { padding: 8px !important; margin-bottom: 8px !important; }
+html[data-cart-density="compact"] .cart-section .discount-header { margin-bottom: 4px !important; font-size: 11px !important; }
+html[data-cart-density="compact"] .cart-section .discount-toggle { padding: 6px 8px !important; }
+
+html[data-cart-density="compact"] .cart-section .cart-items { display: grid !important; gap: 6px !important; min-height: 0 !important; padding-right: 2px !important; }
+
 button,
 [role="button"],
 .nav-btn,
