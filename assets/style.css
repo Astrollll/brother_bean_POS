@@ -408,6 +408,7 @@ button,
   text-align: center;
   display: flex;
   align-items: center;
+  align-content: center;
   justify-content: center;
   gap: 6px;
   flex-wrap: wrap;
@@ -415,6 +416,7 @@ button,
   white-space: normal;
   overflow: visible;
   text-overflow: clip;
+  min-height: 54px;
   margin-bottom: -4px;
 }
 

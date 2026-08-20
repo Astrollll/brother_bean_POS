@@ -236,6 +236,10 @@ document.addEventListener("DOMContentLoaded", async () => {
   closeSidebar();
   setMainView("menu");
 
+  // Paint the Cloud/Queue/Local status card immediately from local sync data so
+  // the default "Ready" text never lingers while auth is still resolving.
+  updateConnectivityStatus();
+
   window.addEventListener("resize", () => {
     if (window.innerWidth > 1199) {
       document.body.classList.remove("sidebar-collapsed", "main-view-menu", "main-view-order");
