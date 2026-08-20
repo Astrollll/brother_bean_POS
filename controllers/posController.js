@@ -3361,21 +3361,31 @@ window.togglePendingNote = function(id) {
   }
 };
 
-async function updateConnectivityStatus() {
+function updateConnectivityStatus() {
   const indicator = document.getElementById("storageStatus");
+  const pendingSyncCount = getPendingOrderCount();
+  const savedCount = getStorageCount();
+
+  // The Cloud/Queue/Local card only needs local, synchronous data — render it
+  // immediately so it never waits on the network.
+  if (indicator) {
+    const cloudLabel = isOnline ? "Online" : "Offline";
+    indicator.innerHTML = `<i class="ri-wifi-line" aria-hidden="true"></i><span>Cloud: ${cloudLabel}</span><span class="storage-dot" aria-hidden="true">•</span><span>Queue: ${pendingSyncCount}</span><span class="storage-dot" aria-hidden="true">•</span><span>Local: ${savedCount}</span>`;
+    indicator.setAttribute("title", `Cloud ${cloudLabel}; ${pendingSyncCount} order(s) waiting sync; ${savedCount} local record(s)`);
+  }
+
+  // Kitchen pending count and list are Firestore reads — refresh them in the
+  // background so the stats card above never blocks on the network.
+  refreshKitchenPendingIndicators().catch(() => {});
+}
+
+async function refreshKitchenPendingIndicators() {
   const pendingKitchenOrders = await getPendingOrders();
   const pendingKitchenCount = Array.isArray(pendingKitchenOrders) ? pendingKitchenOrders.length : 0;
-  const pendingSyncCount = getPendingOrderCount();
   const pendingEl = document.getElementById("pendingOrdersSidebar");
   if (pendingEl) pendingEl.textContent = String(pendingKitchenCount);
   const pendingModalCountEl = document.getElementById("pendingOrdersOpenCount");
   if (pendingModalCountEl) pendingModalCountEl.textContent = String(pendingKitchenCount);
-
-  if (!indicator) return;
-  const savedCount = getStorageCount();
-  const cloudLabel = isOnline ? "Online" : "Offline";
-  indicator.innerHTML = `<i class="ri-wifi-line" aria-hidden="true"></i><span>Cloud: ${cloudLabel}</span><span class="storage-dot" aria-hidden="true">•</span><span>Queue: ${pendingSyncCount}</span><span class="storage-dot" aria-hidden="true">•</span><span>Local: ${savedCount}</span>`;
-  indicator.setAttribute("title", `Cloud ${cloudLabel}; ${pendingSyncCount} order(s) waiting sync; ${savedCount} local record(s)`);
   await renderPendingOrdersList();
 }
 
