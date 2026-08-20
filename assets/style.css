@@ -10427,3 +10427,41 @@ body[data-cart-density="compact"] .cart-section .checkout-btn {
     justify-content: flex-end;
   }
 }
+
+/* Pin the Current Order header (with its separator line), discount, employee,
+   and summary sections so only the item list scrolls inside the cart card. */
+.cart-section {
+  overflow: hidden !important;
+}
+
+.cart-section .section-header,
+.cart-section .discount-section,
+.cart-section .employee-order-section,
+.cart-section .cart-summary {
+  flex-shrink: 0 !important;
+}
+
+.cart-section .cart-items {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  overflow-y: auto !important;
+  scrollbar-gutter: stable;
+}
+
+@media (max-width: 1199px) {
+  body.main-view-order .cart-section {
+    max-height: calc(100vh - 170px) !important;
+  }
+}
+
+@media (max-width: 768px) {
+  body.main-view-order .cart-section {
+    max-height: calc(100vh - 160px) !important;
+  }
+}
+
+@media (max-width: 480px) {
+  body.main-view-order .cart-section {
+    max-height: calc(100vh - 150px) !important;
+  }
+}
