@@ -1211,6 +1211,17 @@ async function autoCompleteStalePendingOrders() {
   startOfToday.setHours(0, 0, 0, 0);
   const startMs = startOfToday.getTime();
 
+  // Make the sweep self-contained so it also works at login (before the
+  // transactions page has populated state.allOrders).
+  if (!Array.isArray(state.allOrders) || state.allOrders.length === 0) {
+    try {
+      state.allOrders = await getAllSalesOrders(null, null, { includeVoided: true });
+    } catch (error) {
+      console.warn("[Admin] Auto-complete: could not load orders at login.", error);
+      return 0;
+    }
+  }
+
   const stale = (state.allOrders || []).filter((order) => {
     if (getOrderStatus(order) !== "pending") return false;
     const date = getOrderDate(order);
@@ -5337,6 +5348,12 @@ document.addEventListener("DOMContentLoaded", async () => {
         const loading = document.getElementById("auth-loading");
         if (loading) loading.style.display = "none";
       }
+
+      // Auto-record any previous-day pending orders staff forgot to mark done,
+      // right on login — even if the transactions page is never opened. Runs
+      // after the dashboard (and its queued-order sync), best-effort and
+      // idempotent; it also runs again when the transactions tab is opened.
+      await autoCompleteStalePendingOrders();
 
       // Pre-load inventory in background so nav badge shows count immediately
       getInventoryItems().then((items) => {
