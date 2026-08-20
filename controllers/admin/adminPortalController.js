@@ -5464,7 +5464,7 @@ function initParallaxEffects() {
     });
   }, { root: mainEl, threshold: 0.1 });
 
-  function observeFadeTargets() {
+  function observeFadeTargets(skipAnimation = false) {
     const currentPage = state.page || "dashboard";
     const selectors = ".stat-card, .card.compact-card, .staff-kpi-card, .menu-card, .settings-card, .accounts-directory-card, .orders-kpi-card";
     const newEls = [];
@@ -5488,6 +5488,12 @@ function initParallaxEffects() {
     // Only mark page as animated after elements are actually found
     if (newEls.length) {
       _pxAnimatedPages.add(currentPage);
+      if (skipAnimation) {
+        // Initial page load: reveal content immediately instead of fading in,
+        // otherwise the dashboard flashes invisible then fades in after reload.
+        newEls.forEach((el) => el.classList.add("px-visible"));
+        return;
+      }
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
           newEls.forEach((el) => fadeObserver.observe(el));
@@ -5496,7 +5502,7 @@ function initParallaxEffects() {
     }
   }
 
-  observeFadeTargets();
+  observeFadeTargets(true);
   const pageObserver = new MutationObserver(() => { observeFadeTargets(); });
   mainEl.querySelectorAll(".page").forEach((p) => {
     pageObserver.observe(p, { childList: true, subtree: true });

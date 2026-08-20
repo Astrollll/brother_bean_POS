@@ -892,7 +892,6 @@ export function renderAdminDashboard({ orders = [], menuItems = [], staff = [], 
       };
       const recentContainer = document.getElementById("dashboardRecentOrders");
       if (recentContainer) {
-        animateDashboardList(recentContainer);
         animateCardResize(recentContainer, renderFn);
       } else {
         renderFn();
@@ -915,7 +914,6 @@ export function renderAdminDashboard({ orders = [], menuItems = [], staff = [], 
       };
       const topItemsContainer = document.getElementById("dashboardTopItems");
       if (topItemsContainer) {
-        animateDashboardList(topItemsContainer);
         animateCardResize(topItemsContainer, renderFn);
       } else {
         renderFn();

@@ -27,57 +27,22 @@
       rel="stylesheet"
     />
     <link rel="stylesheet" href="/assets/adminstyle.css?v=20260806F" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700&family=DM+Sans:wght@300;400;500;600&family=Dancing+Script:wght@500;600&family=Montserrat:wght@400;500;600;700&family=Caveat:wght@500;600;700&display=block" rel="stylesheet" />
   </head>
   <body>
     <div
       id="auth-loading"
-      style="
-        position: fixed;
-        inset: 0;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        background: #f9fafb;
-        z-index: 120;
-      "
+      class="ls-loading-overlay"
+      style="display: flex"
     >
-      <div
-        style="
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          gap: 14px;
-          padding: 28px 32px;
-          border-radius: 24px;
-          background: rgba(255, 255, 255, 0.82);
-          backdrop-filter: blur(10px);
-          box-shadow: 0 20px 50px rgba(79, 47, 16, 0.12);
-          text-align: center;
-          max-width: 320px;
-        "
-      >
-        <div
-          style="
-            width: 42px;
-            height: 42px;
-            border-radius: 999px;
-            border: 4px solid rgba(126, 82, 35, 0.12);
-            border-top-color: #7e5223;
-            animation: lsSpin 0.8s linear infinite;
-          "
-        ></div>
-        <div
-          style="
-            font-family: &quot;Playfair Display&quot;, serif;
-            font-size: 22px;
-            color: #2f2318;
-          "
+      <div class="ls-loading-card">
+        <div class="ls-loading-spinner"></div>
+        <div class="ls-loading-brand">Brother Bean</div>
+        <span id="auth-loading-text" class="ls-loading-text"
+          >Checking session...</span
         >
-          Brother Bean
-        </div>
-        <span id="auth-loading-text" style="font-size: 14px; color: #6b5846">
-          Checking session...
-        </span>
       </div>
     </div>
 

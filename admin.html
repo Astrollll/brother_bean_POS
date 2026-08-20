@@ -8,9 +8,56 @@
       http-equiv="refresh"
       content="0; url=/views/pages/admin.html"
     />
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { height: 100%; }
+      body {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #faf8f5;
+      }
+      .ls-loading-card {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 16px;
+      }
+      .ls-loading-spinner {
+        width: 32px;
+        height: 32px;
+        border-radius: 999px;
+        border: 3px solid #e5e7eb;
+        border-top-color: #6b4423;
+        animation: lsSpin 0.7s linear infinite;
+      }
+      .ls-loading-brand {
+        font-family: "Playfair Display", Georgia, serif;
+        font-size: 1.5rem;
+        color: #111827;
+        font-weight: 600;
+        letter-spacing: -0.3px;
+      }
+      .ls-loading-text {
+        font-family: system-ui, sans-serif;
+        font-size: 13px;
+        color: #9ca3af;
+      }
+      @keyframes lsSpin {
+        to { transform: rotate(360deg); }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="ls-loading-card">
+      <div class="ls-loading-spinner"></div>
+      <div class="ls-loading-brand">Brother Bean</div>
+      <div class="ls-loading-text">Opening management dashboard...</div>
+    </div>
     <script>
       window.location.replace("/views/pages/admin.html");
     </script>
-  </head>
-  <body></body>
+  </body>
 </html>
