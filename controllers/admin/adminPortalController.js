@@ -13,9 +13,9 @@ import { resetDay as archiveResetDay } from "../../models/resetModel.js";
 import { getInventoryItems, saveInventoryItem, deleteInventoryItem, clearInventoryItems, convertQuantityBetweenUnits, normalizeUnit, renameInventoryCategory, deleteInventoryCategory, getInventoryCategoryNames, createInventoryCategory, restoreInventoryForOrder } from "../../models/inventoryModel.js";
 import { inventorySeedItems } from "../../models/defaultSeedData.js";
 import { getAllStaff as getStaff, getSchedule, getOnDutyNowFromSchedule, addStaff, removeStaff, removeStaffByName, removeStaffByAccountUid, updateStaffAccountLink, updateStaffNameByUid, saveSchedule, parseShiftRange } from "../../models/staffModel.js";
-import { renderSalesAnalyticsDashboard, renderAdminDashboard, AIR_DATEPICKER_EN_LOCALE, airDatepickerSmartPosition, trackAirDatepickerReposition } from "../../views/dashboardView.js?v=20260806F";
+import { renderSalesAnalyticsDashboard, renderAdminDashboard, AIR_DATEPICKER_EN_LOCALE, airDatepickerSmartPosition, trackAirDatepickerReposition } from "../../views/dashboardView.js?v=20260821A";
 import { renderAdminMenu } from "../../views/menuView.js";
-import { renderStaffList, renderScheduleEditor, readScheduleFromDOM } from "../../views/staffView.js";
+import { renderStaffList, renderScheduleEditor, readScheduleFromDOM } from "../../views/staffView.js?v=20260821A";
 import { navigateTo } from "../utils/routes.js";
 import {
   isSupported as isPrinterSupported,
@@ -77,6 +77,7 @@ const state = {
 
 const DASHBOARD_SYNC_INTERVAL_MS = 60_000;
 let dashboardSyncInProgress = false;
+let settingsRenderedSignature = null;
 const AUTH_OPERATION_TIMEOUT_MS = 6000;
 
 function withTimeout(promise, timeoutMs, label) {
@@ -4760,6 +4761,17 @@ async function loadSettingsPage() {
 
   const DEFAULT_SETTINGS = getDefaultSettings();
   const settings = await getAdminSettings();
+
+  // Skip the rebuild when settings are unchanged — re-writing innerHTML on
+  // every tab visit replays entry animations (page fade, badge pops) and
+  // collapses the shop-info edit form, losing any unsaved input. The DOM and
+  // its existing listeners already reflect the current values.
+  const signature = JSON.stringify(settings);
+  if (signature === settingsRenderedSignature && host.innerHTML) {
+    showApp();
+    return;
+  }
+  settingsRenderedSignature = signature;
 
   host.innerHTML = `
     <div class="page-header settings-page-header">

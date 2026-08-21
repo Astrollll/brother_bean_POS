@@ -1,5 +1,27 @@
 # Changelog
 
+## 2026-08-21
+
+- Fix Sales Analytics flicker and animation resets (admin side)
+  - Files changed:
+    - `assets/adminstyle.css`: disabled the `pageEnter` entrance animation replay for `#salesAnalytics.page.active` (page no longer fades from transparent when switching tabs back to Analytics).
+    - `views/dashboardView.js`: analytics renders are now idempotent — a render signature skips DOM/chart re-renders when nothing visually changed, so auto-sync refreshes (60s) and tab switches no longer replay top-seller bar animations or redraw the chart; Chart.js instance is now reused via in-place data updates instead of destroy/recreate (removes blank-canvas flicker).
+    - `views/pages/admin.html`, `controllers/admin/adminPortalController.js`: bumped cache-bust versions for changed assets (`?v=20260821A`).
+  - Reason: user reported the Sales Analytics page flickering and its animations resetting on refresh and on tab switches.
+
+- Fix Staff page flicker when switching tabs (admin side)
+  - Files changed:
+    - `assets/adminstyle.css`: disabled the `pageEnter` entrance animation replay for `#staff.page.active`.
+    - `views/staffView.js`: `renderStaffList()` and `renderScheduleEditor()` now skip their innerHTML rebuild when staff/schedule data is unchanged, so the table row slide-in stagger, badge pop, and KPI cards no longer replay their entry animations on every tab revisit. Side benefit: unsaved schedule editor edits now survive tab switches.
+    - `controllers/admin/adminPortalController.js`: added cache-bust version to the `staffView.js` import (`?v=20260821A`).
+  - Reason: same flicker-on-tab-switch behavior as Sales Analytics; first visit after refresh still animates as before.
+
+- Fix Settings page flicker when switching tabs (admin side)
+  - Files changed:
+    - `assets/adminstyle.css`: disabled the `pageEnter` entrance animation replay for `#settings.page.active`.
+    - `controllers/admin/adminPortalController.js`: `loadSettingsPage()` now skips its full innerHTML rebuild and listener re-binding when settings are unchanged since the last render (signature check), so page fade and capability badge pops no longer replay on every tab revisit. Side benefit: an open shop-info edit form with unsaved input now survives tab switches. Data-changing flows (toggle saves, shop info save, reset to defaults, clear app cache) still re-render correctly on next visit.
+  - Reason: same flicker-on-tab-switch behavior as Sales Analytics and Staff pages.
+
 ## 2026-07-20
 
 - Fully remove dark mode feature from Admin and POS

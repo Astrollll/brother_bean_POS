@@ -3,6 +3,11 @@
 
 import { DAYS } from "../models/staffModel.js";
 
+// Last-rendered signatures so repeated loads with unchanged data skip the
+// innerHTML rebuild — otherwise entry animations replay on every tab visit.
+let lastStaffListSignature = null;
+let lastScheduleSignature = null;
+
 function escapeHtml(value = "") {
   return String(value)
     .replace(/&/g, "&amp;")
@@ -14,6 +19,19 @@ function escapeHtml(value = "") {
 
 export function renderStaffList(staff, onRemove) {
   const el = document.getElementById("staffList");
+
+  const signature = JSON.stringify(
+    (Array.isArray(staff) ? staff : []).map((s) => [
+      String(s?.id || ""),
+      String(s?.name || ""),
+      String(s?.role || ""),
+    ])
+  );
+
+  window._onRemoveStaff = onRemove;
+  if (signature === lastStaffListSignature && el?.innerHTML) return;
+  lastStaffListSignature = signature;
+
   if (!staff.length) {
     el.innerHTML = `
       <div class="staff-empty">
@@ -98,12 +116,18 @@ export function renderStaffList(staff, onRemove) {
       </tr>`;
     }).join("")}
   </table></div></div>`;
-
-  window._onRemoveStaff = onRemove;
 }
 
 export function renderScheduleEditor(staff, savedSchedule = {}) {
   const el = document.getElementById("scheduleEditor");
+
+  const signature = JSON.stringify([
+    (Array.isArray(staff) ? staff : []).map((s) => [String(s?.id || ""), String(s?.name || ""), String(s?.role || "")]),
+    savedSchedule || {},
+  ]);
+
+  if (signature === lastScheduleSignature && el?.innerHTML) return;
+  lastScheduleSignature = signature;
 
   if (!staff.length) {
     el.innerHTML = '<div class="staff-empty compact"><i class="ri-calendar-line" aria-hidden="true"></i><div class="staff-empty-title">No schedule to show</div><div class="staff-empty-sub">Add at least one staff member to configure weekly assignments.</div></div>';

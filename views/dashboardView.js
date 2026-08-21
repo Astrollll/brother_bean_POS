@@ -29,6 +29,7 @@ const viewState = {
   analyticsPeriod: "all",
   analyticsChart: null,
   analyticsData: null,
+  analyticsRenderSignature: null,
   customDateRange: null,
   specificDate: null,
   showAllItems: false,
@@ -1136,8 +1137,24 @@ function buildAnalyticsSeries(periodData) {
   title.textContent = periodData.title;
   kicker.textContent = periodData.kicker;
 
-  if (viewState.analyticsChart) {
-    viewState.analyticsChart.destroy();
+  // Reuse the existing chart instance when it is still attached to the same
+  // canvas — updating data in place avoids the blank-canvas flicker and full
+  // animation replay caused by destroy() + new Chart().
+  const existingChart = viewState.analyticsChart;
+  if (existingChart && !existingChart.isDestroyed?.() && existingChart.canvas === canvas && Array.isArray(existingChart.data?.datasets) && existingChart.data.datasets.length >= 2) {
+    const byLabel = new Map(existingChart.data.datasets.map((ds) => [ds.label, ds]));
+    const revenueDs = byLabel.get("Revenue") || existingChart.data.datasets[0];
+    const previousDs = byLabel.get("Previous period") || existingChart.data.datasets[1];
+
+    revenueDs.data = periodData.chart.current;
+    previousDs.data = periodData.chart.previous;
+    existingChart.data.labels = periodData.chart.labels;
+    existingChart.update();
+    return;
+  }
+
+  if (existingChart) {
+    existingChart.destroy();
     viewState.analyticsChart = null;
   }
 
@@ -1387,6 +1404,30 @@ function renderAnalyticsFooter(periodData) {
   }
 }
 
+function computeAnalyticsSignature(periodData) {
+  const statEntries = Object.entries(periodData.stats || {}).map(([key, stat]) => (
+    [key, stat.value, stat.deltaText, stat.deltaType, stat.label]
+  ));
+  // Date inputs are read live because footer/labels react to them directly.
+  const dateInputs = ["saDateFrom", "saDateTo", "saSpecificDateInput"].map((id) => document.getElementById(id)?.value || "");
+  const showAllToggle = document.getElementById("saShowAllToggle");
+  return JSON.stringify([
+    periodData.period,
+    periodData.categoryFilter,
+    dateInputs,
+    Boolean(showAllToggle?.dataset.showAll === "true"),
+    periodData.title,
+    periodData.kicker,
+    periodData.footerLabel,
+    statEntries,
+    (periodData.topSellers || []).map((item) => [item.name, item.quantity, item.revenue]),
+    (periodData.categories || []).map((cat) => [cat.name, cat.value, cat.percent]),
+    periodData.chart?.labels,
+    periodData.chart?.current,
+    periodData.chart?.previous,
+  ]);
+}
+
 function setAnalyticsPeriod(period) {
   const periodData = buildAnalyticsPeriodData(
     period,
@@ -1415,6 +1456,13 @@ function setAnalyticsPeriod(period) {
   if (specificDate) {
     specificDate.style.display = period === "specific" ? "inline-flex" : "none";
   }
+
+  // Skip DOM/chart re-render when nothing visually changed — this keeps
+  // animations from replaying on auto-sync refreshes and tab switches.
+  const signature = computeAnalyticsSignature(periodData);
+  const unchanged = signature === viewState.analyticsRenderSignature;
+  viewState.analyticsRenderSignature = signature;
+  if (unchanged) return;
 
   renderAnalyticsSidebar(periodData);
   renderTopSellers(periodData);
@@ -1793,6 +1841,7 @@ export function renderSalesAnalyticsDashboard(data = {}) {
   if (!viewState.analyticsInitialized) {
     dashboardRoot.innerHTML = buildAnalyticsTemplate();
     bindAnalyticsEvents();
+    viewState.analyticsRenderSignature = null;
     viewState.analyticsInitialized = true;
   }
 

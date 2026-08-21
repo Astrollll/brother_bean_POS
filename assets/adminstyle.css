@@ -8747,6 +8747,21 @@ input:checked + .tslider::before {
   animation: pageEnter 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
+/* Sales Analytics: no entrance replay — prevents flicker when switching tabs */
+#salesAnalytics.page.active {
+  animation: none;
+}
+
+/* Staff: no entrance replay — prevents flicker when switching tabs */
+#staff.page.active {
+  animation: none;
+}
+
+/* Settings: no entrance replay — prevents flicker when switching tabs */
+#settings.page.active {
+  animation: none;
+}
+
 /* ── Scroll-triggered fade-in ── */
 .px-fade-in {
   opacity: 0;
