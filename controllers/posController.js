@@ -40,6 +40,7 @@ import {
   getSharedDrawerState,
   readLocalPosState
 } from "../models/storageModel.js";
+import { readReceiptTaxDetails, watchAdminSettings } from "../models/settingsModel.js";
 
 // ── STATE ──
 let menuItems        = [];
@@ -279,6 +280,10 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     if (initialized) return;
     initialized = true;
+
+    // Live settings sync: keeps BIR/TIN receipt details current on this
+    // terminal without any refresh when an admin edits them elsewhere.
+    watchAdminSettings();
 
     // Instant first paint: render the last known menu from the local cache
     // right away instead of waiting for the network below, so the grid never
@@ -1927,6 +1932,15 @@ function generateReceipt(sale) {
   const cancelBtn = document.getElementById("cancelReceiptBtn");
   if (cancelBtn) cancelBtn.style.display = (!sale.unpaid && !sale.queued) ? "" : "none";
 
+  // BIR footer lines are optional: they only render when the shop has filled
+  // them in via Admin → Settings. Values come from the local mirror kept fresh
+  // by watchAdminSettings(), so edits propagate here without a refresh.
+  const taxDetails = readReceiptTaxDetails();
+  const receiptLegalHtml = [
+    taxDetails.vatTin ? `VAT Registered TIN: ${escapeHtml(taxDetails.vatTin)}` : "",
+    taxDetails.permitNo ? `Permit No: ${escapeHtml(taxDetails.permitNo)}` : "",
+  ].filter(Boolean).join("<br>");
+
   const itemRows = (sale.items || []).map((item) => {
     const basePrice = Number(item.price) || 0;
     const qty = Number(item.quantity) || 1;
@@ -2062,10 +2076,7 @@ function generateReceipt(sale) {
         <div class="center">
           <div class="footer-msg">Thank you for visiting!</div>
           <div class="footer-sub">Please come again</div>
-          <div class="footer-legal">
-            VAT Registered TIN: 000-000-000-000<br>
-            Permit No: 0000000
-          </div>
+          ${receiptLegalHtml ? `<div class="footer-legal">${receiptLegalHtml}</div>` : ""}
           ${sale.unpaid ? `
             <button type="button" id="receiptRestoreBtn" class="receipt-return-btn">Move to current order</button>
           ` : ""}

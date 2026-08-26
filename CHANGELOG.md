@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-08-26
+
+- Make receipt BIR/VAT footer lines settings-driven with live sync (POS + Admin)
+  - Files changed:
+    - `models/settingsModel.js`: added optional `shop.vatTin` and `shop.permitNo` to defaults, a synchronous `readReceiptTaxDetails()` helper (reads the local settings mirror), and `watchAdminSettings()` — a Firestore `onSnapshot` listener on `settings/admin` that refreshes the local mirror on every change.
+    - `controllers/admin/adminPortalController.js`: Settings → Shop Information now shows "VAT Registered TIN" and "Receipt Permit No" display rows plus two optional edit inputs; saving persists them; the admin order-receipt reprint renders the BIR lines only when set. A one-time live settings listener is attached after login.
+    - `controllers/posController.js`: POS receipts render the BIR lines only when set, reading the same live-synced mirror; one-time listener attached after login. No page refresh is needed anywhere — edits propagate to all open terminals within about a second (and to offline terminals once they reconnect, via Firestore offline persistence).
+    - `controllers/printer/thermalPrinter.js`: thermal printouts mirror the on-screen behavior — BIR lines only print when filled in. The printer module reads the settings mirror directly (kept dependency-free).
+  - Reason: the shop is not BIR-registered yet, so the previously hardcoded placeholder "VAT Registered TIN: 000-000-000-000 / Permit No: 0000000" lines should not appear on customer receipts until real values are configured in Admin → Settings.
+  - Note: legacy saved settings without these keys are handled safely (`mergeSettings` fills them as empty → lines hidden).
+
 ## 2026-08-21
 
 - Fix Sales Analytics flicker and animation resets (admin side)

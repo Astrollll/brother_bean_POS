@@ -3,7 +3,7 @@ import { db } from "../firebase.js";
 import {
   doc, setDoc, getDoc, updateDoc, collection, getDocs, serverTimestamp, writeBatch
 } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js";
-import { getAdminSettings, saveAdminSettings, getDefaultSettings, syncPendingAdminSettings } from "../../models/settingsModel.js";
+import { getAdminSettings, saveAdminSettings, getDefaultSettings, syncPendingAdminSettings, readReceiptTaxDetails, watchAdminSettings } from "../../models/settingsModel.js?v=20260826A";
 import { getUserRole, getUserProfile, listUsers, setUserRole, setUserProfile, ensureAdminAccessProfile } from "../../models/userModel.js";
 import { getMenuItems, saveMenuItem, deleteMenuItem, clearMenuItems, syncPendingMenuOps } from "../../models/menuModel.js";
 import { getCategories, saveCategory, deleteCategory, getCategoryIconForName, syncCategoryLocalChanges } from "../../models/categoryModel.js";
@@ -25,7 +25,7 @@ import {
   reconnectSavedPrinter as reconnectThermalPrinter,
   printReceipt as printThermalReceipt,
   onPrinterStatus,
-} from "../printer/thermalPrinter.js";
+} from "../printer/thermalPrinter.js?v=20260826A";
 
 const ModalUtils = window.ModalUtils || {
   async confirm(title, message) {
@@ -78,6 +78,7 @@ const state = {
 const DASHBOARD_SYNC_INTERVAL_MS = 60_000;
 let dashboardSyncInProgress = false;
 let settingsRenderedSignature = null;
+let adminSettingsListenerAttached = false;
 const AUTH_OPERATION_TIMEOUT_MS = 6000;
 
 function withTimeout(promise, timeoutMs, label) {
@@ -1959,6 +1960,15 @@ function buildAdminReceiptHTML(order) {
   const savingsRounded = Math.round(totalItemSavings * 100) / 100;
   const totalRounded = Math.round((Number(order.total) || 0) * 100) / 100;
 
+  // BIR footer lines are optional: they only render when the shop has filled
+  // them in via Settings. Values come from the local mirror kept fresh by
+  // watchAdminSettings(), so edits propagate here without a refresh.
+  const taxDetails = readReceiptTaxDetails();
+  const receiptLegalHtml = [
+    taxDetails.vatTin ? `VAT Registered TIN: ${escapeHtml(taxDetails.vatTin)}` : "",
+    taxDetails.permitNo ? `Permit No: ${escapeHtml(taxDetails.permitNo)}` : "",
+  ].filter(Boolean).join("<br>");
+
   const isEmployeeOrder = order.orderType === "employee" || order.paymentMethod === "employee";
 
   let itemDiscountBlock = "";
@@ -2049,10 +2059,7 @@ function buildAdminReceiptHTML(order) {
         <div class="center">
           <div class="footer-msg">Thank you for visiting!</div>
           <div class="footer-sub">Please come again</div>
-          <div class="footer-legal">
-            VAT Registered TIN: 000-000-000-000<br>
-            Permit No: 0000000
-          </div>
+          ${receiptLegalHtml ? `<div class="footer-legal">${receiptLegalHtml}</div>` : ""}
         </div>
       </div>
       <div class="zigzag-bottom" aria-hidden="true"></div>
@@ -4801,6 +4808,8 @@ async function loadSettingsPage() {
             <div class="setting-row"><div><div class="setting-label">Opening Hours</div><div class="setting-desc" id="displayHours"></div></div></div>
             <div class="setting-row"><div><div class="setting-label">Phone Number</div><div class="setting-desc" id="displayPhone"></div></div></div>
             <div class="setting-row"><div><div class="setting-label">Currency</div><div class="setting-desc" id="displayCurrency"></div></div></div>
+            <div class="setting-row"><div><div class="setting-label">VAT Registered TIN</div><div class="setting-desc" id="displayVatTin"></div></div></div>
+            <div class="setting-row"><div><div class="setting-label">Receipt Permit No</div><div class="setting-desc" id="displayPermitNo"></div></div></div>
           </div>
 
           <form id="shopInfoForm" style="display:none;">
@@ -4820,6 +4829,14 @@ async function loadSettingsPage() {
               <div>
                 <div class="ls-label">Phone Number</div>
                 <input class="ls-input" id="inputPhone" type="tel" style="margin-bottom:0;" required>
+              </div>
+              <div>
+                <div class="ls-label">VAT Registered TIN <span class="ls-hint">(optional — shown on receipts)</span></div>
+                <input class="ls-input" id="inputVatTin" placeholder="e.g. 123-456-789-000" style="margin-bottom:0;">
+              </div>
+              <div>
+                <div class="ls-label">Receipt Permit No <span class="ls-hint">(optional — shown on receipts)</span></div>
+                <input class="ls-input" id="inputPermitNo" placeholder="Leave blank if not BIR registered" style="margin-bottom:0;">
               </div>
               <div class="settings-form-actions">
                 <button type="button" class="orders-btn ghost" id="cancelShopEdit">Cancel</button>
@@ -4951,11 +4968,15 @@ async function loadSettingsPage() {
     document.getElementById("displayHours").textContent = settings.shop.openingHours;
     document.getElementById("displayPhone").textContent = settings.shop.phone;
     document.getElementById("displayCurrency").textContent = settings.shop.currency;
+    document.getElementById("displayVatTin").textContent = String(settings.shop.vatTin || "").trim() || "—";
+    document.getElementById("displayPermitNo").textContent = String(settings.shop.permitNo || "").trim() || "—";
 
     document.getElementById("inputShopName").value = settings.shop.name;
     document.getElementById("inputLocation").value = settings.shop.location;
     document.getElementById("inputHours").value = settings.shop.openingHours;
     document.getElementById("inputPhone").value = settings.shop.phone;
+    document.getElementById("inputVatTin").value = String(settings.shop.vatTin || "").trim();
+    document.getElementById("inputPermitNo").value = String(settings.shop.permitNo || "").trim();
   };
 
   const applyToggleState = () => {
@@ -4995,6 +5016,8 @@ async function loadSettingsPage() {
     const location = document.getElementById("inputLocation")?.value?.trim();
     const hours = document.getElementById("inputHours")?.value?.trim();
     const phone = document.getElementById("inputPhone")?.value?.trim();
+    const vatTin = document.getElementById("inputVatTin")?.value?.trim() || "";
+    const permitNo = document.getElementById("inputPermitNo")?.value?.trim() || "";
 
     if (!name || !location || !hours || !phone) {
       await ModalUtils.warning("Validation Error", "All shop information fields are required.");
@@ -5010,6 +5033,8 @@ async function loadSettingsPage() {
       settings.shop.location = location;
       settings.shop.openingHours = hours;
       settings.shop.phone = phone;
+      settings.shop.vatTin = vatTin;
+      settings.shop.permitNo = permitNo;
 
       await saveAdminSettings(settings);
       applyShopView();
@@ -5411,6 +5436,12 @@ document.addEventListener("DOMContentLoaded", async () => {
 
       // If role is missing or admin, allow viewing admin portal UI.
       // Admin role enforcement is handled by Firestore security rules + role doc.
+      // Live settings sync: keeps receipt BIR/TIN details current without any
+      // refresh when shop info is edited from another terminal/tab.
+      if (!adminSettingsListenerAttached) {
+        adminSettingsListenerAttached = true;
+        watchAdminSettings();
+      }
       showApp();
       try {
         await window.showPage("dashboard", document.querySelector('.nav-item[onclick*="dashboard"]'), "Dashboard");

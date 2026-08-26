@@ -1,5 +1,5 @@
 import { db } from "../controllers/firebase.js";
-import { doc, getDoc, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js";
+import { doc, getDoc, setDoc, serverTimestamp, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js";
 
 const SETTINGS_DOC_PATH = "settings/admin";
 
@@ -10,6 +10,8 @@ const DEFAULT_SETTINGS = {
     location: "Imus, Cavite",
     currency: "Philippine Peso (PHP)",
     phone: "+63 (0)2 1234 5678",
+    vatTin: "",
+    permitNo: "",
   },
   preferences: {
     lowStockAlerts: true,
@@ -144,4 +146,47 @@ export async function syncPendingAdminSettings() {
 
 export function getDefaultSettings() {
   return deepClone(DEFAULT_SETTINGS);
+}
+
+// Synchronous read of the BIR/receipt tax fields from the local settings
+// mirror. Receipt renderers (POS screen, admin reprint, thermal printer) use
+// this so they never block on Firestore — watchAdminSettings() keeps the
+// mirror fresh, so values appear without any page refresh after an admin edit.
+export function readReceiptTaxDetails() {
+  const parsed = loadFromLocalStorage();
+  return {
+    vatTin: String(parsed?.shop?.vatTin || "").trim(),
+    permitNo: String(parsed?.shop?.permitNo || "").trim(),
+  };
+}
+
+// Live subscription to the settings document. Every snapshot refreshes the
+// localStorage mirror, which is what lets other tabs/terminals (e.g. the POS)
+// pick up admin edits within about a second — no reload needed. Returns an
+// unsubscribe function; errors are swallowed so a logout/denied token can't
+// crash a terminal that only wanted receipt footer text.
+export function watchAdminSettings() {
+  try {
+    return onSnapshot(
+      doc(db, SETTINGS_DOC_PATH),
+      (snap) => {
+        // Real Firestore delivers a DocumentSnapshot here (exists()/data());
+        // anything else (e.g. test harnesses broadcasting query-shaped
+        // snapshots) is ignored rather than crashing the terminal.
+        if (!snap || typeof snap.exists !== "function") return;
+        if (!snap.exists()) return;
+        try {
+          saveToLocalStorage(mergeSettings(DEFAULT_SETTINGS, snap.data()));
+        } catch (error) {
+          console.warn("[Settings] Failed to cache live settings snapshot:", error);
+        }
+      },
+      (error) => {
+        console.warn("[Settings] Live settings listener error:", error);
+      }
+    );
+  } catch (error) {
+    console.warn("[Settings] Failed to start live settings listener:", error);
+    return () => {};
+  }
 }

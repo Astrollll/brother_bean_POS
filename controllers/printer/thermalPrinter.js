@@ -28,6 +28,24 @@ const STORAGE_KEYS = {
   settings: "bb-pos-thermal-settings",
 };
 
+// Admin settings mirror (models/settingsModel.js writes it). Read directly —
+// not imported — so this module stays dependency-free and usable from any
+// controller. Kept fresh by watchAdminSettings(), so BIR lines follow admin
+// edits without a refresh.
+const ADMIN_SETTINGS_KEY = "bb_admin_settings_v1";
+
+function readLocalTaxDetails() {
+  try {
+    const raw = localStorage.getItem(ADMIN_SETTINGS_KEY);
+    const parsed = raw ? JSON.parse(raw) : null;
+    return {
+      vatTin: String(parsed?.shop?.vatTin || "").trim(),
+      permitNo: String(parsed?.shop?.permitNo || "").trim(),
+    };
+  } catch (_) {}
+  return { vatTin: "", permitNo: "" };
+}
+
 const DEFAULT_SETTINGS = {
   paperWidth: 58, // mm — 58 or 80
   serviceUuid: "0000ffe0-0000-1000-8000-00805f9b34fb",
@@ -751,18 +769,30 @@ export function buildEscReceipt(sale, paperWidth = 58) {
     lines.push(joinChunks(CMD.alignCenter, barcodeBytes, textLine("")));
   }
 
-  // Footer — mirrors the on-screen POS/admin receipt footer.
+  // Footer — mirrors the on-screen POS/admin receipt footer. BIR lines are
+  // optional: they only print when the shop filled them in via Settings.
   lines.push([textLine(dashedLine(width, "="))]);
   lines.push([CMD.alignCenter, textLine(center("Thank you for visiting!", width))]);
   lines.push([textLine(center("Please come again", width))]);
-  const vatLine = "VAT Registered TIN: 000-000-000-000";
-  if (sanitizeText(vatLine).length <= width) {
-    lines.push([textLine(center(vatLine, width))]);
-  } else {
-    lines.push([textLine(center("VAT Registered TIN:", width))]);
-    lines.push([textLine(center("000-000-000-000", width))]);
+  const taxDetails = readLocalTaxDetails();
+  const legalLines = [
+    taxDetails.vatTin ? `VAT Registered TIN: ${sanitizeText(taxDetails.vatTin)}` : "",
+    taxDetails.permitNo ? `Permit No: ${sanitizeText(taxDetails.permitNo)}` : "",
+  ].filter(Boolean);
+  for (const lineText of legalLines) {
+    if (lineText.length <= width) {
+      lines.push([textLine(center(lineText, width))]);
+    } else {
+      // Wrap long values across two centered lines (label / value).
+      const sepIndex = lineText.indexOf(":");
+      if (sepIndex !== -1) {
+        lines.push([textLine(center(lineText.slice(0, sepIndex + 1), width))]);
+        lines.push([textLine(center(lineText.slice(sepIndex + 1).trim(), width))]);
+      } else {
+        lines.push([textLine(center(lineText, width))]);
+      }
+    }
   }
-  lines.push([textLine(center("Permit No: 0000000", width))]);
 
   const body = joinChunks(
     CMD.init,
