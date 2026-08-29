@@ -96,6 +96,14 @@
             <i class="ri-time-line" aria-hidden="true"></i> Pending Sync Orders:
             <span id="pendingOrdersSidebar">0</span>
           </div>
+          <div>
+            <i class="ri-wallet-3-line" aria-hidden="true"></i> Expenses:
+            <span id="sidebarExpenses">₱0.00</span>
+          </div>
+          <div>
+            <i class="ri-money-dollar-circle-line" aria-hidden="true"></i> Net:
+            <span id="sidebarNet">₱0.00</span>
+          </div>
         </div>
 
         <button
@@ -111,6 +119,16 @@
             class="ri-arrow-right-s-line sidebar-sales-chevron"
             aria-hidden="true"
           ></i>
+        </button>
+
+        <button
+          class="sidebar-expense-btn"
+          type="button"
+          onclick="openExpenseModal()"
+          aria-label="Record a store expense"
+        >
+          <i class="ri-wallet-3-line" aria-hidden="true"></i>
+          <span>Record Expense</span>
         </button>
 
         <div class="sidebar-pending-box">
@@ -1176,6 +1194,14 @@
                   <div class="sales-kpi-label">Peak Window</div>
                   <div class="sales-kpi-value" id="salesDashPeak">N/A</div>
                 </div>
+                <div class="sales-kpi-card">
+                  <div class="sales-kpi-label">Expenses</div>
+                  <div class="sales-kpi-value" id="salesDashExpenses">₱0.00</div>
+                </div>
+                <div class="sales-kpi-card">
+                  <div class="sales-kpi-label">Net (Sales − Expenses)</div>
+                  <div class="sales-kpi-value" id="salesDashNet">₱0.00</div>
+                </div>
               </div>
 
               <div class="sales-slot-list" id="salesSlotList"></div>
@@ -1203,6 +1229,75 @@
           >
             Close dashboard
           </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Expense Modal -->
+    <div class="modal-overlay" id="expenseModal" aria-hidden="true">
+      <div class="modal bb-modal bb-mini-modal" role="dialog" aria-modal="true" aria-labelledby="expenseModalTitle">
+        <div class="bb-modal-header">
+          <div class="bb-modal-title-wrap">
+            <div class="bb-modal-kicker">Store expense</div>
+            <div class="bb-modal-title" id="expenseModalTitle">Record Expense</div>
+          </div>
+          <button class="bb-icon-btn" type="button" onclick="closeExpenseModal()" aria-label="Close">&times;</button>
+        </div>
+        <div class="bb-modal-body">
+          <div class="pos-expense-form">
+            <div class="pos-expense-amount-field">
+              <label class="pos-expense-field-label" for="posExpenseAmount">Amount</label>
+              <div class="pos-expense-amount-control">
+                <span class="pos-expense-currency-mark" aria-hidden="true">₱</span>
+                <input
+                  class="pos-expense-amount-input"
+                  id="posExpenseAmount"
+                  type="text"
+                  inputmode="decimal"
+                  placeholder="0.00"
+                  autocomplete="off"
+                />
+              </div>
+            </div>
+
+<div class="pos-expense-field">
+                <label class="pos-expense-field-label" for="posExpenseCategory">Category</label>
+                <div class="pos-expense-select">
+                  <button type="button" class="pos-expense-select-trigger" id="posExpenseCategoryTrigger"
+                    aria-haspopup="listbox" aria-expanded="false" aria-controls="posExpenseCategoryMenu">
+                    <i class="pos-expense-select-icon ri-shopping-basket-2-line" id="posExpenseCategoryIcon" aria-hidden="true"></i>
+                    <span class="pos-expense-select-current" id="posExpenseCategoryCurrent">Supplies</span>
+                    <i class="ri-arrow-down-s-line pos-expense-select-chevron" aria-hidden="true"></i>
+                  </button>
+                  <div class="pos-expense-select-menu" id="posExpenseCategoryMenu" role="listbox"
+                    aria-label="Expense category" hidden></div>
+                  <select class="pos-expense-sr-select" id="posExpenseCategory" tabindex="-1" aria-hidden="true">
+                    <option value="supplies" selected>Supplies</option>
+                  </select>
+                </div>
+              </div>
+
+            <div class="pos-expense-field">
+              <label class="pos-expense-field-label" for="posExpenseNote">Note (optional)</label>
+              <input
+                class="pos-expense-note-input"
+                id="posExpenseNote"
+                type="text"
+                maxlength="120"
+                placeholder="e.g. Client meeting coffee, gas..."
+                autocomplete="off"
+              />
+            </div>
+
+            <div class="pos-expense-hint">
+              <i class="ri-calendar-check-line" aria-hidden="true"></i>
+              <span>Recorded for today and counted against today's net revenue.</span>
+            </div>
+          </div>
+        </div>
+        <div class="bb-modal-footer">
+          <button class="bb-secondary-btn" type="button" onclick="closeExpenseModal()">Cancel</button>
+          <button class="bb-primary-btn" type="button" id="posExpenseSaveBtn">Save Expense</button>
         </div>
       </div>
     </div>

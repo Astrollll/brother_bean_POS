@@ -41,6 +41,15 @@ import {
   readLocalPosState
 } from "../models/storageModel.js";
 import { readReceiptTaxDetails, watchAdminSettings } from "../models/settingsModel.js";
+import {
+  EXPENSE_CATEGORIES,
+  getTodayExpenses,
+  sumExpenses,
+  saveExpense,
+  syncExpenseOutbox,
+  watchTodayExpenses,
+  pruneExpenseMirrors,
+} from "../models/expenseModel.js";
 
 // ── STATE ──
 let menuItems        = [];
@@ -284,6 +293,14 @@ document.addEventListener("DOMContentLoaded", async () => {
     // Live settings sync: keeps BIR/TIN receipt details current on this
     // terminal without any refresh when an admin edits them elsewhere.
     watchAdminSettings();
+
+    // Live expenses sync: today's store expenses (recorded here or on the
+    // admin portal) stay current in the sidebar and sales dashboard, and any
+    // offline-recorded expenses flush when a connection is available.
+    pruneExpenseMirrors();
+    watchTodayExpenses(() => updateStats());
+    syncExpenseOutbox().catch(() => {});
+    bindPosExpenseEvents();
 
     // Instant first paint: render the last known menu from the local cache
     // right away instead of waiting for the network below, so the grid never
@@ -3147,10 +3164,12 @@ function renderSalesBars(barsId, axisId) {
 
 function renderSalesDashboardDetails() {
   const slots = getSalesByHourlySlots();
-  const total = dailyStats.totalSales;
+  const total = Number(dailyStats.totalSales) || 0;
   const orders = dailyStats.orders;
   const avg = orders > 0 ? total / orders : 0;
   const peak = slots.reduce((best, cur) => (cur.total > best.total ? cur : best), { label: "N/A", total: 0 });
+  const expenses = sumExpenses(getTodayExpenses());
+  const net = total - expenses;
 
   const totalEl = document.getElementById("salesDashTotal");
   const ordersEl = document.getElementById("salesDashOrders");
@@ -3158,12 +3177,16 @@ function renderSalesDashboardDetails() {
   const peakEl = document.getElementById("salesDashPeak");
   const discountsEl = document.getElementById("salesDashDiscounts");
   const listEl = document.getElementById("salesSlotList");
+  const expensesEl = document.getElementById("salesDashExpenses");
+  const netEl = document.getElementById("salesDashNet");
 
   if (totalEl) totalEl.textContent = `₱${total.toFixed(2)}`;
   if (ordersEl) ordersEl.textContent = String(orders);
   if (avgEl) avgEl.textContent = `₱${avg.toFixed(2)}`;
   if (peakEl) peakEl.textContent = peak.total > 0 ? peak.label : "N/A";
   if (discountsEl) discountsEl.textContent = String(dailyStats.discountsApplied || 0);
+  if (expensesEl) expensesEl.textContent = `₱${expenses.toFixed(2)}`;
+  if (netEl) netEl.textContent = `₱${net.toFixed(2)}`;
 
   if (listEl) {
     listEl.innerHTML = slots
@@ -3205,6 +3228,225 @@ window.closeSalesDashboard = function() {
   modal.classList.remove("active");
   modal.setAttribute("aria-hidden", "true");
 };
+
+// ── Store expenses (POS) ──
+
+let posExpenseBound = false;
+
+function bindPosExpenseEvents() {
+  if (posExpenseBound) return;
+  posExpenseBound = true;
+  document.getElementById("posExpenseSaveBtn")?.addEventListener("click", handlePosExpenseSave);
+  ["posExpenseAmount", "posExpenseNote"].forEach((id) => {
+    document.getElementById(id)?.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        handlePosExpenseSave();
+      }
+    });
+  });
+  document.getElementById("posExpenseAmount")?.addEventListener("input", reformatExpenseAmountInput);
+}
+
+// Thousands separators while typing: groups the integer part with commas,
+// keeps at most 2 decimals, and restores the caret so it does not jump.
+function reformatExpenseAmountInput(event) {
+  const el = event.target;
+  if (!el) return;
+  const caret = el.selectionStart ?? String(el.value).length;
+  const slice = String(el.value).slice(0, caret);
+  const significantBefore = (slice.match(/[\d.]/g) || []).length;
+  const formatted = formatExpenseAmountValue(el.value);
+  el.value = formatted;
+  let pos = 0;
+  let seen = 0;
+  while (pos < formatted.length && seen < significantBefore) {
+    if (/[\d.]/.test(formatted[pos])) seen += 1;
+    pos += 1;
+  }
+  el.setSelectionRange(pos, pos);
+}
+
+// Pure formatter: "1000000.5" -> "1,000,000.5". Never emits a leading zero
+// chain and caps decimals at 2 places.
+function formatExpenseAmountValue(raw) {
+  const cleaned = String(raw ?? "").replace(/[^\d.]/g, "");
+  const [intPart, decPart] = cleaned.split(".");
+  let int = (intPart || "").replace(/^0+(?=\d)/, "").replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  let dec = decPart === undefined ? "" : decPart.slice(0, 2);
+  if (dec) int = `${int}.${dec}`;
+  return int;
+}
+
+const EXPENSE_CATEGORY_ICONS = {
+  supplies: "ri-shopping-basket-2-line",
+  utilities: "ri-flashlight-line",
+  rent: "ri-building-2-line",
+  wages: "ri-wallet-3-line",
+  equipment: "ri-tools-line",
+  misc: "ri-more-2-line",
+};
+
+function fillPosExpenseCategories() {
+  const select = document.getElementById("posExpenseCategory");
+  if (!select || select.dataset.filled) return;
+  select.innerHTML = EXPENSE_CATEGORIES.map((c) => `<option value="${c.key}">${c.label}</option>`).join("");
+  select.dataset.filled = "1";
+
+  const menu = document.getElementById("posExpenseCategoryMenu");
+  if (menu) {
+    menu.innerHTML = EXPENSE_CATEGORIES.map(
+      (c) => `
+        <button type="button" class="pos-expense-select-item" data-value="${c.key}">
+          <i class="pos-expense-select-icon ${EXPENSE_CATEGORY_ICONS[c.key] || "ri-more-2-line"}" aria-hidden="true"></i>
+          <span>${c.label}</span>
+          <i class="ri-check-line pos-expense-select-check" aria-hidden="true"></i>
+        </button>`
+    ).join("");
+  }
+  bindPosExpenseCategoryDropdown();
+  syncPosExpenseCategoryUI();
+}
+
+let posExpenseMenuBound = false;
+
+function bindPosExpenseCategoryDropdown() {
+  if (posExpenseMenuBound) return;
+  posExpenseMenuBound = true;
+
+  const trigger = document.getElementById("posExpenseCategoryTrigger");
+  const menu = document.getElementById("posExpenseCategoryMenu");
+  if (!trigger || !menu) return;
+
+  const open = () => {
+    menu.hidden = false;
+    trigger.setAttribute("aria-expanded", "true");
+    (menu.querySelector(".pos-expense-select-item.is-selected") || menu.querySelector(".pos-expense-select-item"))?.focus();
+  };
+  const close = () => {
+    menu.hidden = true;
+    trigger.setAttribute("aria-expanded", "false");
+  };
+  const pick = (item) => {
+    if (!item) return;
+    const select = document.getElementById("posExpenseCategory");
+    if (select) select.value = item.dataset.value;
+    syncPosExpenseCategoryUI();
+    close();
+    trigger.focus();
+  };
+
+  trigger.addEventListener("click", () => {
+    if (menu.hidden) open();
+    else close();
+  });
+
+  trigger.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" || event.key === " " || event.key === "ArrowDown") {
+      event.preventDefault();
+      if (menu.hidden) open();
+    } else if (event.key === "Escape") {
+      close();
+    }
+  });
+
+  menu.addEventListener("click", (event) => {
+    const item = event.target.closest(".pos-expense-select-item");
+    if (item) pick(item);
+  });
+
+  menu.addEventListener("keydown", (event) => {
+    const items = [...menu.querySelectorAll(".pos-expense-select-item")];
+    if (items.length === 0) return;
+    if (event.key === "Escape") {
+      event.preventDefault();
+      close();
+      trigger.focus();
+      return;
+    }
+    const index = items.indexOf(document.activeElement);
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      const next = event.key === "ArrowDown" ? items[(index + 1) % items.length] : items[(index - 1 + items.length) % items.length];
+      next.focus();
+    } else if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      pick(document.activeElement);
+    }
+  });
+
+  document.addEventListener("click", (event) => {
+    if (!menu.hidden && !event.target.closest(".pos-expense-select")) close();
+  });
+}
+
+function syncPosExpenseCategoryUI() {
+  const select = document.getElementById("posExpenseCategory");
+  const current = document.getElementById("posExpenseCategoryCurrent");
+  const icon = document.getElementById("posExpenseCategoryIcon");
+  const menu = document.getElementById("posExpenseCategoryMenu");
+  const value = select?.value || "supplies";
+  const cat = EXPENSE_CATEGORIES.find((c) => c.key === value);
+  if (current) current.textContent = cat?.label || "Miscellaneous";
+  if (icon) icon.className = `pos-expense-select-icon ${EXPENSE_CATEGORY_ICONS[value] || "ri-more-2-line"}`;
+  if (menu) {
+    menu.querySelectorAll(".pos-expense-select-item").forEach((item) => {
+      item.classList.toggle("is-selected", item.dataset.value === value);
+    });
+  }
+}
+
+window.openExpenseModal = function () {
+  fillPosExpenseCategories();
+  const amount = document.getElementById("posExpenseAmount");
+  const note = document.getElementById("posExpenseNote");
+  const select = document.getElementById("posExpenseCategory");
+  if (amount) amount.value = "";
+  if (note) note.value = "";
+  if (select) select.value = "supplies";
+  syncPosExpenseCategoryUI();
+  const modal = document.getElementById("expenseModal");
+  if (!modal) return;
+  modal.classList.add("active");
+  modal.setAttribute("aria-hidden", "false");
+  setTimeout(() => amount?.focus(), 30);
+};
+
+window.closeExpenseModal = function () {
+  const modal = document.getElementById("expenseModal");
+  if (!modal) return;
+  modal.classList.remove("active");
+  modal.setAttribute("aria-hidden", "true");
+};
+
+async function handlePosExpenseSave() {
+  const amount = Number(String(document.getElementById("posExpenseAmount")?.value || "").replace(/,/g, ""));
+  if (!(amount > 0)) {
+    showToast("Enter an amount greater than zero", "error");
+    return;
+  }
+  const category = document.getElementById("posExpenseCategory")?.value || "misc";
+  const note = String(document.getElementById("posExpenseNote")?.value || "").trim();
+  try {
+    const result = await saveExpense({
+      amount,
+      category,
+      note,
+      recordedByUid: getCurrentUser()?.uid || "",
+      recordedByName: cashierName || "Staff",
+      source: "pos",
+    });
+    if (result?.ok) {
+      closeExpenseModal();
+      if (result.queued) showToast("Expense saved offline — will sync when online", "info");
+      else showToast("Expense recorded", "success");
+      updateStats();
+    }
+  } catch (error) {
+    console.warn("[POS] Failed to record expense", error);
+    showToast("Could not record expense", "error");
+  }
+}
 
 window.toggleSidebar = function() {
   document.body.classList.toggle("sidebar-collapsed");
@@ -3261,6 +3503,14 @@ function updateStats() {
   const sidebarSales = document.getElementById("totalSales");
   if (sidebarOrders) sidebarOrders.textContent = dailyStats.orders;
   if (sidebarSales) sidebarSales.textContent = `₱${dailyStats.totalSales.toFixed(2)}`;
+
+  // Sidebar expenses + net (live via watchTodayExpenses)
+  const expenses = sumExpenses(getTodayExpenses());
+  const net = (Number(dailyStats.totalSales) || 0) - expenses;
+  const sidebarExpenses = document.getElementById("sidebarExpenses");
+  const sidebarNet = document.getElementById("sidebarNet");
+  if (sidebarExpenses) sidebarExpenses.textContent = `₱${expenses.toFixed(2)}`;
+  if (sidebarNet) sidebarNet.textContent = `₱${net.toFixed(2)}`;
 
   refreshSalesVisuals();
 }

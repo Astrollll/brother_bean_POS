@@ -1,5 +1,6 @@
 import { getSavedSalesHistory } from "../models/storageModel.js";
 import { getOnDutyNowFromSchedule } from "../models/staffModel.js";
+import { getExpenseTime, sumExpenses, expenseInRange } from "../models/expenseModel.js";
 
 const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const WEEKDAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -400,6 +401,30 @@ function buildCountSeries(orders, period, range = null) {
   return { labels, values };
 }
 
+function filterExpensesByRange(expenses, range) {
+  return (Array.isArray(expenses) ? expenses : []).filter((expense) => expenseInRange(getExpenseTime(expense), range));
+}
+
+function isExpenseToday(expense, now = new Date()) {
+  const t = getExpenseTime(expense);
+  const dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  return t >= dayStart && t < dayStart + 86400000;
+}
+
+function buildExpenseSeries(expenses, period, range = null) {
+  const labels = buildPeriodBuckets(period, range);
+  const values = labels.map(() => 0);
+
+  for (const expense of expenses) {
+    const index = getBucketIndex(getExpenseTime(expense), period, range);
+    if (index >= 0 && index < values.length) {
+      values[index] += Math.abs(toNumber(expense?.amount) || 0);
+    }
+  }
+
+  return { labels, values };
+}
+
 function peakUnit(period) {
   if (period === "today" || period === "specific") return "hour";
   if (period === "week" || period === "custom") return "day";
@@ -679,6 +704,8 @@ function renderStats(summary) {
     ${buildStatCard({ icon: "ti-receipt", value: String(summary.totalOrders || 0), label: "Orders Today", trend: summary.orderTrend, trendClass: summary.orderTrendClass, tone: "stat-tone-amber" })}
     ${buildStatCard({ icon: "ti-cup", value: escapeHtml(summary.bestSeller || "—"), label: `Best Seller • ${summary.bestSellerCount || 0} sold`, trend: "Top item", trendClass: "trend-neutral", tone: "stat-tone-green", valueClass: "stat-val-text" })}
     ${buildStatCard({ icon: "ti-users", value: `${summary.staffOnDuty || 0}/${summary.totalStaff || 0}`, label: "Staff On Duty", trend: summary.staffTrend, trendClass: summary.staffTrendClass, tone: "stat-tone-blue" })}
+    ${buildStatCard({ icon: "ti-wallet", value: formatPeso(summary.expensesToday), label: "Expenses Today", trend: summary.expensesTrend, trendClass: summary.expensesTrendClass, tone: "stat-tone-red" })}
+    ${buildStatCard({ icon: "ti-chart-pie-2", value: formatPeso(summary.netToday), label: "Net Today", trend: summary.netTrend, trendClass: summary.netTrendClass, tone: "stat-tone-green" })}
   `;
 }
 
@@ -823,7 +850,7 @@ function animateDashboardList(container, className = "dashboard-list-anim") {
   setTimeout(() => container.classList.remove(className), 800);
 }
 
-export function renderAdminDashboard({ orders = [], menuItems = [], staff = [], schedule = {} } = {}) {
+export function renderAdminDashboard({ orders = [], menuItems = [], staff = [], schedule = {} , expenses = [] } = {}) {
   const dashboardRoot = document.getElementById("dashboard");
   if (!dashboardRoot) return;
 
@@ -847,6 +874,8 @@ export function renderAdminDashboard({ orders = [], menuItems = [], staff = [], 
   const bestSellerCount = topItems[0]?.quantity || 0;
   const staffOnDuty = Array.isArray(onDutyInfo.onDuty) ? onDutyInfo.onDuty : [];
   const totalStaff = toNumber(onDutyInfo.total || staff.length);
+  const expensesToday = sumExpenses((Array.isArray(expenses) ? expenses : []).filter((e) => isExpenseToday(e)));
+  const netToday = totalSales - expensesToday;
 
   renderStats({
     totalSales,
@@ -861,6 +890,12 @@ export function renderAdminDashboard({ orders = [], menuItems = [], staff = [], 
     orderTrendClass: totalOrders > 0 ? "trend-up" : "trend-neutral",
     staffTrend: staffOnDuty.length ? "On shift" : "Off shift",
     staffTrendClass: staffOnDuty.length ? "trend-up" : "trend-neutral",
+    expensesToday,
+    expensesTrend: expensesToday > 0 ? "Spent" : "None",
+    expensesTrendClass: expensesToday > 0 ? "trend-down" : "trend-neutral",
+    netToday,
+    netTrend: totalSales ? (netToday >= 0 ? "Profitable" : "Negative") : "Idle",
+    netTrendClass: netToday >= 0 ? "trend-up" : "trend-down",
   });
   renderRecentOrders(sortedOrders.slice(0, 5));
   renderTopItems(allTopItems, viewState.showAllTopItems);
@@ -1008,6 +1043,16 @@ function buildAnalyticsTemplate() {
             <div class="sales-stat-value" id="saSyncValue">0</div>
             <div class="sales-stat-delta" id="saSyncDelta"></div>
           </div>
+          <div class="sales-stat" data-stat="expenses">
+            <div class="sales-stat-label"><i class="ti ti-wallet"></i><span>Expenses</span></div>
+            <div class="sales-stat-value" id="saExpensesValue">₱0</div>
+            <div class="sales-stat-delta" id="saExpensesDelta"></div>
+          </div>
+          <div class="sales-stat" data-stat="net">
+            <div class="sales-stat-label"><i class="ti ti-chart-pie-2"></i><span>Net (Revenue − Expenses)</span></div>
+            <div class="sales-stat-value" id="saNetValue">₱0</div>
+            <div class="sales-stat-delta" id="saNetDelta"></div>
+          </div>
         </aside>
 
         <main class="sales-analytics-main">
@@ -1053,6 +1098,7 @@ function buildLegend() {
   return `
     <span class="sales-legend-item"><span class="sales-legend-swatch revenue"></span>Revenue</span>
     <span class="sales-legend-item"><span class="sales-legend-swatch average"></span>Previous period</span>
+    <span class="sales-legend-item"><span class="sales-legend-swatch expenses"></span>Expenses</span>
   `;
 }
 
@@ -1141,13 +1187,15 @@ function buildAnalyticsSeries(periodData) {
   // canvas — updating data in place avoids the blank-canvas flicker and full
   // animation replay caused by destroy() + new Chart().
   const existingChart = viewState.analyticsChart;
-  if (existingChart && !existingChart.isDestroyed?.() && existingChart.canvas === canvas && Array.isArray(existingChart.data?.datasets) && existingChart.data.datasets.length >= 2) {
+  if (existingChart && !existingChart.isDestroyed?.() && existingChart.canvas === canvas && Array.isArray(existingChart.data?.datasets) && existingChart.data.datasets.length >= 3) {
     const byLabel = new Map(existingChart.data.datasets.map((ds) => [ds.label, ds]));
     const revenueDs = byLabel.get("Revenue") || existingChart.data.datasets[0];
     const previousDs = byLabel.get("Previous period") || existingChart.data.datasets[1];
+    const expensesDs = byLabel.get("Expenses") || existingChart.data.datasets[2];
 
     revenueDs.data = periodData.chart.current;
     previousDs.data = periodData.chart.previous;
+    expensesDs.data = periodData.chart.expenses;
     existingChart.data.labels = periodData.chart.labels;
     existingChart.update();
     return;
@@ -1186,6 +1234,20 @@ function buildAnalyticsSeries(periodData) {
           pointRadius: 2.5,
           pointHoverRadius: 4,
           borderDash: [6, 4],
+          tension: 0.38,
+          borderWidth: 2,
+          fill: false,
+        },
+        {
+          label: "Expenses",
+          data: periodData.chart.expenses,
+          borderColor: "#E5484D",
+          backgroundColor: "transparent",
+          pointBackgroundColor: "#E5484D",
+          pointBorderColor: "#E5484D",
+          pointRadius: 2.5,
+          pointHoverRadius: 4,
+          borderDash: [3, 3],
           tension: 0.38,
           borderWidth: 2,
           fill: false,
@@ -1245,7 +1307,7 @@ function buildAnalyticsSeries(periodData) {
   });
 }
 
-function buildAnalyticsPeriodData(period, orders, menuItems, pendingSyncCount = 0, now = new Date(), todayOrders = [], showAll = false, categoryFilter = "all") {
+function buildAnalyticsPeriodData(period, orders, menuItems, pendingSyncCount = 0, now = new Date(), todayOrders = [], showAll = false, categoryFilter = "all", expenses = []) {
   const range = getPeriodRange(period, now, orders);
   const previousRange = getPreviousRange(period, range);
   const sourceOrders = period === "today" && Array.isArray(todayOrders) && todayOrders.length
@@ -1260,8 +1322,15 @@ function buildAnalyticsPeriodData(period, orders, menuItems, pendingSyncCount = 
   const currentAvg = currentCount ? currentRevenue / currentCount : 0;
   const previousAvg = previousCount ? previousRevenue / previousCount : 0;
   const currentDiscounts = sumDiscounts(currentOrders);
+  const currentExpenses = filterExpensesByRange(expenses, range);
+  const previousExpenses = filterExpensesByRange(expenses, previousRange);
+  const currentExpenseTotal = sumExpenses(currentExpenses);
+  const previousExpenseTotal = sumExpenses(previousExpenses);
+  const currentNet = currentRevenue - currentExpenseTotal;
+  const previousNet = previousRevenue - previousExpenseTotal;
   const trend = buildTrendSeries(currentOrders, period, range);
   const previousTrend = buildTrendSeries(previousOrders, period, previousRange);
+  const expenseTrend = buildExpenseSeries(currentExpenses, period, range);
   const peakBucket = computePeakBucket(buildCountSeries(currentOrders, period, range), period, range);
   const topSellers = computeTopItems(currentOrders, menuItems, showAll ? Infinity : 5, categoryFilter);
   const categories = computeCategoryBreakdown(currentOrders, menuItems, categoryFilter);
@@ -1321,6 +1390,16 @@ function buildAnalyticsPeriodData(period, orders, menuItems, pendingSyncCount = 
         deltaText: pendingSyncCount > 0 ? `${pendingSyncCount} pending sync${pendingSyncCount === 1 ? "" : "s"}` : "All orders synced",
         deltaType: pendingSyncCount > 0 ? "down" : "ok",
       },
+      expenses: {
+        value: currentExpenseTotal,
+        deltaText: buildComparisonDelta(currentExpenseTotal, previousExpenseTotal),
+        deltaType: currentExpenseTotal <= previousExpenseTotal ? "up" : "down",
+      },
+      net: {
+        value: currentNet,
+        deltaText: buildMoneyDelta(currentNet, previousNet),
+        deltaType: currentNet >= previousNet ? "up" : "down",
+      },
     },
     topSellers,
     categories,
@@ -1328,6 +1407,7 @@ function buildAnalyticsPeriodData(period, orders, menuItems, pendingSyncCount = 
       labels: trend.labels,
       current: trend.values,
       previous: previousTrend.values,
+      expenses: expenseTrend.values,
     },
     footerLabel: period === "today" || period === "specific"
       ? formatShortDate(range.start)
@@ -1352,6 +1432,8 @@ function renderAnalyticsSidebar(periodData) {
   setText("saPeakHourValue", stats.peakHour.value);
   setText("saDiscountsValue", formatPeso(stats.discounts.value));
   setText("saSyncValue", String(stats.sync.value));
+  setText("saExpensesValue", formatPeso(stats.expenses.value));
+  setText("saNetValue", formatPeso(stats.net.value));
 
   const setHtml = (id, value) => {
     const el = document.getElementById(id);
@@ -1364,6 +1446,8 @@ function renderAnalyticsSidebar(periodData) {
   setHtml("saPeakHourDelta", buildDeltaMarkup(stats.peakHour.deltaText, stats.peakHour.deltaType));
   setHtml("saDiscountsDelta", buildDeltaMarkup(stats.discounts.deltaText, stats.discounts.deltaType));
   setHtml("saSyncDelta", buildDeltaMarkup(stats.sync.deltaText, stats.sync.deltaType));
+  setHtml("saExpensesDelta", buildDeltaMarkup(stats.expenses.deltaText, stats.expenses.deltaType));
+  setHtml("saNetDelta", buildDeltaMarkup(stats.net.deltaText, stats.net.deltaType));
 
   document.querySelectorAll(".sales-stat").forEach((stat) => {
     stat.classList.remove("is-up", "is-down", "is-neutral", "is-ok");
@@ -1425,6 +1509,7 @@ function computeAnalyticsSignature(periodData) {
     periodData.chart?.labels,
     periodData.chart?.current,
     periodData.chart?.previous,
+    periodData.chart?.expenses,
   ]);
 }
 
@@ -1437,7 +1522,8 @@ function setAnalyticsPeriod(period) {
     new Date(),
     viewState.analyticsData?.todayOrders || [],
     viewState.showAllItems,
-    viewState.categoryFilter
+    viewState.categoryFilter,
+    viewState.analyticsData?.expenses || []
   );
   viewState.analyticsPeriod = period;
 
@@ -1832,6 +1918,7 @@ export function renderSalesAnalyticsDashboard(data = {}) {
     todayOrders: Array.isArray(data.todayOrders) ? data.todayOrders : Array.isArray(data.ordersToday) ? data.ordersToday : [],
     menuItems: Array.isArray(data.menuItems) ? data.menuItems : [],
     pendingSyncCount: toNumber(data.pendingSyncCount || 0),
+    expenses: Array.isArray(data.expenses) ? data.expenses : [],
   };
 
   if (!viewState.analyticsData.orders.length && fallbackOrders.length) {

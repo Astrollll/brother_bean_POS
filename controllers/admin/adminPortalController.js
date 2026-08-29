@@ -3,7 +3,7 @@ import { db } from "../firebase.js";
 import {
   doc, setDoc, getDoc, updateDoc, collection, getDocs, serverTimestamp, writeBatch
 } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js";
-import { getAdminSettings, saveAdminSettings, getDefaultSettings, syncPendingAdminSettings, readReceiptTaxDetails, watchAdminSettings } from "../../models/settingsModel.js?v=20260826A";
+import { getAdminSettings, saveAdminSettings, getDefaultSettings, syncPendingAdminSettings, readReceiptTaxDetails, watchAdminSettings } from "../../models/settingsModel.js";
 import { getUserRole, getUserProfile, listUsers, setUserRole, setUserProfile, ensureAdminAccessProfile } from "../../models/userModel.js";
 import { getMenuItems, saveMenuItem, deleteMenuItem, clearMenuItems, syncPendingMenuOps } from "../../models/menuModel.js";
 import { getCategories, saveCategory, deleteCategory, getCategoryIconForName, syncCategoryLocalChanges } from "../../models/categoryModel.js";
@@ -13,7 +13,17 @@ import { resetDay as archiveResetDay } from "../../models/resetModel.js";
 import { getInventoryItems, saveInventoryItem, deleteInventoryItem, clearInventoryItems, convertQuantityBetweenUnits, normalizeUnit, renameInventoryCategory, deleteInventoryCategory, getInventoryCategoryNames, createInventoryCategory, restoreInventoryForOrder } from "../../models/inventoryModel.js";
 import { inventorySeedItems } from "../../models/defaultSeedData.js";
 import { getAllStaff as getStaff, getSchedule, getOnDutyNowFromSchedule, addStaff, removeStaff, removeStaffByName, removeStaffByAccountUid, updateStaffAccountLink, updateStaffNameByUid, saveSchedule, parseShiftRange } from "../../models/staffModel.js";
-import { renderSalesAnalyticsDashboard, renderAdminDashboard, AIR_DATEPICKER_EN_LOCALE, airDatepickerSmartPosition, trackAirDatepickerReposition } from "../../views/dashboardView.js?v=20260821A";
+import {
+  EXPENSE_CATEGORIES,
+  expenseCategoryLabel,
+  getAllExpenses,
+  sumExpenses,
+  saveExpense,
+  updateExpense,
+  deleteExpense,
+  syncExpenseOutbox,
+} from "../../models/expenseModel.js";
+import { renderSalesAnalyticsDashboard, renderAdminDashboard, AIR_DATEPICKER_EN_LOCALE, airDatepickerSmartPosition, trackAirDatepickerReposition } from "../../views/dashboardView.js?v=20260826B";
 import { renderAdminMenu } from "../../views/menuView.js";
 import { renderStaffList, renderScheduleEditor, readScheduleFromDOM } from "../../views/staffView.js?v=20260821A";
 import { navigateTo } from "../utils/routes.js";
@@ -25,7 +35,7 @@ import {
   reconnectSavedPrinter as reconnectThermalPrinter,
   printReceipt as printThermalReceipt,
   onPrinterStatus,
-} from "../printer/thermalPrinter.js?v=20260826A";
+} from "../printer/thermalPrinter.js";
 
 const ModalUtils = window.ModalUtils || {
   async confirm(title, message) {
@@ -73,6 +83,9 @@ const state = {
   staff: [],
   schedule: {},
   orderStockExpanded: {},
+  allExpenses: [],
+  expenseEditingId: null,
+  expensePageBound: false,
 };
 
 const DASHBOARD_SYNC_INTERVAL_MS = 60_000;
@@ -646,7 +659,9 @@ function escapeHtml(value) {
 }
 
 function formatMoney(value) {
-  return `₱${(Number(value) || 0).toFixed(2)}`;
+  const parts = (Number(value) || 0).toFixed(2).split(".");
+  parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  return `₱${parts.join(".")}`;
 }
 
 function renderSectionState(message, tone = "muted") {
@@ -813,22 +828,24 @@ async function loadDashboard() {
     }
 
     // Fetch live data and render both dashboard and analytics as needed
-    const [menuItems, ordersToday, allOrders, staff, schedule, inventoryItems] = await Promise.all([
+    const [menuItems, ordersToday, allOrders, staff, schedule, inventoryItems, allExpenses] = await Promise.all([
       getMenuItems().catch(() => []),
       getTodayOrders().catch(() => []),
       getAllSalesOrders().catch(() => []),
       getStaff().catch(() => []),
       getSchedule().catch(() => ({})),
       getInventoryItems().catch(() => []),
+      getAllExpenses().catch(() => []),
     ]);
 
     state.ordersToday = ordersToday;
     state.inventoryItems = inventoryItems;
+    state.allExpenses = allExpenses;
     try { renderNotifications(); } catch (_) {}
 
     // Render legacy dashboard (uses today's orders, menu items, and staff schedule)
     try {
-      renderAdminDashboard({ orders: ordersToday, menuItems, staff, schedule });
+      renderAdminDashboard({ orders: ordersToday, menuItems, staff, schedule, expenses: allExpenses });
     } catch (e) {
       console.warn("[Dashboard] renderAdminDashboard failed:", e);
     }
@@ -941,7 +958,7 @@ async function loadDashboard() {
 
       console.debug(`[Admin] analytics source orders: firestore=${Array.isArray(allOrders) ? allOrders.length : 0}, queued=${Array.isArray(queuedOrders) ? queuedOrders.length : 0}, local=${Array.isArray(getSavedSalesHistory?.()) ? getSavedSalesHistory().length : 0}, merged=${normalized.length}`);
 
-      renderSalesAnalyticsDashboard({ allOrders: normalized, todayOrders: normalizedToday.length ? normalizedToday : ordersToday, menuItems, pendingSyncCount });
+      renderSalesAnalyticsDashboard({ allOrders: normalized, todayOrders: normalizedToday.length ? normalizedToday : ordersToday, menuItems, pendingSyncCount, expenses: allExpenses });
     } catch (e) {
       console.warn("[Analytics] renderSalesAnalyticsDashboard failed:", e);
     }
@@ -950,6 +967,601 @@ async function loadDashboard() {
     showApp();
   }
 }
+
+function expenseDateStr(date = new Date()) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+const EXPENSE_CATEGORY_ICON_MAP = {
+  all: "ri-apps-2-line",
+  supplies: "ri-shopping-basket-2-line",
+  utilities: "ri-flashlight-line",
+  rent: "ri-building-2-line",
+  wages: "ri-wallet-3-line",
+  equipment: "ri-tools-line",
+  misc: "ri-more-2-line",
+};
+
+function expenseCategoryIconOf(key) {
+  return EXPENSE_CATEGORY_ICON_MAP[key] || "ri-more-2-line";
+}
+
+function expenseCategoryMetaOf(key) {
+  if (!key || key === "all") return { label: "All categories", icon: expenseCategoryIconOf("all") };
+  const cat = EXPENSE_CATEGORIES.find((c) => c.key === key);
+  return { label: cat?.label || "Miscellaneous", icon: expenseCategoryIconOf(key) };
+}
+
+const expenseDatePickers = { from: null, to: null };
+let expenseModalDatePicker = null;
+
+// Date-range preset -> { from, to } keys in yyyy-MM-dd.
+function expenseRangeForPreset(key) {
+  const today = new Date();
+  const add = (d, n) => {
+    const x = new Date(d);
+    x.setDate(x.getDate() + n);
+    return x;
+  };
+  const from = new Date();
+  const to = new Date();
+  switch (key) {
+    case "yesterday": {
+      const day = add(today, -1);
+      return { from: toDayKey(day), to: toDayKey(day) };
+    }
+    case "7d":
+      return { from: toDayKey(add(today, -6)), to: toDayKey(today) };
+    case "30d":
+      return { from: toDayKey(add(today, -29)), to: toDayKey(today) };
+    case "month":
+      return { from: toDayKey(new Date(today.getFullYear(), today.getMonth(), 1)), to: toDayKey(today) };
+    case "today":
+    default:
+      return { from: toDayKey(from), to: toDayKey(to) };
+  }
+}
+
+function applyExpenseRangePreset(key) {
+  const range = expenseRangeForPreset(key);
+  const fromEl = document.getElementById("expenseDateFrom");
+  const toEl = document.getElementById("expenseDateTo");
+  if (fromEl) fromEl.value = range.from;
+  if (toEl) toEl.value = range.to;
+  const fromDate = new Date(`${range.from}T00:00:00`);
+  const toDate = new Date(`${range.to}T00:00:00`);
+  if (expenseDatePickers.from) expenseDatePickers.from.selectDate(fromDate);
+  if (expenseDatePickers.to) expenseDatePickers.to.selectDate(toDate);
+  syncExpenseRangeChips();
+  renderExpensesPage(state.allExpenses);
+}
+
+// Highlights the chip whose preset matches the current From/To values.
+function syncExpenseRangeChips() {
+  const from = document.getElementById("expenseDateFrom")?.value || "";
+  const to = document.getElementById("expenseDateTo")?.value || "";
+  document.querySelectorAll(".expense-range-chip").forEach((btn) => {
+    const range = expenseRangeForPreset(String(btn.dataset.range || ""));
+    btn.classList.toggle("active", range.from === from && range.to === to);
+  });
+}
+
+function initExpenseDatePickers() {
+  if (!window.AirDatepicker) {
+    ["expenseDateFrom", "expenseDateTo"].forEach((id) => {
+      const el = document.getElementById(id);
+      if (el) el.readOnly = false;
+    });
+    return;
+  }
+  const makePicker = (input, key) => {
+    let picker = new window.AirDatepicker(input, {
+      locale: AIR_DATEPICKER_EN_LOCALE,
+      dateFormat: "yyyy-MM-dd",
+      autoClose: true,
+      keyboardNav: true,
+      toggleSelected: true,
+      maxDate: new Date(),
+      position: airDatepickerSmartPosition,
+      onShow: () => {
+        if (picker) picker.update({ maxDate: new Date() });
+      },
+      onSelect: ({ date }) => {
+        const picked = Array.isArray(date) ? date[0] : date;
+        if (picked && input) input.value = toDayKey(picked);
+        renderExpensesPage(state.allExpenses);
+      },
+    });
+    expenseDatePickers[key] = picker;
+    trackAirDatepickerReposition(picker);
+  };
+  const fromInput = document.getElementById("expenseDateFrom");
+  const toInput = document.getElementById("expenseDateTo");
+  if (fromInput && !expenseDatePickers.from) makePicker(fromInput, "from");
+  if (toInput && !expenseDatePickers.to) makePicker(toInput, "to");
+}
+
+function initExpenseModalDatePicker() {
+  const input = document.getElementById("expenseDate");
+  if (!input || expenseModalDatePicker) return;
+  if (!window.AirDatepicker) {
+    input.readOnly = false;
+    return;
+  }
+  expenseModalDatePicker = new window.AirDatepicker(input, {
+    locale: AIR_DATEPICKER_EN_LOCALE,
+    dateFormat: "yyyy-MM-dd",
+    autoClose: true,
+    keyboardNav: true,
+    toggleSelected: true,
+    maxDate: new Date(),
+    position: airDatepickerSmartPosition,
+    onShow: () => {
+      if (expenseModalDatePicker) expenseModalDatePicker.update({ maxDate: new Date() });
+    },
+    onSelect: ({ date }) => {
+      const picked = Array.isArray(date) ? date[0] : date;
+      if (picked) input.value = toDayKey(picked);
+    },
+  });
+  trackAirDatepickerReposition(expenseModalDatePicker);
+}
+
+function buildExpenseDropdownMenu(root) {
+  const select = root?.querySelector("select.expense-sr-select");
+  const menu = root?.querySelector(".expense-dropdown-menu");
+  if (!select || !menu) return;
+  menu.innerHTML = [...select.options]
+    .map((opt) => `
+      <button type="button" class="expense-dropdown-item" data-value="${opt.value}">
+        <i class="expense-dropdown-icon ${expenseCategoryIconOf(opt.value)}" aria-hidden="true"></i>
+        <span>${escapeHtml(opt.textContent)}</span>
+        <i class="ri-check-line expense-dropdown-check" aria-hidden="true"></i>
+      </button>`)
+    .join("");
+}
+
+function syncExpenseDropdown(root, select) {
+  const current = root?.querySelector(".expense-dropdown-current");
+  const triggerIcon = root?.querySelector(".expense-dropdown-trigger-icon");
+  const menu = root?.querySelector(".expense-dropdown-menu");
+  const value = (select || root?.querySelector("select.expense-sr-select"))?.value || "all";
+  const meta = expenseCategoryMetaOf(value);
+  if (current) current.textContent = meta.label;
+  if (triggerIcon) triggerIcon.className = `expense-dropdown-trigger-icon ${meta.icon}`;
+  if (menu) {
+    menu.querySelectorAll(".expense-dropdown-item").forEach((item) => {
+      item.classList.toggle("is-selected", item.dataset.value === value);
+    });
+  }
+}
+
+function bindExpenseDropdown(root, action) {
+  if (!root || root.dataset.bound) return;
+  root.dataset.bound = "1";
+  const trigger = root.querySelector(".expense-dropdown-trigger");
+  const menu = root.querySelector(".expense-dropdown-menu");
+  const select = root.querySelector("select.expense-sr-select");
+  if (!trigger || !menu || !select) return;
+
+  const open = () => {
+    menu.hidden = false;
+    trigger.setAttribute("aria-expanded", "true");
+    (menu.querySelector(".expense-dropdown-item.is-selected") || menu.querySelector(".expense-dropdown-item"))?.focus();
+  };
+  const close = () => {
+    menu.hidden = true;
+    trigger.setAttribute("aria-expanded", "false");
+  };
+  const pick = (item) => {
+    if (!item) return;
+    select.value = item.dataset.value;
+    syncExpenseDropdown(root, select);
+    close();
+    trigger.focus();
+    if (typeof action === "function") action(select.value);
+  };
+
+  trigger.addEventListener("click", () => {
+    if (menu.hidden) open();
+    else close();
+  });
+
+  trigger.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" || event.key === " " || event.key === "ArrowDown") {
+      event.preventDefault();
+      if (menu.hidden) open();
+    } else if (event.key === "Escape") {
+      close();
+    }
+  });
+
+  menu.addEventListener("click", (event) => {
+    const item = event.target.closest(".expense-dropdown-item");
+    if (item) pick(item);
+  });
+
+  menu.addEventListener("keydown", (event) => {
+    const items = [...menu.querySelectorAll(".expense-dropdown-item")];
+    if (!items.length) return;
+    if (event.key === "Escape") {
+      event.preventDefault();
+      close();
+      trigger.focus();
+      return;
+    }
+    const index = items.indexOf(document.activeElement);
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      const next = event.key === "ArrowDown" ? items[(index + 1) % items.length] : items[(index - 1 + items.length) % items.length];
+      next.focus();
+    } else if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      pick(document.activeElement);
+    }
+  });
+
+  document.addEventListener("click", (event) => {
+    if (menu.hidden) return;
+    const clickedRoot = event.target.closest(".expense-dropdown");
+    if (clickedRoot !== root) close();
+  });
+}
+
+function initExpenseFilterDropdown() {
+  const select = document.getElementById("expenseCategoryFilter");
+  const root = select?.closest(".expense-dropdown");
+  if (!root) return;
+  buildExpenseDropdownMenu(root);
+  bindExpenseDropdown(root, () => renderExpensesPage(state.allExpenses));
+  syncExpenseDropdown(root);
+}
+
+function initExpenseModalDropdown() {
+  const select = document.getElementById("expenseCategory");
+  const root = select?.closest(".expense-dropdown");
+  if (!root) return;
+  buildExpenseDropdownMenu(root);
+  bindExpenseDropdown(root, null);
+  syncExpenseDropdown(root);
+}
+
+async function getAdminDisplayName() {
+  const user = getCurrentUser();
+  if (!user) return "Admin";
+  try {
+    const profile = await getUserProfile(user.uid);
+    return profile?.fullName || user.displayName || user.email || "Admin";
+  } catch {
+    return user.displayName || user.email || "Admin";
+  }
+}
+
+function filterExpenses(list, from, to, category) {
+  const rows = Array.isArray(list) ? list : [];
+  return rows.filter((expense) => {
+    const date = String(expense?.date || "");
+    const inRange = (!from || date >= from) && (!to || date <= to);
+    const inCategory = !category || category === "all" || String(expense?.category) === category;
+    return inRange && inCategory;
+  });
+}
+
+function buildExpenseCategoryOptions(selected = "") {
+  const options = ['<option value="all">All categories</option>'];
+  EXPENSE_CATEGORIES.forEach((cat) => {
+    const isSelected = selected === cat.key ? " selected" : "";
+    options.push(`<option value="${cat.key}"${isSelected}>${escapeHtml(cat.label)}</option>`);
+  });
+  return options.join("");
+}
+
+function renderExpensesPage(list) {
+  const fromEl = document.getElementById("expenseDateFrom");
+  const toEl = document.getElementById("expenseDateTo");
+  const categoryEl = document.getElementById("expenseCategoryFilter");
+  const from = fromEl?.value || "";
+  const to = toEl?.value || "";
+  const category = categoryEl?.value || "all";
+
+  const filtered = filterExpenses(list, from, to, category)
+    .slice()
+    .sort((a, b) => {
+      const da = String(a?.date || "");
+      const db = String(b?.date || "");
+      if (da !== db) return da < db ? 1 : -1;
+      return (Number(b?.t) || 0) - (Number(a?.t) || 0);
+    });
+  const filteredTotal = sumExpenses(filtered);
+  const todayStr = expenseDateStr();
+  const todayExpenses = sumExpenses((Array.isArray(list) ? list : []).filter((e) => String(e?.date) === todayStr));
+  const netToday = state.ordersTodayTotal - todayExpenses;
+
+  const setText = (id, text) => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = text;
+  };
+
+  setText("expenseFilteredTotal", formatMoney(filteredTotal));
+  setText("expenseFilteredCount", String(filtered.length));
+  setText("expenseTodayTotal", formatMoney(todayExpenses));
+  setText("expenseNetToday", formatMoney(netToday));
+
+  const netEl = document.getElementById("expenseNetToday");
+  if (netEl) netEl.classList.toggle("is-negative", netToday < 0);
+
+  const wrap = document.getElementById("expensesTableWrap");
+  if (!wrap) return;
+
+  if (!filtered.length) {
+    wrap.innerHTML = `
+      <div class="expense-empty">
+        <i class="ri-inbox-line" aria-hidden="true"></i>
+        <div class="expense-empty-title">No expenses match this view</div>
+        <div class="expense-empty-sub">Try widening the date range or category filter.</div>
+      </div>`;
+    return;
+  }
+
+  wrap.innerHTML = `
+    <table class="tbl expense-tbl">
+      <thead>
+        <tr>
+          <th>Date</th>
+          <th>Category</th>
+          <th>Note</th>
+          <th>Recorded by</th>
+          <th>Source</th>
+          <th class="tbl-num">Amount</th>
+          <th class="tbl-actions"></th>
+        </tr>
+      </thead>
+      <tbody>
+        ${filtered.map((expense) => {
+          const catMeta = expenseCategoryMetaOf(expense?.category);
+          const source = expense?.source === "pos" ? "pos" : "admin";
+          return `
+          <tr>
+            <td class="tbl-date">${escapeHtml(String(expense?.date || "—"))}</td>
+            <td><span class="expense-cat"><i class="${catMeta.icon}" aria-hidden="true"></i>${escapeHtml(catMeta.label)}</span></td>
+            <td class="expense-note">${escapeHtml(String(expense?.note || "—"))}</td>
+            <td class="expense-recorded"><i class="ri-user-3-line" aria-hidden="true"></i>${escapeHtml(String(expense?.recordedByName || "—"))}</td>
+            <td><span class="expense-source is-${source}">${source === "pos" ? "POS" : "Admin"}</span></td>
+            <td class="tbl-num expense-amount">−${formatMoney(expense?.amount)}</td>
+            <td class="tbl-actions">
+              <button class="expense-action is-edit" type="button" onclick="window.editExpense('${escapeHtml(String(expense?.id || ""))}')" title="Edit"><i class="ri-pencil-line" aria-hidden="true"></i></button>
+              <button class="expense-action is-danger" type="button" onclick="window.deleteExpense('${escapeHtml(String(expense?.id || ""))}')" title="Delete"><i class="ri-delete-bin-6-line" aria-hidden="true"></i></button>
+            </td>
+          </tr>`;
+        }).join("")}
+      </tbody>
+    </table>
+  `;
+}
+
+async function loadExpensesPage() {
+  try {
+    // Flush offline-recorded expenses once the connection is back, in parallel
+    // with the fetch below. If anything actually synced, reload so the fresh
+    // list (and totals) reflect it. Offline/empty outbox resolves fast.
+    const flush = syncExpenseOutbox().catch(() => ({ synced: 0 }));
+    const [expenses, todayOrders] = await Promise.all([
+      getAllExpenses().catch(() => state.allExpenses || []),
+      getTodayOrders().catch(() => []),
+    ]);
+    const flushResult = await flush;
+    if (state.page === "expenses" && flushResult?.synced > 0) {
+      loadExpensesPage();
+      return;
+    }
+    state.allExpenses = expenses;
+    state.ordersTodayTotal = (Array.isArray(todayOrders) ? todayOrders : []).reduce((sum, o) => sum + (Number(o?.total) || 0), 0);
+
+    const fromEl = document.getElementById("expenseDateFrom");
+    const toEl = document.getElementById("expenseDateTo");
+    if (fromEl && !fromEl.dataset.initialized) {
+      fromEl.value = expenseDateStr();
+      fromEl.dataset.initialized = "1";
+    }
+    if (toEl && !toEl.dataset.initialized) {
+      toEl.value = expenseDateStr();
+      toEl.dataset.initialized = "1";
+    }
+    const categoryEl = document.getElementById("expenseCategoryFilter");
+    if (categoryEl && !categoryEl.dataset.initialized) {
+      categoryEl.innerHTML = buildExpenseCategoryOptions();
+      categoryEl.dataset.initialized = "1";
+    }
+
+    if (fromEl?.value) initExpenseDatePickers();
+    initExpenseFilterDropdown();
+
+    renderExpensesPage(state.allExpenses);
+    syncExpenseRangeChips();
+
+    if (!state.expensePageBound) {
+      state.expensePageBound = true;
+      ["expenseDateFrom", "expenseDateTo"].forEach((id) => {
+        document.getElementById(id)?.addEventListener("change", () => {
+          renderExpensesPage(state.allExpenses);
+          syncExpenseRangeChips();
+        });
+      });
+      document.querySelector(".expense-range-shortcuts")?.addEventListener("click", (event) => {
+        const btn = event.target.closest(".expense-range-chip");
+        if (btn) applyExpenseRangePreset(String(btn.dataset.range || ""));
+      });
+      document.getElementById("expenseResetBtn")?.addEventListener("click", () => {
+        const from = document.getElementById("expenseDateFrom");
+        const to = document.getElementById("expenseDateTo");
+        const today = expenseDateStr();
+        const todayDate = new Date();
+        if (from) from.value = today;
+        if (to) to.value = today;
+        if (expenseDatePickers.from) expenseDatePickers.from.selectDate(todayDate);
+        if (expenseDatePickers.to) expenseDatePickers.to.selectDate(todayDate);
+        renderExpensesPage(state.allExpenses);
+        syncExpenseRangeChips();
+      });
+      document.getElementById("expenseAddBtn")?.addEventListener("click", () => openExpenseModal(null));
+      document.getElementById("expenseModalCloseBtn")?.addEventListener("click", closeExpenseModal);
+      document.getElementById("expenseModalCancelBtn")?.addEventListener("click", closeExpenseModal);
+      document.getElementById("expenseModalSaveBtn")?.addEventListener("click", handleSaveExpense);
+      document.getElementById("expenseAmount")?.addEventListener("input", reformatExpenseAmountInput);
+      const overlay = document.getElementById("expenseModal");
+      overlay?.addEventListener("click", (event) => {
+        if (event.target === overlay) closeExpenseModal();
+      });
+      document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape" && state.expenseEditingId !== null && overlay && overlay.style.display === "flex") {
+          closeExpenseModal();
+        }
+      });
+    }
+  } catch (error) {
+    console.warn("[Admin] Failed to load expenses page:", error);
+  }
+}
+
+// Thousands separators while typing: groups the integer part with commas,
+// keeps at most 2 decimals, and restores the caret so it does not jump.
+function reformatExpenseAmountInput(event) {
+  const el = event.target;
+  if (!el) return;
+  const caret = el.selectionStart ?? String(el.value).length;
+  const slice = String(el.value).slice(0, caret);
+  const significantBefore = (slice.match(/[\d.]/g) || []).length;
+  const formatted = formatExpenseAmountValue(el.value);
+  el.value = formatted;
+  let pos = 0;
+  let seen = 0;
+  while (pos < formatted.length && seen < significantBefore) {
+    if (/[\d.]/.test(formatted[pos])) seen += 1;
+    pos += 1;
+  }
+  el.setSelectionRange(pos, pos);
+}
+
+// Pure formatter: "1000000.5" -> "1,000,000.5". Never emits a leading zero
+// chain and caps decimals at 2 places.
+function formatExpenseAmountValue(raw) {
+  const cleaned = String(raw ?? "").replace(/[^\d.]/g, "");
+  const [intPart, decPart] = cleaned.split(".");
+  let int = (intPart || "").replace(/^0+(?=\d)/, "").replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  let dec = decPart === undefined ? "" : decPart.slice(0, 2);
+  if (dec) int = `${int}.${dec}`;
+  return int;
+}
+
+function openExpenseModal(record) {
+  state.expenseEditingId = record?.id || null;
+  const titleEl = document.getElementById("expenseModalTitle");
+  const saveBtn = document.getElementById("expenseModalSaveBtn");
+  if (titleEl) titleEl.textContent = record ? "Edit Expense" : "Record Expense";
+  if (saveBtn) saveBtn.textContent = record ? "Save Changes" : "Save Expense";
+
+  const amountEl = document.getElementById("expenseAmount");
+  const categoryEl = document.getElementById("expenseCategory");
+  const noteEl = document.getElementById("expenseNote");
+  const dateEl = document.getElementById("expenseDate");
+
+  if (categoryEl && !categoryEl.dataset.initialized) {
+    categoryEl.innerHTML = EXPENSE_CATEGORIES.map((cat) => `<option value="${cat.key}">${escapeHtml(cat.label)}</option>`).join("");
+    categoryEl.dataset.initialized = "1";
+  }
+  initExpenseModalDropdown();
+
+  if (amountEl) amountEl.value = record ? formatExpenseAmountValue(record.amount ?? "") : "";
+  if (categoryEl) categoryEl.value = record?.category || "supplies";
+  if (noteEl) noteEl.value = String(record?.note || "");
+  syncExpenseDropdown(document.getElementById("expenseCategory")?.closest(".expense-dropdown"), categoryEl);
+  if (dateEl) {
+    dateEl.value = record?.date || expenseDateStr();
+    initExpenseModalDatePicker();
+    if (expenseModalDatePicker) {
+      expenseModalDatePicker.selectDate(dateEl.value ? new Date(dateEl.value) : new Date());
+    } else {
+      dateEl.max = expenseDateStr();
+    }
+  }
+
+  const modal = document.getElementById("expenseModal");
+  if (modal) {
+    modal.style.display = "flex";
+    modal.setAttribute("aria-hidden", "false");
+  }
+  setTimeout(() => amountEl?.focus(), 30);
+}
+
+function closeExpenseModal() {
+  state.expenseEditingId = null;
+  const modal = document.getElementById("expenseModal");
+  if (!modal) return;
+  modal.style.display = "none";
+  modal.setAttribute("aria-hidden", "true");
+}
+
+async function handleSaveExpense() {
+  const amountRaw = String(document.getElementById("expenseAmount")?.value || "").replace(/,/g, "");
+  const amount = Number(amountRaw);
+  if (!(amount > 0)) {
+    await ModalUtils.warning("Invalid Amount", "Enter an amount greater than zero.");
+    return;
+  }
+  const category = document.getElementById("expenseCategory")?.value || "misc";
+  const note = String(document.getElementById("expenseNote")?.value || "").trim();
+  const date = String(document.getElementById("expenseDate")?.value || expenseDateStr());
+  const editingId = state.expenseEditingId;
+
+  try {
+    if (editingId) {
+      await updateExpense(editingId, { amount, category, note, date });
+    } else {
+      await saveExpense({
+        amount,
+        category,
+        note,
+        date,
+        recordedByUid: getCurrentUser()?.uid || "",
+        recordedByName: await getAdminDisplayName(),
+        source: "admin",
+      });
+    }
+    closeExpenseModal();
+    await loadExpensesPage();
+  } catch (error) {
+    await ModalUtils.error("Expense Not Saved", error?.message || "Unable to save the expense.");
+  }
+}
+
+window.openExpenseModal = openExpenseModal;
+window.closeExpenseModal = closeExpenseModal;
+
+window.editExpense = async function (id) {
+  const record = (Array.isArray(state.allExpenses) ? state.allExpenses : []).find((e) => e?.id === id);
+  if (record) openExpenseModal(record);
+};
+
+window.deleteExpense = async function (id) {
+  const record = (Array.isArray(state.allExpenses) ? state.allExpenses : []).find((e) => e?.id === id);
+  if (!record) return;
+  const confirmed = await ModalUtils.confirm(
+    "Delete Expense",
+    `Delete the ${formatMoney(record.amount)} "${expenseCategoryLabel(record.category)}" expense recorded on ${String(record.date || "—")}? This cannot be undone.`
+  );
+  if (confirmed !== 1) return;
+  try {
+    await deleteExpense(id, record.date);
+    state.allExpenses = (Array.isArray(state.allExpenses) ? state.allExpenses : []).filter((e) => e?.id !== id);
+    renderExpensesPage(state.allExpenses);
+  } catch (error) {
+    await ModalUtils.error("Expense Not Deleted", error?.message || "Unable to delete the expense.");
+  }
+};
+
+window.refreshExpenses = async function () {
+  await loadExpensesPage();
+};
 
 function startDashboardAutoSync() {
   window.setInterval(async () => {
@@ -5138,6 +5750,7 @@ window.showPage = async function (pageId, navEl, title) {
     if (pageId === "accounts") await loadAccountsPage();
     if (pageId === "logs") await loadLogsPage();
     if (pageId === "categories") await loadCategoriesPage();
+    if (pageId === "expenses") await loadExpensesPage();
     if (pageId === "settings") await loadSettingsPage();
   } finally {
     showApp();

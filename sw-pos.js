@@ -1,4 +1,4 @@
-const CACHE_NAME = "brother-bean-pos-v10";
+const CACHE_NAME = "brother-bean-pos-v11";
 const APP_SHELL_FILES = [
   "/pos",
   "/views/pages/pos.html",
@@ -18,6 +18,7 @@ const APP_SHELL_FILES = [
   "/models/userModel.js",
   "/models/categoryModel.js",
   "/models/defaultSeedData.js",
+  "/models/expenseModel.js",
   "/assets/icons/brother-bean-logo.jpg",
   "/assets/icons/brother-bean-logo-rounded.png",
   "/pos.webmanifest"

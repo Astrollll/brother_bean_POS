@@ -28,13 +28,14 @@ async function run() {
   let settingsModel, menuModel, categoryModel;
 
   try {
-    const [sm, mm, cm, om, rm, dv] = await Promise.all([
+    const [sm, mm, cm, om, rm, dv, em] = await Promise.all([
       import("/models/settingsModel.js"),
       import("/models/menuModel.js"),
       import("/models/categoryModel.js"),
       import("/models/orderModel.js"),
       import("/models/resetModel.js"),
       import("/views/dashboardView.js"),
+      import("/models/expenseModel.js"),
     ]);
     settingsModel = sm;
     menuModel = mm;
@@ -46,6 +47,8 @@ async function run() {
       order: typeof om.getTodayOrders === "function",
       reset: typeof rm.resetDay === "function",
       dashboardView: typeof dv.renderSalesAnalyticsDashboard === "function",
+      expense: typeof em.saveExpense === "function",
+      expenseWatch: typeof em.watchTodayExpenses === "function",
     });
   } catch (err) {
     step("graph", { error: String(err && err.message || err) });
@@ -151,6 +154,30 @@ async function run() {
     });
   } catch (err) {
     step("category", { error: String(err && err.message || err) });
+  }
+
+  clearKeys();
+  try {
+    const d = new Date();
+    const todayKeyStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    setFail(true);
+    const saved = await em.saveExpense({ amount: 150, category: "supplies", note: "Offline beans" });
+    const todayList = em.getTodayExpenses();
+    const syncFail = await em.syncExpenseOutbox();
+    setFail(false);
+    const syncOk = await em.syncExpenseOutbox();
+    const mirror = readJSON("bb_pos_expenses_" + todayKeyStr);
+    const outboxAfter = readJSON("bb_pos_expense_outbox_v1");
+    step("expense", {
+      savedLocally: !!saved?.id && saved.queued === true,
+      todayTotal: em.sumExpenses(todayList) === 150,
+      syncFailedKeepsQueued: syncFail.synced === 0 && syncFail.pending === 1,
+      flushSucceeds: syncOk.synced === 1 && syncOk.pending === 0 && Array.isArray(outboxAfter) && outboxAfter.length === 0,
+      mirrorKeepsEntry: Array.isArray(mirror) && mirror.length === 1 && mirror[0].amount === 150,
+      categoryLanded: Array.isArray(mirror) && mirror[0]?.category === "supplies",
+    });
+  } catch (err) {
+    step("expense", { error: String(err && err.message || err) });
   }
 
   window.__itestResults = results;

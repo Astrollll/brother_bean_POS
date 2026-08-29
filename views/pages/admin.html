@@ -26,7 +26,7 @@
       href="https://cdn.jsdelivr.net/npm/air-datepicker@3.6.0/air-datepicker.css"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="/assets/adminstyle.css?v=20260821A" />
+    <link rel="stylesheet" href="/assets/adminstyle.css?v=20260829M" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700&family=DM+Sans:wght@300;400;500;600&family=Dancing+Script:wght@500;600&family=Montserrat:wght@400;500;600;700&family=Caveat:wght@500;600;700&display=block" rel="stylesheet" />
@@ -152,6 +152,14 @@
             <span class="nav-icon"
               ><i class="ri-receipt-line" aria-hidden="true"></i></span
             >Transactions
+          </div>
+          <div
+            class="nav-item"
+            onclick="window.showPage('expenses', this, 'Expenses')"
+          >
+            <span class="nav-icon"
+              ><i class="ri-wallet-3-line" aria-hidden="true"></i></span
+            >Expenses
           </div>
           <div class="nav-item" onclick="window.showPage('menu', this, 'Menu')">
             <span class="nav-icon"
@@ -851,6 +859,148 @@
             </div>
           </div>
 
+          <!-- ── EXPENSES ── -->
+          <div id="expenses" class="page">
+            <div class="page-header">
+              <div class="page-title">Expenses</div>
+              <div class="page-sub">
+                Store expenses — subtracted from revenue for net profit
+              </div>
+            </div>
+
+            <div class="card compact-card orders-shell-card expense-filter-card">
+              <div class="logs-toolbar-row expense-toolbar-row">
+                <div class="orders-filter-field">
+                  <label for="expenseDateFrom">From</label>
+                  <div class="orders-field-control">
+                    <i class="ri-calendar-line orders-field-icon" aria-hidden="true"></i>
+                    <input
+                      id="expenseDateFrom"
+                      class="ls-input orders-filter-input"
+                      type="text"
+                      readonly
+                      autocomplete="off"
+                      placeholder="yyyy-MM-dd"
+                      aria-label="Expense start date"
+                    />
+                  </div>
+                </div>
+                <div class="orders-filter-field">
+                  <label for="expenseDateTo">To</label>
+                  <div class="orders-field-control">
+                    <i class="ri-calendar-line orders-field-icon" aria-hidden="true"></i>
+                    <input
+                      id="expenseDateTo"
+                      class="ls-input orders-filter-input"
+                      type="text"
+                      readonly
+                      autocomplete="off"
+                      placeholder="yyyy-MM-dd"
+                      aria-label="Expense end date"
+                    />
+                  </div>
+                </div>
+                <div class="orders-filter-field expense-filter-sel">
+                  <label for="expenseCategoryFilter">Category</label>
+                  <div class="expense-dropdown">
+                    <button
+                      type="button"
+                      class="expense-dropdown-trigger"
+                      id="expenseCategoryFilterTrigger"
+                      aria-haspopup="listbox"
+                      aria-expanded="false"
+                      aria-controls="expenseCategoryFilterMenu"
+                    >
+                      <i class="expense-dropdown-trigger-icon ri-apps-2-line" id="expenseCategoryFilterIcon" aria-hidden="true"></i>
+                      <span class="expense-dropdown-current" id="expenseCategoryFilterCurrent">All categories</span>
+                      <i class="ri-arrow-down-s-line expense-dropdown-chevron" aria-hidden="true"></i>
+                    </button>
+                    <div
+                      class="expense-dropdown-menu"
+                      id="expenseCategoryFilterMenu"
+                      role="listbox"
+                      aria-label="Filter expenses by category"
+                      hidden
+                    ></div>
+                    <select id="expenseCategoryFilter" class="expense-sr-select" tabindex="-1" aria-hidden="true">
+                      <option value="all">All categories</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="expense-toolbar-spacer"></div>
+                <button id="expenseAddBtn" class="orders-btn" type="button">
+                  <i class="ri-add-line" aria-hidden="true"></i> Record Expense
+                </button>
+                <button id="expenseResetBtn" class="orders-btn ghost" type="button">
+                  <i class="ri-refresh-line" aria-hidden="true"></i> Today
+                </button>
+
+                <div class="expense-range-shortcuts" role="group" aria-label="Date range shortcuts">
+                  <span class="expense-range-label">Quick range</span>
+                  <button type="button" class="expense-range-chip" data-range="today">Today</button>
+                  <button type="button" class="expense-range-chip" data-range="yesterday">Yesterday</button>
+                  <button type="button" class="expense-range-chip" data-range="7d">Last 7 days</button>
+                  <button type="button" class="expense-range-chip" data-range="30d">Last 30 days</button>
+                  <button type="button" class="expense-range-chip" data-range="month">This month</button>
+                </div>
+              </div>
+
+              <div class="logs-kpi-row expense-kpi-row">
+                <div class="expense-kpi-card is-today">
+                  <div class="expense-kpi-icon"><i class="ri-wallet-3-line" aria-hidden="true"></i></div>
+                  <div class="expense-kpi-inner">
+                    <div class="expense-kpi-label">Today's total</div>
+                    <div class="expense-kpi-value" id="expenseTodayTotal">₱0.00</div>
+                    <div class="expense-kpi-sub">Expenses accrued today</div>
+                  </div>
+                </div>
+                <div class="expense-kpi-card is-filtered">
+                  <div class="expense-kpi-icon"><i class="ri-filter-3-line" aria-hidden="true"></i></div>
+                  <div class="expense-kpi-inner">
+                    <div class="expense-kpi-label">Filtered total</div>
+                    <div class="expense-kpi-value" id="expenseFilteredTotal">₱0.00</div>
+                    <div class="expense-kpi-sub">In the selected view</div>
+                  </div>
+                </div>
+                <div class="expense-kpi-card is-records">
+                  <div class="expense-kpi-icon"><i class="ri-receipt-line" aria-hidden="true"></i></div>
+                  <div class="expense-kpi-inner">
+                    <div class="expense-kpi-label">Records (filtered)</div>
+                    <div class="expense-kpi-value" id="expenseFilteredCount">0</div>
+                    <div class="expense-kpi-sub">Matching entries</div>
+                  </div>
+                </div>
+                <div class="expense-kpi-card is-net">
+                  <div class="expense-kpi-icon"><i class="ri-scales-3-line" aria-hidden="true"></i></div>
+                  <div class="expense-kpi-inner">
+                    <div class="expense-kpi-label">Net today (Sales − Expenses)</div>
+                    <div class="expense-kpi-value" id="expenseNetToday">₱0.00</div>
+                    <div class="expense-kpi-sub">Revenue minus expenses</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="card-head">
+                <span class="card-title"
+                  ><i class="ri-file-list-3-line" aria-hidden="true"></i> Expense Records</span
+                ><span
+                  class="card-action"
+                  onclick="window.refreshExpenses && window.refreshExpenses()"
+                  >Refresh</span
+                >
+              </div>
+              <div id="expensesTableWrap" class="tbl-wrap">
+                <div
+                  style="color: var(--muted); font-size: 13px; padding: 10px 0"
+                >
+                  Loading expenses...
+                </div>
+              </div>
+            </div>
+          </div>
+
           <!-- ── SETTINGS ── -->
           <div id="settings" class="page">
             <div class="page-header">
@@ -1414,6 +1564,120 @@
     </div>
 
     <div
+      class="modal-overlay-custom quick-add-overlay"
+      id="expenseModal"
+      aria-hidden="true"
+      style="display: none"
+    >
+      <div
+        class="modal-custom quick-add-modal expense-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="expenseModalTitle"
+      >
+        <div class="modal-custom-header quick-add-header">
+          <div class="modal-custom-icon info" aria-hidden="true">
+            <i class="ri-wallet-3-line" aria-hidden="true"></i>
+          </div>
+          <div class="modal-custom-title-wrap">
+            <div class="modal-custom-title" id="expenseModalTitle">
+              Record Expense
+            </div>
+            <div class="quick-add-subtitle">
+              Store expense — reduces net revenue
+            </div>
+          </div>
+          <button class="quick-add-close-btn" type="button" id="expenseModalCloseBtn" onclick="window.closeExpenseModal && window.closeExpenseModal()" title="Close">
+            <i class="ri-close-line" aria-hidden="true"></i>
+          </button>
+        </div>
+
+        <div class="modal-custom-body quick-add-body">
+          <div class="expense-form-grid">
+            <div class="expense-form-field expense-form-span-2">
+              <div class="ls-label">Amount <span class="expense-required" aria-hidden="true">*</span></div>
+              <div class="expense-amount-control">
+                <span class="expense-currency-mark" aria-hidden="true">₱</span>
+                <input
+                  id="expenseAmount"
+                  class="expense-amount-input"
+                  type="text"
+                  inputmode="decimal"
+                  placeholder="0"
+                  autocomplete="off"
+                />
+              </div>
+            </div>
+            <div class="expense-form-field">
+              <div class="ls-label">Category</div>
+              <div class="expense-dropdown">
+                <button
+                  type="button"
+                  class="expense-dropdown-trigger"
+                  id="expenseCategoryTrigger"
+                  aria-haspopup="listbox"
+                  aria-expanded="false"
+                  aria-controls="expenseCategoryMenu"
+                >
+                  <i class="expense-dropdown-trigger-icon ri-shopping-basket-2-line" id="expenseCategoryIcon" aria-hidden="true"></i>
+                  <span class="expense-dropdown-current" id="expenseCategoryCurrent">Supplies</span>
+                  <i class="ri-arrow-down-s-line expense-dropdown-chevron" aria-hidden="true"></i>
+                </button>
+                <div
+                  class="expense-dropdown-menu"
+                  id="expenseCategoryMenu"
+                  role="listbox"
+                  aria-label="Expense category"
+                  hidden
+                ></div>
+                <select id="expenseCategory" class="expense-sr-select" tabindex="-1" aria-hidden="true">
+                  <option value="supplies" selected>Supplies</option>
+                </select>
+              </div>
+            </div>
+            <div class="expense-form-field">
+              <div class="ls-label">Date</div>
+              <div class="expense-date-control">
+                <i class="ri-calendar-line orders-field-icon" aria-hidden="true"></i>
+                <input
+                  id="expenseDate"
+                  class="ls-input expense-date-input"
+                  type="text"
+                  readonly
+                  autocomplete="off"
+                  placeholder="yyyy-MM-dd"
+                />
+              </div>
+            </div>
+            <div class="expense-form-field expense-form-span-2">
+              <div class="ls-label">Note (optional)</div>
+              <div class="expense-note-control">
+                <i class="ri-edit-line orders-field-icon" aria-hidden="true"></i>
+                <input
+                  id="expenseNote"
+                  class="ls-input expense-note-input"
+                  type="text"
+                  maxlength="120"
+                  placeholder="e.g. Weekly beans, electricity bill..."
+                  autocomplete="off"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="modal-custom-footer quick-add-footer">
+          <button class="modal-custom-btn secondary" type="button" id="expenseModalCancelBtn">
+            Cancel
+          </button>
+          <button class="modal-custom-btn primary" type="button" id="expenseModalSaveBtn">
+            <i class="ri-save-3-line" aria-hidden="true"></i> Save Expense
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div
       class="receipt-admin-overlay"
       id="orderReceiptModal"
       aria-hidden="true"
@@ -1488,7 +1752,7 @@
     <script src="https://cdn.jsdelivr.net/npm/air-datepicker@3.6.0/air-datepicker.js"></script>
     <script
       type="module"
-      src="/controllers/admin/adminPortalController.js?v=20260826A"
+      src="/controllers/admin/adminPortalController.js?v=20260829D"
     ></script>
   </body>
 </html>

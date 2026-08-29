@@ -145,6 +145,19 @@ service cloud.firestore {
       allow write: if request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ["admin", "staff"];
     }
 
+    match /expenses/{docId} {
+      // Staff and admins can record and read store expenses; only admins may
+      // correct (update/delete) a record. Amount must be a non-negative number.
+      allow read: if request.auth != null &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ["admin", "staff"];
+      allow create: if request.auth != null &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ["admin", "staff"] &&
+        request.resource.data.amount is number &&
+        request.resource.data.amount >= 0;
+      allow update, delete: if request.auth != null &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "admin";
+    }
+
     match /unpaidOrders/{docId} {
       allow read: if request.auth != null && (
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ["admin", "staff"] &&
