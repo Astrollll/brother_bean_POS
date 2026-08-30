@@ -9996,3 +9996,12 @@ input:checked + .tslider::before {
 .expense-modal .quick-add-footer {
   border-radius: 0 0 18px 18px;
 }
+
+/* Disable text selection across the Record Expense modal so it behaves like a
+   kiosk control (labels, ₱ mark, readonly date value, chips, etc.). Typing and
+   caret placement in the Amount/Note fields still work normally. */
+.expense-modal,
+.expense-modal * {
+  -webkit-user-select: none;
+  user-select: none;
+}

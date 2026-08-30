@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-08-30
+
+- Disable text selection inside the Admin Record Expense modal
+  - `assets/adminstyle.css`: added `user-select: none` on `.expense-modal` and all descendants so the modal behaves like a kiosk control (labels, ₱ mark, readonly date value, etc.). Typing and caret placement in the Amount/Note fields still work.
+  - `views/pages/admin.html`: stylesheet tag bumped to `?v=20260830A`.
+  - Reason: owner wanted the modal text (title, subtitle, field labels, currency mark, date value) to stop being highlightable.
+
 ## 2026-08-29
 
 - Polish the Expenses feature UI/UX (Admin + POS)
