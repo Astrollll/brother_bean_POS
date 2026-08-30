@@ -6,6 +6,10 @@
   - `assets/adminstyle.css`: added `user-select: none` on `.expense-modal` and all descendants so the modal behaves like a kiosk control (labels, ₱ mark, readonly date value, etc.). Typing and caret placement in the Amount/Note fields still work.
   - `views/pages/admin.html`: stylesheet tag bumped to `?v=20260830A`.
   - Reason: owner wanted the modal text (title, subtitle, field labels, currency mark, date value) to stop being highlightable.
+- Remove the focus ring ("box") that appeared around the Date and Note fields of the Admin Record Expense modal
+  - `assets/adminstyle.css`: the `:focus-within` amber ring/border highlight on `.expense-date-control` / `.expense-note-control` is neutralized (border stays `--border-light`, no box-shadow, icon stays muted) and the `:focus-visible` outline on the inner inputs is suppressed. The Amount field keeps its own focus styling.
+  - `views/pages/admin.html`: stylesheet tag bumped to `?v=20260830B`.
+  - Reason: owner reported a "boxlike hitbox" appearing when clicking the datepicker and the note input on the modal.
 
 ## 2026-08-29
 
