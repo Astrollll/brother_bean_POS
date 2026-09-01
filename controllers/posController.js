@@ -934,25 +934,6 @@ function getEligibleAddons(product) {
     return { label: "Add-ons", addons: normalizedAddons };
   }
 
-  const rawDrinkAddons = menuItems.filter(i =>
-    i.category === "addons" || i.category === "Add-ons" || i.category === "Add-ons Drink"
-  );
-  const drinkAddons = normalizeAddons(rawDrinkAddons, "fallback-drink");
-  const rawFoodAddons = menuItems.filter(i =>
-    i.category === "addons" || i.category === "Add-ons" || i.category === "Add-ons Food"
-  );
-  const foodAddons = normalizeAddons(rawFoodAddons, "fallback-food");
-  const productCategory = product.category;
-  const drinkCats = ["coffee", "oat series", "coconut series", "matcha series", "non-dairy specials", "non-coffee"];  
-
-  if (drinkCats.includes(productCategory)) {
-    return { label: "Add-ons", addons: drinkAddons };
-  }
-
-  if (["rice meals", "starter", "sandwiches", "pasta"].includes(productCategory)) {
-    return { label: "Add-ons", addons: foodAddons };
-  }
-
   return { label: "Add-ons", addons: [] };
 }
 
