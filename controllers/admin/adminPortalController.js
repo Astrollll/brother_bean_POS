@@ -5954,7 +5954,7 @@ window.addEventListener("keydown", (event) => {
 document.addEventListener("DOMContentLoaded", async () => {
   setupTopbarDate();
   loadNotifState();
-  await loadNotifStateFromFirestore();
+  loadNotifStateFromFirestore();
   setupTopbarActions();
   setupSidebarToggle();
   startDashboardAutoSync();
@@ -6006,10 +6006,23 @@ document.addEventListener("DOMContentLoaded", async () => {
       let profile = null;
       let role = null;
 
-      try {
-        profile = await withTimeout(getUserProfile(activeUser.uid), AUTH_OPERATION_TIMEOUT_MS, "getUserProfile");
-      } catch (profileError) {
-        console.warn("[Auth] Unable to read user profile; continuing with role fallback.", profileError);
+      // Fetch profile and role in parallel so the admin shell loads as fast as
+      // the slower of the two reads (instead of the sum of both).
+      const [profileResult, roleResult] = await Promise.allSettled([
+        withTimeout(getUserProfile(activeUser.uid), AUTH_OPERATION_TIMEOUT_MS, "getUserProfile"),
+        withTimeout(getUserRole(activeUser.uid), AUTH_OPERATION_TIMEOUT_MS, "getUserRole"),
+      ]);
+
+      if (profileResult.status === "fulfilled") {
+        profile = profileResult.value;
+      } else {
+        console.warn("[Auth] Unable to read user profile; continuing with role fallback.", profileResult.reason);
+      }
+
+      if (roleResult.status === "fulfilled") {
+        role = String(roleResult.value || "").trim().toLowerCase();
+      } else {
+        console.warn("[Auth] Unable to read user role; defaulting to admin access path.", roleResult.reason);
       }
 
       if (String(profile?.status || "active").toLowerCase() === "suspended") {
@@ -6019,12 +6032,6 @@ document.addEventListener("DOMContentLoaded", async () => {
         }
         showLogin();
         return;
-      }
-
-      try {
-        role = await withTimeout(getUserRole(activeUser.uid), AUTH_OPERATION_TIMEOUT_MS, "getUserRole");
-      } catch (roleError) {
-        console.warn("[Auth] Unable to read user role; defaulting to admin access path.", roleError);
       }
 
       if (!role) {

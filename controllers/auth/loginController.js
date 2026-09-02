@@ -25,7 +25,7 @@ function withTimeout(promise, timeoutMs, label) {
   });
 }
 
-function setLoginLoadingState(message = "Checking session...") {
+function setLoginLoadingState(message = "Signing in...") {
   const overlay = document.getElementById("login-loading");
   const text = document.getElementById("login-loading-text");
   const screen = document.getElementById("login-screen");
@@ -211,12 +211,6 @@ document.addEventListener("DOMContentLoaded", () => {
   const capsWarn = document.getElementById("capsWarn");
   const rememberedEmail = localStorage.getItem(LOGIN_EMAIL_KEY);
 
-  let authResolved = false;
-
-  const sessionTimer = setTimeout(() => {
-    if (!authResolved) setLoginLoadingState("Checking session...");
-  }, 500);
-
   if (emailInput && rememberedEmail) {
     emailInput.value = rememberedEmail;
     const remember = document.getElementById("rememberEmail");
@@ -240,9 +234,6 @@ document.addEventListener("DOMContentLoaded", () => {
   passwordInput?.addEventListener("blur", () => capsWarn?.classList.remove("active"));
 
   watchAuth(async (user) => {
-    authResolved = true;
-    clearTimeout(sessionTimer);
-
     if (!user) {
       showLoginScreen();
       return;

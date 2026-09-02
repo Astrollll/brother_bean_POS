@@ -35,7 +35,7 @@
     <div
       id="auth-loading"
       class="ls-loading-overlay"
-      style="display: flex"
+      style="display: none"
     >
       <div class="ls-loading-card">
         <div class="ls-loading-spinner"></div>
@@ -1717,6 +1717,24 @@
 
         window.__bbAuthSettled = false;
 
+        // Only surface the session-check screen if auth hasn't settled after a
+        // brief grace period. On a normal refresh the session resolves quickly
+        // (persisted auth restore is near-instant), so the overlay never
+        // flashes; it only appears for genuinely slow session checks.
+        window.setTimeout(() => {
+          if (window.__bbAuthSettled) return;
+
+          const appVisible =
+            !!app && window.getComputedStyle(app).display !== "none";
+          if (appVisible) {
+            window.__bbAuthSettled = true;
+            return;
+          }
+
+          const overlay = document.getElementById("auth-loading");
+          if (overlay) overlay.style.display = "flex";
+        }, 700);
+
         window.setTimeout(() => {
           if (window.__bbAuthSettled) return;
 
@@ -1752,7 +1770,7 @@
     <script src="https://cdn.jsdelivr.net/npm/air-datepicker@3.6.0/air-datepicker.js"></script>
     <script
       type="module"
-      src="/controllers/admin/adminPortalController.js?v=20260829D"
+      src="/controllers/admin/adminPortalController.js?v=20260902A"
     ></script>
   </body>
 </html>
