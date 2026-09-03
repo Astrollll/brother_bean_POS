@@ -6102,6 +6102,15 @@ document.addEventListener("DOMContentLoaded", async () => {
         // (persisted in sessionStorage) instead of resetting to Dashboard.
         const savedTab = getRememberedAdminTab() || "dashboard";
         const meta = ADMIN_TAB_META[savedTab] || ADMIN_TAB_META.dashboard;
+
+        if (savedTab !== "dashboard" && savedTab !== "salesAnalytics") {
+          // Loading a non-dashboard tab first would skip the dashboard's global
+          // init (notifications, sidebar/global state), which the original flow
+          // always ran. So populate dashboard data once, then show the restored
+          // tab on top.
+          try { await loadDashboard(); } catch (e) { console.warn("[Admin] Dashboard pre-init failed:", e); }
+        }
+
         await window.showPage(
           savedTab,
           document.querySelector(meta.navSelector),
