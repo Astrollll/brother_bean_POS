@@ -416,7 +416,7 @@ function buildExpenseSeries(expenses, period, range = null) {
   const values = labels.map(() => 0);
 
   for (const expense of expenses) {
-    const index = getBucketIndex(getExpenseTime(expense), period, range);
+    const index = getBucketIndex(new Date(getExpenseTime(expense)), period, range);
     if (index >= 0 && index < values.length) {
       values[index] += Math.abs(toNumber(expense?.amount) || 0);
     }
