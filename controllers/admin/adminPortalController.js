@@ -88,6 +88,38 @@ const state = {
   expensePageBound: false,
 };
 
+// Remembers which top-level admin tab is active so a browser refresh (F5/Ctrl+R)
+// lands back on the same page instead of resetting to Dashboard. keyed per
+// browser tab/session via sessionStorage so it only survives in-session refreshes,
+// not fresh logins.
+const ADMIN_TAB_KEY = "bb_admin_active_tab";
+const ADMIN_TAB_META = {
+  dashboard: { navSelector: '.nav-item[onclick*="dashboard"]', title: "Dashboard" },
+  salesAnalytics: { navSelector: '.nav-item[onclick*="salesAnalytics"]', title: "Sales Analytics" },
+  orders: { navSelector: '.nav-item[onclick*="orders"]', title: "Transactions" },
+  expenses: { navSelector: '.nav-item[onclick*="expenses"]', title: "Expenses" },
+  menu: { navSelector: '.nav-item[onclick*="menu"]', title: "Menu" },
+  inventory: { navSelector: '.nav-item[onclick*="inventory"]', title: "Inventory" },
+  staff: { navSelector: '.nav-item[onclick*="staff"]', title: "Staff" },
+  accounts: { navSelector: '.nav-item[onclick*="accounts"]', title: "Accounts" },
+  logs: { navSelector: '.nav-item[onclick*="logs"]', title: "Logs" },
+  settings: { navSelector: '.nav-item[onclick*="settings"]', title: "Settings" },
+};
+
+function rememberActiveAdminTab(pageId) {
+  if (!pageId || !(pageId in ADMIN_TAB_META)) return;
+  try { sessionStorage.setItem(ADMIN_TAB_KEY, pageId); } catch (e) {}
+}
+
+function getRememberedAdminTab() {
+  try {
+    const saved = sessionStorage.getItem(ADMIN_TAB_KEY);
+    return saved && saved in ADMIN_TAB_META ? saved : null;
+  } catch (e) {
+    return null;
+  }
+}
+
 const DASHBOARD_SYNC_INTERVAL_MS = 60_000;
 let dashboardSyncInProgress = false;
 let settingsRenderedSignature = null;
@@ -5738,6 +5770,7 @@ async function loadSettingsPage() {
 window.showPage = async function (pageId, navEl, title) {
   if (state.page === pageId) return;
   state.page = pageId;
+  rememberActiveAdminTab(pageId);
   setActiveNav(navEl);
   setTopbarTitle(title || "Admin");
   showPage(pageId);
@@ -5926,6 +5959,7 @@ window.confirmLogout = async function () {
   setButtonLoadingState(signOutBtn, true, "Signing out...");
   try {
     await withTimeout(authLogout(), AUTH_OPERATION_TIMEOUT_MS, "logout");
+    try { sessionStorage.removeItem(ADMIN_TAB_KEY); } catch (e) {}
     navigateTo("login", { replace: true });
   } catch (error) {
     console.error("[Auth] Logout failed:", error);
@@ -6064,7 +6098,15 @@ document.addEventListener("DOMContentLoaded", async () => {
       }
       showApp();
       try {
-        await window.showPage("dashboard", document.querySelector('.nav-item[onclick*="dashboard"]'), "Dashboard");
+        // On a refresh, return to the same top-level tab the admin was viewing
+        // (persisted in sessionStorage) instead of resetting to Dashboard.
+        const savedTab = getRememberedAdminTab() || "dashboard";
+        const meta = ADMIN_TAB_META[savedTab] || ADMIN_TAB_META.dashboard;
+        await window.showPage(
+          savedTab,
+          document.querySelector(meta.navSelector),
+          meta.title
+        );
       } catch (pageError) {
         console.error("[Admin] Page initialization failed:", pageError);
         const loading = document.getElementById("auth-loading");
