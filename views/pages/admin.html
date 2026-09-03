@@ -1717,23 +1717,9 @@
 
         window.__bbAuthSettled = false;
 
-        // Only surface the session-check screen if auth hasn't settled after a
-        // brief grace period. On a normal refresh the session resolves quickly
-        // (persisted auth restore is near-instant), so the overlay never
-        // flashes; it only appears for genuinely slow session checks.
-        window.setTimeout(() => {
-          if (window.__bbAuthSettled) return;
-
-          const appVisible =
-            !!app && window.getComputedStyle(app).display !== "none";
-          if (appVisible) {
-            window.__bbAuthSettled = true;
-            return;
-          }
-
-          const overlay = document.getElementById("auth-loading");
-          if (overlay) overlay.style.display = "flex";
-        }, 700);
+        // The overlay is never auto-shown on page load. It stays hidden
+        // (display:none) so a normal refresh never flashes "Checking session".
+        // Only the 30s hard-timeout below fires if auth is completely stuck.
 
         window.setTimeout(() => {
           if (window.__bbAuthSettled) return;
