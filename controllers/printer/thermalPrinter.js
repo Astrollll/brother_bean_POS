@@ -674,6 +674,15 @@ export function buildEscReceipt(sale, paperWidth = 58) {
     const variant = [item.variant, item.temperature && item.temperature !== "N/A" ? item.temperature : null].filter(Boolean).join(" · ");
     if (variant) lines.push([textLine("  " + truncate(variant, width - 2))]);
 
+    const addons = Array.isArray(item.addons) ? item.addons : [];
+    for (const addon of addons) {
+      const addonName = String(addon?.name || "").trim();
+      if (!addonName) continue;
+      const addonPrice = Number(addon?.price) || 0;
+      const addonLine = addonPrice > 0 ? `+${addonName} ${formatMoney(addonPrice)}` : `+${addonName}`;
+      lines.push([textLine("  " + truncate(addonLine, width - 2))]);
+    }
+
     const pctLabel = `(-${Math.round(discountPct * 100)}%)`;
     const spaced = `${qty} x ${formatMoney(originalUnit)} -> ${formatMoney(unitPrice)} ${pctLabel}`;
     const compact = `${qty} x ${formatMoney(originalUnit)}->${formatMoney(unitPrice)}${pctLabel}`;
