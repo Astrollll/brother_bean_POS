@@ -788,6 +788,165 @@ button,
   flex: 1 1 auto;
 }
 
+.sidebar-pending-item > .sidebar-pending-body {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.order-select-check {
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+  cursor: pointer;
+  margin: 0;
+  padding: 2px;
+}
+
+.order-select-check input[type="checkbox"],
+.unpaid-select-all-label input[type="checkbox"] {
+  width: 17px;
+  height: 17px;
+  accent-color: var(--primary);
+  cursor: pointer;
+}
+
+.unpaid-select-all-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-primary);
+  cursor: pointer;
+  margin: 0;
+}
+
+/* ── Batch action buttons: Pending + Unpaid order modals ── */
+
+#unpaidOrdersModal .bb-modal-footer,
+#pendingOrdersModal .bb-modal-footer {
+  gap: 16px;
+  padding: 16px 24px;
+}
+
+.bb-footer-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-left: auto;
+}
+
+#unpaidOrdersModal .bb-batch-done-btn,
+#pendingOrdersModal .bb-batch-done-btn,
+#unpaidOrdersModal .bb-batch-cancel-btn,
+#pendingOrdersModal .bb-batch-cancel-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 13px 20px;
+  min-width: 0;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 0.1px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: transform 160ms ease, box-shadow 160ms ease, background 160ms ease, border-color 160ms ease, color 160ms ease;
+}
+
+#unpaidOrdersModal .bb-batch-cancel-btn,
+#pendingOrdersModal .bb-batch-cancel-btn {
+  background: #ffffff;
+  color: #b3261e;
+  border-color: rgba(200, 60, 50, 0.35);
+  box-shadow: none;
+}
+
+#unpaidOrdersModal .bb-batch-cancel-btn:hover:not(:disabled),
+#pendingOrdersModal .bb-batch-cancel-btn:hover:not(:disabled) {
+  background: rgba(200, 60, 50, 0.06);
+  border-color: rgba(200, 60, 50, 0.55);
+  color: #8f1d16;
+  transform: translateY(-1px);
+}
+
+#unpaidOrdersModal .bb-batch-cancel-btn:disabled,
+#pendingOrdersModal .bb-batch-cancel-btn:disabled {
+  background: #f6f3ef;
+  color: #b9b0a5;
+  border-color: transparent;
+}
+
+#unpaidOrdersModal .bb-batch-done-btn,
+#pendingOrdersModal .bb-batch-done-btn {
+  background: linear-gradient(135deg, var(--primary) 0%, #6f431c 100%);
+  color: #fff;
+  box-shadow: 0 4px 14px rgba(107, 68, 35, 0.28);
+}
+
+#unpaidOrdersModal .bb-batch-done-btn:hover:not(:disabled),
+#pendingOrdersModal .bb-batch-done-btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 22px rgba(107, 68, 35, 0.34);
+}
+
+#unpaidOrdersModal .bb-batch-done-btn:disabled,
+#pendingOrdersModal .bb-batch-done-btn:disabled {
+  opacity: 0.5;
+  box-shadow: none;
+  cursor: not-allowed;
+}
+
+#unpaidOrdersModal .bb-batch-done-btn i,
+#pendingOrdersModal .bb-batch-done-btn i,
+#unpaidOrdersModal .bb-batch-cancel-btn i,
+#pendingOrdersModal .bb-batch-cancel-btn i {
+  font-size: 17px;
+  line-height: 1;
+}
+
+.bb-btn-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 7px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.24);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.bb-btn-badge[hidden] {
+  display: none;
+}
+
+.bb-batch-cancel-btn .bb-btn-badge {
+  background: rgba(200, 60, 50, 0.12);
+  color: #b3261e;
+}
+
+@media (max-width: 768px) {
+  #unpaidOrdersModal .bb-footer-actions,
+  #pendingOrdersModal .bb-footer-actions {
+    flex-direction: column;
+    width: 100%;
+    align-items: stretch;
+    margin-left: 0;
+  }
+
+  #unpaidOrdersModal .bb-batch-done-btn,
+  #pendingOrdersModal .bb-batch-done-btn,
+  #unpaidOrdersModal .bb-batch-cancel-btn,
+  #pendingOrdersModal .bb-batch-cancel-btn {
+    width: 100%;
+  }
+}
+
 
 .sidebar-pending-open-btn {
   width: 100%;
@@ -849,6 +1008,13 @@ button,
   display: flex;
   justify-content: flex-end;
   margin-bottom: 12px;
+}
+
+#unpaidOrdersModal .pending-orders-modal-toolbar,
+#pendingOrdersModal .pending-orders-modal-toolbar {
+  justify-content: space-between;
+  gap: 10px;
+  align-items: center;
 }
 
 .sales-chart-bars {

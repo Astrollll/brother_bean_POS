@@ -1,7 +1,8 @@
-const CACHE_NAME = "brother-bean-pos-v11";
+const CACHE_NAME = "brother-bean-pos-v12";
 const APP_SHELL_FILES = [
   "/pos",
   "/views/pages/pos.html",
+  "/assets/style.css?v=20260915A",
   "/assets/style.css",
   "/assets/bootstrap-5.3.8-dist/css/bootstrap.min.css",
   "/assets/bootstrap-5.3.8-dist/js/bootstrap.bundle.min.js",

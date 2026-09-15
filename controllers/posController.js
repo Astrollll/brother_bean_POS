@@ -69,6 +69,8 @@ let cashierName      = "Staff";
 let salesHistory     = [];
 let dailyStats       = { orders: 0, totalSales: 0, discountsApplied: 0, cashReceived: 0, openingFloat: 0, cashIn: 0, cashOut: 0 };
 let isOnline         = navigator.onLine;
+let unpaidSelected = new Set();
+let pendingSelected = new Set();
 
 // Shared-drawer refresh bookkeeping: a local write short-circuits the next
 // poll so a re-render can never discard a value that is still saving.
@@ -1481,8 +1483,11 @@ function renderUnpaidOrdersList() {
   const listEl = document.getElementById("unpaidOrdersModalList");
   if (!listEl) return;
 
+  unpaidSelected.clear();
+
   if (!orders.length) {
     listEl.innerHTML = '<div class="sidebar-pending-empty">No unpaid orders</div>';
+    updateUnpaidSelectionUi();
     return;
   }
 
@@ -1492,21 +1497,164 @@ function renderUnpaidOrdersList() {
       : "No items";
     const timestamp = order.timestamp || "--";
     const total = Number(order.total) || 0;
+    const orderId = JSON.stringify(order.id);
     return `
       <div class="sidebar-pending-item">
-        <div onclick='openUnpaidOrderReceipt(${JSON.stringify(order.id)})'>
+        <label class="order-select-check" title="Select this order">
+          <input type="checkbox" onchange='event.stopPropagation(); toggleUnpaidSelect(${orderId}, this.checked)' />
+        </label>
+        <div class="sidebar-pending-body" onclick='openUnpaidOrderReceipt(${orderId})'>
           <div class="sidebar-pending-order">#${String(order.orderId || order.id || "").slice(-6) || "—"}</div>
           <div class="sidebar-pending-meta">${timestamp} · ${itemNames}</div>
           <div class="sidebar-pending-meta">Total: ₱${total.toFixed(2)}</div>
         </div>
         <div class="unpaid-item-actions">
-          <button class="sidebar-pending-button" type="button" onclick='event.stopPropagation(); restoreUnpaidOrderToCart(${JSON.stringify(order.id)})'>Restore</button>
-          <button class="sidebar-pending-button unpaid-delete-btn" type="button" onclick='event.stopPropagation(); deleteUnpaidOrder(${JSON.stringify(order.id)})'>Delete</button>
+          <button class="sidebar-pending-button" type="button" onclick='event.stopPropagation(); restoreUnpaidOrderToCart(${orderId})'>Restore</button>
+          <button class="sidebar-pending-button unpaid-delete-btn" type="button" onclick='event.stopPropagation(); deleteUnpaidOrder(${orderId})'>Delete</button>
         </div>
       </div>
     `;
   }).join("");
+
+  updateUnpaidSelectionUi();
 }
+
+function updateBatchActionButtons(btn, label, count) {
+  if (!btn) return;
+  const labelEl = btn.querySelector(".bb-btn-label");
+  const badgeEl = btn.querySelector(".bb-btn-badge");
+  btn.disabled = count === 0;
+  if (labelEl) labelEl.textContent = label;
+  if (badgeEl) {
+    badgeEl.hidden = count === 0;
+    badgeEl.textContent = count > 0 ? String(count) : "";
+  }
+}
+
+function updateUnpaidSelectionUi() {
+  const count = unpaidSelected.size;
+  const listEl = document.getElementById("unpaidOrdersModalList");
+  const total = listEl ? listEl.querySelectorAll(".order-select-check input[type=checkbox]").length : 0;
+  const selectAllEl = document.getElementById("unpaidSelectAll");
+  const doneBtn = document.getElementById("unpaidMarkDoneBtn");
+  const cancelBtn = document.getElementById("unpaidCancelSelectedBtn");
+
+  if (selectAllEl) {
+    selectAllEl.checked = total > 0 && count === total;
+    selectAllEl.indeterminate = count > 0 && count < total;
+    selectAllEl.disabled = total === 0;
+  }
+  updateBatchActionButtons(doneBtn, "Mark Done", count);
+  updateBatchActionButtons(cancelBtn, "Cancel", count);
+}
+
+window.toggleUnpaidSelect = function(orderId, checked) {
+  if (checked) {
+    unpaidSelected.add(String(orderId));
+  } else {
+    unpaidSelected.delete(String(orderId));
+  }
+  updateUnpaidSelectionUi();
+};
+
+window.toggleUnpaidSelectAll = function(checked) {
+  const listEl = document.getElementById("unpaidOrdersModalList");
+  if (!listEl) return;
+  listEl.querySelectorAll(".order-select-check input[type=checkbox]").forEach((cb) => {
+    cb.checked = !!checked;
+  });
+  const orders = getUnpaidOrders();
+  unpaidSelected.clear();
+  if (checked) {
+    orders.forEach((o) => unpaidSelected.add(String(o.id)));
+  }
+  updateUnpaidSelectionUi();
+};
+
+window.cancelSelectedUnpaidOrders = async function() {
+  if (!unpaidSelected.size) return;
+  const ids = Array.from(unpaidSelected);
+  const confirmed = await window.askConfirm({
+    title: "Cancel unpaid orders",
+    message: `Cancel ${ids.length} unpaid order${ids.length > 1 ? "s" : ""}? This removes it from the unpaid list and cannot be undone.`,
+    okText: "Cancel orders",
+    danger: true,
+  });
+  if (!confirmed) return;
+  for (const id of ids) {
+    await removeUnpaidOrderById(id);
+  }
+  unpaidSelected.clear();
+  renderUnpaidOrdersList();
+  updateUnpaidOrderSidebar();
+  showToast(`${ids.length} unpaid order${ids.length > 1 ? "s" : ""} cancelled.`, "success");
+};
+
+window.markSelectedUnpaidDone = async function() {
+  if (!unpaidSelected.size) return;
+  const ids = Array.from(unpaidSelected);
+  const orders = new Map(getUnpaidOrders().map((o) => [String(o.id), o]));
+  const selected = ids.map((id) => orders.get(id)).filter(Boolean);
+  if (!selected.length) {
+    unpaidSelected.clear();
+    renderUnpaidOrdersList();
+    return;
+  }
+
+  const cartHasItems = Array.isArray(cart) && cart.length > 0;
+  const cartWarning = cartHasItems
+    ? "\n\nYour current cart has items. They will be cleared by completing these orders."
+    : "";
+  const confirmed = await window.askConfirm({
+    title: "Complete unpaid orders",
+    message: `Mark ${selected.length} unpaid order${selected.length > 1 ? "s" : ""} as paid? They will be recorded as completed sales.${cartWarning}`,
+    okText: "Mark Done",
+    danger: false,
+  });
+  if (!confirmed) return;
+
+  let completed = 0;
+  for (const order of selected) {
+    try {
+      const nameInput = document.getElementById("orderNameInput");
+      if (nameInput) nameInput.value = String(order.customerName || "");
+      cart = cloneValue(order.items) || [];
+      isPwdSenior = !!order.isPwdSenior;
+      isEmployeeOrder = !!order.isEmployeeOrder;
+      currentPayMethod = order.paymentMethod || "cash";
+      capturedPaymentTotal = Number(order.total) || 0;
+      enteredAmount = "";
+      await completePayment();
+      await removeUnpaidOrderById(order.id);
+      completed += 1;
+      if (selected.length > 1) closeReceipt();
+    } catch (error) {
+      console.warn("[POS] Complete unpaid order failed:", order.id, error);
+    }
+  }
+
+  // Clear the completion harness state. If a completion threw partway, these
+  // globals were left mid-flight and must not leak into the next transaction.
+  cart = [];
+  isPwdSenior = false;
+  isEmployeeOrder = false;
+  enteredAmount = "";
+  currentPayMethod = "cash";
+  capturedPaymentTotal = 0;
+  const nameInput = document.getElementById("orderNameInput");
+  if (nameInput && !cartHasItems) nameInput.value = "";
+
+  unpaidSelected.clear();
+  renderUnpaidOrdersList();
+  updateUnpaidOrderSidebar();
+  if (selected.length > 1) closeUnpaidOrdersModal();
+  showToast(
+    completed > 0
+      ? `${completed} unpaid order${completed > 1 ? "s" : ""} completed.`
+      : "No unpaid orders could be completed.",
+    completed > 0 ? "success" : "warning"
+  );
+};
 
 window.openUnpaidOrderReceipt = function(orderId) {
   const orders = getUnpaidOrders();
@@ -2311,6 +2459,15 @@ window.cancelPendingOrder = async function(orderId) {
   });
   if (!confirmed) return;
 
+  await performPendingOrderCancel(order);
+};
+
+async function performPendingOrderCancel(kitchenOrder) {
+  const sale = {
+    ...(kitchenOrder?.payload || {}),
+    orderId: kitchenOrder?.payload?.orderId || kitchenOrder?.payload?.id || kitchenOrder?.id,
+  };
+
   try {
     const result = await voidSale(sale);
     closeReceipt();
@@ -2322,6 +2479,7 @@ window.cancelPendingOrder = async function(orderId) {
     } else {
       showToast("Pending order canceled. Items returned to the cart.", "success");
     }
+    return true;
   } catch (error) {
     const denied = /permission|denied|permission-denied/i.test(String(error?.message || error?.code || ""));
     console.error("[POS] Cancel pending order failed:", error);
@@ -2331,8 +2489,9 @@ window.cancelPendingOrder = async function(orderId) {
         : "Unable to cancel the pending order. Please try again.",
       "warning"
     );
+    return false;
   }
-};
+}
 
 // ── DRAWER MATH ──
 // Merge order lists (Firestore snapshot, local history, queued outbox) into
@@ -3547,8 +3706,11 @@ async function renderPendingOrdersList() {
   const listEl = document.getElementById("pendingOrdersModalList");
   if (!listEl) return;
 
+  pendingSelected.clear();
+
   if (!pending.length) {
     listEl.innerHTML = '<div class="sidebar-pending-empty">No pending orders</div>';
+    updatePendingSelectionUi();
     return;
   }
 
@@ -3567,7 +3729,10 @@ async function renderPendingOrdersList() {
     const noteDisplay = noteTruncated ? escapeHtml(note.slice(0, maxNoteLen)) + "..." : noteEscaped;
     return `
       <div class="sidebar-pending-item">
-        <div>
+        <label class="order-select-check" title="Select this order">
+          <input type="checkbox" onchange='event.stopPropagation(); togglePendingSelect(${JSON.stringify(order.id)}, this.checked)' />
+        </label>
+        <div class="sidebar-pending-body">
           ${customerName ? `<div class="sidebar-pending-name">${escapeHtml(customerName)}</div>` : ""}
           <div class="sidebar-pending-order">#${String(order.id).replace(/^q_/, "").slice(-6)}</div>
           <div class="sidebar-pending-meta">${createdAt} · ${itemNames}</div>
@@ -3582,7 +3747,107 @@ async function renderPendingOrdersList() {
       </div>
     `;
   }).join("");
+
+  updatePendingSelectionUi();
 }
+
+function updatePendingSelectionUi() {
+  const count = pendingSelected.size;
+  const listEl = document.getElementById("pendingOrdersModalList");
+  const total = listEl ? listEl.querySelectorAll(".order-select-check input[type=checkbox]").length : 0;
+  const selectAllEl = document.getElementById("pendingSelectAll");
+  const doneBtn = document.getElementById("pendingMarkPreparedBtn");
+  const cancelBtn = document.getElementById("pendingCancelSelectedBtn");
+
+  if (selectAllEl) {
+    selectAllEl.checked = total > 0 && count === total;
+    selectAllEl.indeterminate = count > 0 && count < total;
+    selectAllEl.disabled = total === 0;
+  }
+  updateBatchActionButtons(doneBtn, "Mark Done", count);
+  updateBatchActionButtons(cancelBtn, "Cancel", count);
+}
+
+window.togglePendingSelect = function(orderId, checked) {
+  const key = String(orderId);
+  if (checked) {
+    pendingSelected.add(key);
+  } else {
+    pendingSelected.delete(key);
+  }
+  updatePendingSelectionUi();
+};
+
+window.togglePendingSelectAll = async function(checked) {
+  const listEl = document.getElementById("pendingOrdersModalList");
+  if (!listEl) return;
+  listEl.querySelectorAll(".order-select-check input[type=checkbox]").forEach((cb) => {
+    cb.checked = !!checked;
+  });
+  const orders = await getPendingOrders();
+  pendingSelected.clear();
+  if (checked) {
+    orders.forEach((o) => pendingSelected.add(String(o.id)));
+  }
+  updatePendingSelectionUi();
+};
+
+window.markSelectedPendingPrepared = async function() {
+  if (!pendingSelected.size) return;
+  const ids = Array.from(pendingSelected);
+  const confirmed = await window.askConfirm({
+    title: "Mark pending orders prepared",
+    message: `Mark ${ids.length} pending order${ids.length > 1 ? "s" : ""} as prepared? They will be removed from the pending list and marked done.`,
+    okText: "Mark Done",
+    danger: false,
+  });
+  if (!confirmed) return;
+
+  let done = 0;
+  for (const id of ids) {
+    try {
+      await markPendingOrderPrepared(id);
+      done += 1;
+    } catch (error) {
+      console.warn("[POS] Mark prepared failed:", id, error);
+    }
+  }
+  pendingSelected.clear();
+  await refreshKitchenPendingIndicators();
+  updateConnectivityStatus();
+  showToast(`${done} pending order${done > 1 ? "s" : ""} marked as prepared.`, "success");
+};
+
+window.cancelSelectedPendingOrders = async function() {
+  if (!pendingSelected.size) return;
+  const ids = Array.from(pendingSelected);
+  const pending = await getPendingOrders();
+  const byId = new Map(pending.map((o) => [String(o.id), o]));
+  const selected = ids.map((id) => byId.get(id)).filter(Boolean);
+  if (!selected.length) {
+    pendingSelected.clear();
+    renderPendingOrdersList();
+    return;
+  }
+
+  const confirmed = await window.askConfirm({
+    title: "Cancel pending orders",
+    message: `Cancel ${selected.length} pending order${selected.length > 1 ? "s" : ""}? They will be removed from the queue and sales records, deducted stock will be restored, and the payments must be returned to the customers. Items will be returned to the current cart.`,
+    okText: "Cancel orders",
+    danger: true,
+  });
+  if (!confirmed) return;
+
+  let cancelled = 0;
+  for (const order of selected) {
+    const ok = await performPendingOrderCancel(order);
+    if (ok) cancelled += 1;
+  }
+  pendingSelected.clear();
+  await refreshKitchenPendingIndicators();
+  updateConnectivityStatus();
+  showToast(`${cancelled} pending order${cancelled > 1 ? "s" : ""} cancelled.`, cancelled > 0 ? "success" : "warning");
+};
 
 window.togglePendingNote = function(id) {
   const el = document.getElementById(id);
