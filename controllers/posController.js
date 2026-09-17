@@ -1536,7 +1536,6 @@ function updateUnpaidSelectionUi() {
   const listEl = document.getElementById("unpaidOrdersModalList");
   const total = listEl ? listEl.querySelectorAll(".order-select-check input[type=checkbox]").length : 0;
   const selectAllEl = document.getElementById("unpaidSelectAll");
-  const doneBtn = document.getElementById("unpaidMarkDoneBtn");
   const cancelBtn = document.getElementById("unpaidCancelSelectedBtn");
 
   if (selectAllEl) {
@@ -1544,7 +1543,6 @@ function updateUnpaidSelectionUi() {
     selectAllEl.indeterminate = count > 0 && count < total;
     selectAllEl.disabled = total === 0;
   }
-  updateBatchActionButtons(doneBtn, "Mark Done", count);
   updateBatchActionButtons(cancelBtn, "Cancel", count);
 }
 
@@ -1588,72 +1586,6 @@ window.cancelSelectedUnpaidOrders = async function() {
   renderUnpaidOrdersList();
   updateUnpaidOrderSidebar();
   showToast(`${ids.length} unpaid order${ids.length > 1 ? "s" : ""} cancelled.`, "success");
-};
-
-window.markSelectedUnpaidDone = async function() {
-  if (!unpaidSelected.size) return;
-  const ids = Array.from(unpaidSelected);
-  const orders = new Map(getUnpaidOrders().map((o) => [String(o.id), o]));
-  const selected = ids.map((id) => orders.get(id)).filter(Boolean);
-  if (!selected.length) {
-    unpaidSelected.clear();
-    renderUnpaidOrdersList();
-    return;
-  }
-
-  const cartHasItems = Array.isArray(cart) && cart.length > 0;
-  const cartWarning = cartHasItems
-    ? "\n\nYour current cart has items. They will be cleared by completing these orders."
-    : "";
-  const confirmed = await window.askConfirm({
-    title: "Complete unpaid orders",
-    message: `Mark ${selected.length} unpaid order${selected.length > 1 ? "s" : ""} as paid? They will be recorded as completed sales.${cartWarning}`,
-    okText: "Mark Done",
-    danger: false,
-  });
-  if (!confirmed) return;
-
-  let completed = 0;
-  for (const order of selected) {
-    try {
-      const nameInput = document.getElementById("orderNameInput");
-      if (nameInput) nameInput.value = String(order.customerName || "");
-      cart = cloneValue(order.items) || [];
-      isPwdSenior = !!order.isPwdSenior;
-      isEmployeeOrder = !!order.isEmployeeOrder;
-      currentPayMethod = order.paymentMethod || "cash";
-      capturedPaymentTotal = Number(order.total) || 0;
-      enteredAmount = "";
-      await completePayment();
-      await removeUnpaidOrderById(order.id);
-      completed += 1;
-      if (selected.length > 1) closeReceipt();
-    } catch (error) {
-      console.warn("[POS] Complete unpaid order failed:", order.id, error);
-    }
-  }
-
-  // Clear the completion harness state. If a completion threw partway, these
-  // globals were left mid-flight and must not leak into the next transaction.
-  cart = [];
-  isPwdSenior = false;
-  isEmployeeOrder = false;
-  enteredAmount = "";
-  currentPayMethod = "cash";
-  capturedPaymentTotal = 0;
-  const nameInput = document.getElementById("orderNameInput");
-  if (nameInput && !cartHasItems) nameInput.value = "";
-
-  unpaidSelected.clear();
-  renderUnpaidOrdersList();
-  updateUnpaidOrderSidebar();
-  if (selected.length > 1) closeUnpaidOrdersModal();
-  showToast(
-    completed > 0
-      ? `${completed} unpaid order${completed > 1 ? "s" : ""} completed.`
-      : "No unpaid orders could be completed.",
-    completed > 0 ? "success" : "warning"
-  );
 };
 
 window.openUnpaidOrderReceipt = function(orderId) {
